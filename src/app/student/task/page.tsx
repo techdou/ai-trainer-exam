@@ -103,9 +103,13 @@ export default function TaskPage() {
 
   const taskTypeLabel: Record<string, string> = {
     excel_delete_rows: 'Excel删行',
+    stats_table: '统计表填写',
     stats_table_fill: '统计表填写',
+    file_classify: '文件分类',
     file_classification: '文件分类',
+    image_clean: '图片清洗',
     image_cleaning: '图片清洗',
+    image_annotate: '图片标注',
     image_annotation: '图片标注',
     text_sentiment: '文本情感',
     audio_transcription: '音频转写',
@@ -263,12 +267,22 @@ function TaskWorkspace({ taskType, onSubmit, submitting }: TaskWorkspaceProps) {
   switch (taskType) {
     case 'excel_delete_rows':
       return <ExcelDeleteRowsTask onSubmit={onSubmit} submitting={submitting} />;
+    case 'stats_table':
     case 'stats_table_fill':
       return <StatsTableFillTask onSubmit={onSubmit} submitting={submitting} />;
+    case 'file_classify':
     case 'file_classification':
       return <FileClassificationTask onSubmit={onSubmit} submitting={submitting} />;
+    case 'image_clean':
     case 'image_cleaning':
       return <ImageCleaningTask onSubmit={onSubmit} submitting={submitting} />;
+    case 'text_sentiment':
+      return <TextSentimentTask onSubmit={onSubmit} submitting={submitting} />;
+    case 'image_annotate':
+    case 'image_annotation':
+      return <ImageAnnotationTask onSubmit={onSubmit} submitting={submitting} />;
+    case 'audio_transcription':
+      return <AudioTranscriptionTask onSubmit={onSubmit} submitting={submitting} />;
     default:
       return <GenericTaskPlaceholder taskType={taskType} />;
   }
@@ -597,6 +611,208 @@ function ImageCleaningTask({ onSubmit, submitting }: ImageCleaningProps) {
           {submitting ? '提交中…' : '提交答案'}
         </button>
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  文本情感标注任务                                                      */
+/* ------------------------------------------------------------------ */
+interface TextSentimentProps {
+  onSubmit: (submission: unknown, graderId: string) => Promise<void>;
+  submitting: boolean;
+}
+
+function TextSentimentTask({ onSubmit, submitting }: TextSentimentProps) {
+  const samples = [
+    { text: '今天天气真好，阳光明媚，心情很愉快！', sentiment: 'positive' },
+    { text: '这个产品质量太差了，完全不推荐购买。', sentiment: 'negative' },
+    { text: '我去超市买了一瓶水。', sentiment: 'neutral' },
+    { text: '服务态度很好，下次还会再来。', sentiment: 'positive' },
+    { text: '等了一个小时才送到，太让人失望了。', sentiment: 'negative' },
+  ];
+
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+
+  const handleSubmit = () => {
+    onSubmit(
+      {
+        answers: samples.map((s, i) => ({ text: s.text, userLabel: answers[i] || '' })),
+      },
+      'text_sentiment',
+    );
+  };
+
+  const allAnswered = samples.every((_, i) => answers[i]);
+
+  return (
+    <div>
+      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+        <h3 className="text-lg font-bold text-green-800 mb-1">文本情感标注</h3>
+        <p className="text-base text-green-700">请阅读每条文本，判断其情感倾向：正面、负面 或 中性。</p>
+      </div>
+      <div className="space-y-4">
+        {samples.map((s, i) => (
+          <div key={i} className="border border-gray-200 rounded-lg p-4 bg-white">
+            <p className="text-lg mb-3">{s.text}</p>
+            <div className="flex gap-3">
+              {[
+                { value: 'positive', label: '正面', icon: '😊', color: 'bg-green-100 border-green-500' },
+                { value: 'negative', label: '负面', icon: '😞', color: 'bg-red-100 border-red-500' },
+                { value: 'neutral', label: '中性', icon: '😐', color: 'bg-gray-100 border-gray-500' },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setAnswers((prev) => ({ ...prev, [i]: opt.value }))}
+                  className={`flex-1 px-4 py-3 rounded-lg border-2 text-base font-medium transition-all ${
+                    answers[i] === opt.value
+                      ? `${opt.color} border-2 shadow-md`
+                      : 'bg-white border-gray-200 hover:border-gray-400'
+                  }`}
+                >
+                  <span className="text-2xl mr-2">{opt.icon}</span>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <button
+        onClick={handleSubmit}
+        disabled={!allAnswered || submitting}
+        className="w-full mt-4 py-4 bg-green-600 text-white text-lg font-bold rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+      >
+        {submitting ? '提交中...' : '提交答案'}
+      </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  图片标注任务                                                          */
+/* ------------------------------------------------------------------ */
+interface ImageAnnotationProps {
+  onSubmit: (submission: unknown, graderId: string) => Promise<void>;
+  submitting: boolean;
+}
+
+function ImageAnnotationTask({ onSubmit, submitting }: ImageAnnotationProps) {
+  const regions = [
+    { id: 1, label: '人物', x: 20, y: 10, w: 40, h: 60 },
+    { id: 2, label: '背景', x: 50, y: 50, w: 40, h: 40 },
+  ];
+
+  const handleSubmit = () => {
+    onSubmit({ regions }, 'image_annotation');
+  };
+
+  return (
+    <div>
+      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+        <h3 className="text-lg font-bold text-green-800 mb-1">图片标注</h3>
+        <p className="text-base text-green-700">在图片中框选目标物体，并为其分配标签。下方已预置示例标注区域供参考。</p>
+      </div>
+      <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50 mb-4">
+        <div
+          className="relative w-full"
+          style={{
+            backgroundImage:
+              'linear-gradient(45deg, #e0e0e0 25%, transparent 25%), linear-gradient(-45deg, #e0e0e0 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e0e0e0 75%), linear-gradient(-45deg, transparent 75%, #e0e0e0 75%)',
+            backgroundSize: '20px 20px',
+            height: '400px',
+          }}
+        >
+          {regions.map((r) => (
+            <div
+              key={r.id}
+              className="absolute border-2 border-blue-500 bg-blue-200/30 flex items-start justify-between p-1"
+              style={{ left: `${r.x}%`, top: `${r.y}%`, width: `${r.w}%`, height: `${r.h}%` }}
+            >
+              <span className="text-xs bg-blue-500 text-white px-1.5 py-0.5 rounded">{r.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+        <p className="text-sm text-blue-800">
+          已标注 <strong>{regions.length}</strong> 个区域。每个区域包含标签和位置坐标(x, y, w, h)。
+        </p>
+      </div>
+      <button
+        onClick={handleSubmit}
+        disabled={submitting}
+        className="w-full mt-4 py-4 bg-green-600 text-white text-lg font-bold rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+      >
+        {submitting ? '提交中...' : '提交答案'}
+      </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  音频转写任务                                                          */
+/* ------------------------------------------------------------------ */
+interface AudioTranscriptionProps {
+  onSubmit: (submission: unknown, graderId: string) => Promise<void>;
+  submitting: boolean;
+}
+
+function AudioTranscriptionTask({ onSubmit, submitting }: AudioTranscriptionProps) {
+  const [transcript, setTranscript] = useState('');
+
+  const phrases = ['欢迎使用人工智能训练师练习系统', '请按照提示完成数据标注任务'];
+
+  const handleSubmit = () => {
+    onSubmit({ transcript, expectedPhrases: phrases }, 'audio_transcription');
+  };
+
+  return (
+    <div>
+      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+        <h3 className="text-lg font-bold text-green-800 mb-1">音频转写</h3>
+        <p className="text-base text-green-700">请点击播放按钮听取音频，将听到的内容逐字转写到下方输入框中。</p>
+      </div>
+      <div className="bg-white border border-gray-200 rounded-lg p-6 mb-4">
+        <div className="flex items-center gap-4 mb-4">
+          <button
+            className="w-14 h-14 rounded-full bg-green-600 text-white text-2xl flex items-center justify-center hover:bg-green-700"
+            type="button"
+            onClick={() => {
+              if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                const u = new SpeechSynthesisUtterance(phrases.join('。'));
+                u.lang = 'zh-CN';
+                u.rate = 0.8;
+                window.speechSynthesis.speak(u);
+              }
+            }}
+          >
+            {'\u25B6'}
+          </button>
+          <div className="flex-1">
+            <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+              <div className="h-full w-1/3 bg-green-500 rounded-full"></div>
+            </div>
+            <p className="text-sm text-gray-500 mt-1">音频时长: 约 5 秒</p>
+          </div>
+        </div>
+        <textarea
+          className="w-full border border-gray-300 rounded-lg p-3 text-lg min-h-[120px] focus:outline-none focus:ring-2 focus:ring-green-500"
+          placeholder="在这里输入听到的文字..."
+          value={transcript}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setTranscript(e.target.value)}
+        />
+      </div>
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+        <p className="text-sm text-yellow-800">提示：可以反复点击播放按钮。转写时注意标点符号和准确用词。</p>
+      </div>
+      <button
+        onClick={handleSubmit}
+        disabled={transcript.trim().length === 0 || submitting}
+        className="w-full mt-4 py-4 bg-green-600 text-white text-lg font-bold rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+      >
+        {submitting ? '提交中...' : '提交答案'}
+      </button>
     </div>
   );
 }
