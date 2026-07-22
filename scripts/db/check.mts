@@ -1,0 +1,11 @@
+import { getDbUrl, loadEnv } from 'coze-coding-dev-sdk';
+import pg from 'pg';
+loadEnv();
+const url = await getDbUrl();
+const client = new pg.Client({ connectionString: url });
+await client.connect();
+const res = await client.query("SELECT count(*) AS n FROM information_schema.tables WHERE table_schema='public'");
+console.log('tables:', res.rows[0].n);
+const t = await client.query("SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name LIMIT 50");
+console.log(t.rows.map(r => r.table_name).join(', '));
+await client.end();
