@@ -6,13 +6,12 @@ import { apiFetch } from '@/lib/session-client';
 import { Users, ClipboardCheck, Award, FileUp, AlertCircle } from 'lucide-react';
 
 interface DashboardStats {
-  orgCount: number;
-  cohortCount: number;
-  studentCount: number;
-  practiceQuestionCount: number;
-  examQuestionCount: number;
-  pendingReviewCount: number;
-  ongoingExamCount: number;
+  cohorts: number;
+  students: number;
+  teachers: number;
+  practiceQuestions: number;
+  examQuestions: number;
+  recentImports: { id: string; created_at: string; status: string; total_rows: number }[];
 }
 
 export default function AdminDashboardPage() {
@@ -21,19 +20,18 @@ export default function AdminDashboardPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<DashboardStats>('/api/admin/dashboard').then((r) => {
+    apiFetch<DashboardStats>('/api/admin/stats').then((r) => {
       if (r.ok && r.data) setStats(r.data);
       else setError(r.error ?? '加载失败');
     });
   }, []);
 
   const cards = [
-    { label: '培训班级', value: stats?.cohortCount, icon: Users, href: '/admin/cohorts' },
-    { label: '学员账号', value: stats?.studentCount, icon: Users, href: '/admin/users' },
-    { label: '待审核题目', value: stats?.pendingReviewCount, icon: ClipboardCheck, href: '/admin/review' },
-    { label: '练习题数', value: stats?.practiceQuestionCount, icon: FileUp, href: '/admin/practice-bank' },
-    { label: '考试题数', value: stats?.examQuestionCount, icon: Award, href: '/admin/exam-bank' },
-    { label: '进行中的考试', value: stats?.ongoingExamCount, icon: AlertCircle, href: '/admin/exam-monitor' },
+    { label: '培训班级', value: stats?.cohorts, icon: Users, href: '/admin/users' },
+    { label: '学员账号', value: stats?.students, icon: Users, href: '/admin/users' },
+    { label: '教师账号', value: stats?.teachers, icon: ClipboardCheck, href: '/admin/users' },
+    { label: '练习题数', value: stats?.practiceQuestions, icon: FileUp, href: '/admin/practice-bank' },
+    { label: '考试题数', value: stats?.examQuestions, icon: Award, href: '/admin/exam-bank' },
   ];
 
   return (
