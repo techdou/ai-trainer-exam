@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { apiFetch } from '@/lib/session-client';
 
 interface PracticeQuestion {
   id: string;
@@ -35,14 +36,9 @@ export default function TheoryPracticePage() {
   const loadQuestions = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/student/practice/questions?module=theory&limit=10');
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      const json = await res.json();
-      if (json.success) {
-        setQuestions(json.data);
+      const r = await apiFetch<PracticeQuestion[]>('/api/student/practice/questions?module=theory&limit=10');
+      if (r.ok && r.data) {
+        setQuestions(r.data);
         setCurrentIdx(0);
         setSelectedAnswer('');
         setResult(null);
@@ -61,19 +57,17 @@ export default function TheoryPracticePage() {
     if (!selectedAnswer || !questions[currentIdx]) return;
     setChecking(true);
     try {
-      const res = await fetch('/api/student/practice/check', {
+      const r = await apiFetch<CheckResult>('/api/student/practice/check', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           questionId: questions[currentIdx].id,
           userAnswer: selectedAnswer,
         }),
       });
-      const json = await res.json();
-      if (json.success) {
-        setResult(json.data);
+      if (r.ok && r.data) {
+        setResult(r.data);
         setStats(prev => ({
-          correct: prev.correct + (json.data.correct ? 1 : 0),
+          correct: prev.correct + (r.data!.correct ? 1 : 0),
           total: prev.total + 1,
         }));
       }

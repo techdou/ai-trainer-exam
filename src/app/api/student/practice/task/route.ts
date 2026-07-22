@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
       id: string;
       title: string;
       task_type: string;
-      instructions: string;
+      instructions: string | null;
       difficulty: number;
       config: string;
       practice_only: boolean;
@@ -31,10 +31,12 @@ export async function GET(req: NextRequest) {
       const attempts = await dbQuery<{
         id: string;
         score: number;
-        correct: boolean;
+        max_score: number;
+        passed: boolean;
+        status: string;
         created_at: string;
       }>(`
-        SELECT id, score, correct, created_at
+        SELECT id, score, max_score, passed, status, created_at
         FROM practice_attempts
         WHERE user_id = $1 AND item_type = 'task_template' AND item_id = $2
         ORDER BY created_at DESC LIMIT 1
@@ -50,13 +52,15 @@ export async function GET(req: NextRequest) {
         difficulty: t.difficulty,
         practiceOnly: t.practice_only,
         configPreview: {
-          description: config.instructions || '',
+          description: config.instructions || t.instructions || '',
           type: t.task_type,
         },
         lastAttempt: attempts[0] ? {
           id: attempts[0].id,
-          score: attempts[0].score,
-          correct: attempts[0].correct,
+          score: Number(attempts[0].score),
+          maxScore: Number(attempts[0].max_score ?? 100),
+          passed: attempts[0].passed,
+          status: attempts[0].status,
           createdAt: attempts[0].created_at,
         } : null,
       };

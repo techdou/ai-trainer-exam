@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     const now = Date.now();
     const startAt = new Date(schedule.exam_start_at).getTime();
     const endAt = new Date(schedule.exam_end_at).getTime() + (schedule.submit_grace_seconds ?? 60) * 1000;
-    const isTeacherOrAdmin = user.role === 'super_admin' || user.role === 'teacher';
+    const isTeacherOrAdmin = user.roles.includes('super_admin') || user.roles.includes('teacher');
 
     if (!isTeacherOrAdmin && (now < startAt || now > endAt)) {
       return fail(403, '不在考试时间范围内');

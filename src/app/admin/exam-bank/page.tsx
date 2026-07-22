@@ -1,256 +1,116 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useState } from 'react';
+import { apiFetch } from '@/lib/session-client';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
+import { ShieldCheck, ToggleRight } from 'lucide-react';
 
-interface QuestionItem {
+interface Question {
   id: string;
-  bank_type: string;
   question_type: string;
   stem: string;
-  options: string | Record<string, string> | null;
-  answer_key: string;
   difficulty: number;
+  knowledge_point: string;
   review_status: string;
-  knowledge_point: string | null;
-  practice_only: boolean;
+  eligible_for_formal_exam: boolean;
   created_at: string;
 }
 
-interface ListData {
-  items: QuestionItem[];
-  total: number;
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  draft: '草稿',
-  imported_unreviewed: '待清洗',
-  needs_revision: '需修改',
-  reviewed: '已审核',
-  published: '已发布',
-  retired: '已退役',
+const TYPE_LABELS: Record<string, string> = {
+  single_choice: '单选题',
+  true_false: '判断题',
+  stats_table_fill: '统计填表',
+  excel_delete_rows: 'Excel删行',
+  file_classification: '文件分类',
+  image_cleaning: '图片清洗',
+  image_annotation: '图片标注',
+  text_sentiment: '情感标注',
+  audio_transcription: '音频转写',
+  data_comparison: '数据比对',
+  label_consistency: '标注一致性',
+  model_evaluation: '模型评估',
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-700',
-  imported_unreviewed: 'bg-orange-100 text-orange-800',
-  needs_revision: 'bg-red-100 text-red-800',
-  reviewed: 'bg-blue-100 text-blue-800',
-  published: 'bg-green-100 text-green-800',
-  retired: 'bg-gray-200 text-gray-600',
+const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  draft: { label: '草稿', color: 'bg-gray-100 text-gray-600' },
+  pending_review: { label: '待审核', color: 'bg-yellow-50 text-yellow-700' },
+  published: { label: '已发布', color: 'bg-green-50 text-green-700' },
+  retired: { label: '已下架', color: 'bg-red-50 text-red-700' },
 };
 
-export default function QuestionBankPage({
-  params,
-}: {
-  params: { bankType: 'practice-bank' | 'exam-bank' };
-}) {
-  const bankType = params.bankType === 'exam-bank' ? 'exam' : 'practice';
-  const bankLabel = bankType === 'exam' ? '考试库' : '练习库';
-
-  const [data, setData] = useState<ListData | null>(null);
+export default function ExamBankPage() {
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [keyword, setKeyword] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
+  const [total, setTotal] = useState(0);
   const pageSize = 20;
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    const params = new URLSearchParams({
-      bankType,
-      page: String(page),
-      pageSize: String(pageSize),
-    });
-    if (keyword) params.set('keyword', keyword);
-    if (statusFilter) params.set('status', statusFilter);
-    if (typeFilter) params.set('questionType', typeFilter);
-
-    const res = await fetch(`/api/admin/questions?${params}`);
-    const json = await res.json();
-    if (json.success) {
-      setData(json.data);
+  const fetchQuestions = async () => {
+    const r = await apiFetch<{ items: Question[]; total: number }>(`/api/admin/questions?bank_type=exam&page=${page}&limit=${pageSize}`);
+    if (r.ok && r.data) {
+      setQuestions(r.data.items);
+      setTotal(r.data.total);
     }
     setLoading(false);
-  }, [bankType, page, keyword, statusFilter, typeFilter]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  const handleAction = async (id: string, action: string) => {
-    const res = await fetch('/api/admin/questions', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, action }),
-    });
-    const json = await res.json();
-    if (json.success) {
-      fetchData();
-    } else {
-      alert(json.error || '操作失败');
-    }
   };
 
-  const totalPages = data ? Math.ceil(data.total / pageSize) : 1;
+  useEffect(() => { fetchQuestions(); }, [page]);
+
+  if (loading) return <div className="text-center py-12 text-lg text-gray-500">加载中...</div>;
+
+  const totalPages = Math.ceil(total / pageSize);
 
   return (
-    <div className="space-y-4 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">{bankLabel}管理</h1>
-        <a
-          href="/admin/import"
-          className="rounded-md bg-[oklch(0.45_0.09_175)] px-4 py-2 text-base font-medium text-white hover:brightness-110 transition"
-        >
-          导入 DOCX
-        </a>
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">考试题库</h1>
+          <p className="text-base text-gray-500 mt-1">共 {total} 道考试题</p>
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-3 items-end">
-        <div>
-          <label className="block text-sm text-gray-600 mb-1">搜索关键词</label>
-          <input
-            type="text"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && (setPage(1), fetchData())}
-            placeholder="搜索题干..."
-            className="rounded-md border border-gray-300 px-3 py-2 text-base w-64"
-          />
-        </div>
-        <div>
-          <label className="block text-sm text-gray-600 mb-1">状态</label>
-          <select
-            value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-            className="rounded-md border border-gray-300 px-3 py-2 text-base"
-          >
-            <option value="">全部状态</option>
-            {Object.entries(STATUS_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm text-gray-600 mb-1">题型</label>
-          <select
-            value={typeFilter}
-            onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
-            className="rounded-md border border-gray-300 px-3 py-2 text-base"
-          >
-            <option value="">全部题型</option>
-            <option value="single_choice">单选题</option>
-            <option value="true_false">判断题</option>
-          </select>
-        </div>
-        <button
-          onClick={() => { setPage(1); fetchData(); }}
-          className="rounded-md border border-gray-300 px-4 py-2 text-base hover:bg-gray-50"
-        >
-          搜索
-        </button>
-      </div>
-
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="w-full text-left text-base">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="px-3 py-3 font-medium text-gray-700">题干</th>
-              <th className="px-3 py-3 font-medium text-gray-700 whitespace-nowrap">题型</th>
-              <th className="px-3 py-3 font-medium text-gray-700 whitespace-nowrap">难度</th>
-              <th className="px-3 py-3 font-medium text-gray-700 whitespace-nowrap">状态</th>
-              <th className="px-3 py-3 font-medium text-gray-700 whitespace-nowrap">操作</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {loading ? (
-              <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-500">加载中...</td></tr>
-            ) : !data || data.items.length === 0 ? (
-              <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-500">暂无题目</td></tr>
-            ) : (
-              data.items.map((q) => (
-                <tr key={q.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-3 max-w-md">
-                    <div className="truncate text-base" title={q.stem}>
-                      {q.stem}
+      {total === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <ShieldCheck className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <div className="text-lg text-gray-500">暂无考试题</div>
+            <p className="text-base text-gray-400 mt-1">请先在练习题库中审核通过题目，再复制到考试题库</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {questions.map(q => {
+            const st = STATUS_LABELS[q.review_status] || { label: q.review_status, color: 'bg-gray-100 text-gray-600' };
+            return (
+              <Card key={q.id}>
+                <CardContent className="py-3 flex items-start gap-3">
+                  <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <ShieldCheck className="w-5 h-5 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-base line-clamp-2">{q.stem}</div>
+                    <div className="flex flex-wrap gap-2 mt-1.5">
+                      <Badge variant="outline">{TYPE_LABELS[q.question_type] || q.question_type}</Badge>
+                      <Badge variant="outline">难度 {q.difficulty}</Badge>
+                      <Badge variant="outline">{q.knowledge_point}</Badge>
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${st.color}`}>{st.label}</span>
                     </div>
-                    {q.practice_only && (
-                      <span className="text-xs text-orange-600">练习专用</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-3 whitespace-nowrap text-gray-600">
-                    {q.question_type === 'single_choice' ? '单选' : '判断'}
-                  </td>
-                  <td className="px-3 py-3 whitespace-nowrap text-gray-600">L{q.difficulty}</td>
-                  <td className="px-3 py-3 whitespace-nowrap">
-                    <span className={`rounded px-2 py-1 text-xs font-medium ${STATUS_COLORS[q.review_status] || 'bg-gray-100'}`}>
-                      {STATUS_LABELS[q.review_status] || q.review_status}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 whitespace-nowrap">
-                    <div className="flex gap-2">
-                      {q.review_status === 'imported_unreviewed' && (
-                        <>
-                          <button
-                            onClick={() => handleAction(q.id, 'approve')}
-                            className="rounded text-sm px-2 py-1 bg-green-600 text-white hover:bg-green-700"
-                          >
-                            通过
-                          </button>
-                          <button
-                            onClick={() => handleAction(q.id, 'revise')}
-                            className="rounded text-sm px-2 py-1 bg-orange-500 text-white hover:bg-orange-600"
-                          >
-                            退回修改
-                          </button>
-                        </>
-                      )}
-                      {q.review_status === 'reviewed' && (
-                        <button
-                          onClick={() => handleAction(q.id, 'publish')}
-                          className="rounded text-sm px-2 py-1 bg-[oklch(0.45_0.09_175)] text-white hover:brightness-110"
-                        >
-                          发布
-                        </button>
-                      )}
-                      {q.review_status === 'published' && (
-                        <button
-                          onClick={() => handleAction(q.id, 'retire')}
-                          className="rounded text-sm px-2 py-1 bg-gray-400 text-white hover:bg-gray-500"
-                        >
-                          退役
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-600">
-            共 {data?.total ?? 0} 条，第 {page}/{totalPages} 页
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage(Math.max(1, page - 1))}
-              disabled={page === 1}
-              className="rounded border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-50"
-            >
-              上一页
-            </button>
-            <button
-              onClick={() => setPage(Math.min(totalPages, page + 1))}
-              disabled={page >= totalPages}
-              className="rounded border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-50"
-            >
-              下一页
-            </button>
-          </div>
+        <div className="flex items-center justify-center gap-3 mt-6">
+          <Button variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>上一页</Button>
+          <span className="text-base text-gray-600">第 {page} / {totalPages} 页</span>
+          <Button variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>下一页</Button>
         </div>
       )}
     </div>

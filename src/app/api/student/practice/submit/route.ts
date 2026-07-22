@@ -4,7 +4,13 @@ import { dbQuery, dbExec } from '@/server/db';
 import { ok, fail } from '@/lib/api';
 import { gradeByType } from '@/server/grading';
 
-/** POST /api/student/practice/submit - 提交实操任务答案并评分 */
+/**
+ * POST /api/student/practice/submit - 提交实操任务答案并评分
+ *
+ * practice_attempts schema:
+ *   user_id, item_type, item_id, status, score, max_score, passed,
+ *   feedback(jsonb), workspace_snapshot(jsonb), operation_log(jsonb), engine_version, submitted_at
+ */
 export async function POST(req: NextRequest) {
   try {
     const user = await requireRole(req, ['student']);
@@ -36,31 +42,44 @@ export async function POST(req: NextRequest) {
     // 评分
     const result = gradeByType(graderId, submission, answerKey);
 
+    const maxScore = 100;
+    const passed = result.score >= 60;
+
     // 记录尝试
     await dbExec(
-      `INSERT INTO practice_attempts (user_id, item_type, item_id, score, correct, answer_json, result_json, created_at)
-       VALUES ($1, 'task_template', $2, $3, $4, $5, $6, NOW())`,
+      `INSERT INTO practice_attempts (user_id, item_type, item_id, status, score, max_score, passed, feedback, workspace_snapshot, operation_log, engine_version, submitted_at)
+       VALUES ($1, 'task_template', $2, 'submitted', $3, $4, $5, $6, $7, '[]', $8, NOW())`,
       user.id,
       taskId,
       result.score,
-      result.correct,
+      maxScore,
+      passed,
+      JSON.stringify({ feedback: result.feedback, correct: result.correct }),
       JSON.stringify(submission),
-      JSON.stringify(result),
+      result.graderVersion,
     );
 
     // 如果做错了，记录到错题本
+    // practice_wrong_items schema: user_id, item_type, item_id, wrong_count, resolved, last_wrong_at
     if (!result.correct) {
       await dbExec(
-        `INSERT INTO practice_wrong_items (user_id, item_type, item_id, wrong_answer, correct_answer, created_at, updated_at)
-         VALUES ($1, 'task_template', $2, $3, $4, NOW(), NOW())
+        `INSERT INTO practice_wrong_items (user_id, item_type, item_id, wrong_count, resolved, last_wrong_at, created_at, updated_at)
+         VALUES ($1, 'task_template', $2, 1, false, NOW(), NOW(), NOW())
          ON CONFLICT (user_id, item_type, item_id) DO UPDATE SET
-           wrong_answer = EXCLUDED.wrong_answer,
-           correct_answer = EXCLUDED.correct_answer,
+           wrong_count = practice_wrong_items.wrong_count + 1,
+           resolved = false,
+           last_wrong_at = NOW(),
            updated_at = NOW()`,
         user.id,
         taskId,
-        JSON.stringify(submission),
-        JSON.stringify(answerKey),
+      );
+    } else {
+      // 答对则标记错题已解决
+      await dbExec(
+        `UPDATE practice_wrong_items SET resolved = true, updated_at = NOW()
+         WHERE user_id = $1 AND item_type = 'task_template' AND item_id = $2`,
+        user.id,
+        taskId,
       );
     }
 
@@ -69,6 +88,7 @@ export async function POST(req: NextRequest) {
       score: result.score,
       feedback: result.feedback,
       graderVersion: result.graderVersion,
+      passed,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : '未知错误';

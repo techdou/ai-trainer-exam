@@ -11,6 +11,8 @@ interface ExamQuestion {
   question_type: string;
   stem: string;
   options: Record<string, string>;
+  score: number;
+  section: string;
 }
 
 export default function ExamTakePage() {
@@ -24,33 +26,55 @@ export default function ExamTakePage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [results, setResults] = useState<{ total: number; correct: number; score: number } | null>(null);
+  const [attemptId, setAttemptId] = useState<string | null>(null);
+  const [results, setResults] = useState<{
+    total: number;
+    correct: number;
+    score: number;
+    passed: boolean;
+  } | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [durationMinutes, setDurationMinutes] = useState(90);
 
-  // Fetch exam questions (using practice questions for now as placeholder)
+  // Fetch exam questions
   const fetchQuestions = useCallback(async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const res = await fetch(`/api/student/practice/questions?limit=20`, {
+      // 先尝试开始考试
+      const startRes = await fetch('/api/student/exams/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ scheduleId }),
+      });
+      const startData = await startRes.json();
+      if (startData.success) {
+        setAttemptId(startData.data.attemptId);
+      } else if (startRes.status !== 400 || !startData.error?.includes('已提交')) {
+        // 非已提交错误才提示
+        toast.error('开始考试失败', { description: startData.error });
+      }
+
+      // 获取题目
+      const res = await fetch(`/api/student/exams/questions?scheduleId=${scheduleId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       if (data.success) {
-        const qs = data.data.map((q: ExamQuestion & { id: string }) => ({
-          id: q.id,
-          question_type: q.question_type,
-          stem: q.stem,
-          options: q.options || {},
-        }));
-        setQuestions(qs);
-        setTimeLeft(qs.length * 2 * 60); // 2 minutes per question
+        setQuestions(data.data.questions);
+        setDurationMinutes(data.data.durationMinutes ?? 90);
+        setTimeLeft((data.data.durationMinutes ?? 90) * 60);
+      } else {
+        toast.error('加载失败', { description: data.error });
       }
     } catch {
-      toast.error('加载失败');
+      toast.error('网络错误');
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [scheduleId]);
 
   useEffect(() => { fetchQuestions(); }, [fetchQuestions]);
 
@@ -63,7 +87,7 @@ export default function ExamTakePage() {
     }
     const timer = setTimeout(() => setTimeLeft(t => (t ?? 0) - 1), 1000);
     return () => clearTimeout(timer);
-  }, [timeLeft, submitted]);
+  }, [timeLeft, submitted]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -100,7 +124,7 @@ export default function ExamTakePage() {
       if (data.success) {
         setResults(data.data);
         setSubmitted(true);
-        toast.success('交卷成功', { description: `得分: ${data.data.score}分` });
+        toast.success('交卷成功', { description: `得分: ${data.data.score}分${data.data.passed ? ' - 通过' : ' - 未通过'}` });
       } else {
         toast.error('交卷失败', { description: data.error });
       }
@@ -112,33 +136,40 @@ export default function ExamTakePage() {
   };
 
   if (loading) {
-    return <div className="text-center py-12 text-lg text-gray-500">加载试卷中...</div>;
+    return <div className="flex items-center justify-center min-h-[60vh] text-lg text-gray-500">加载试卷中...</div>;
   }
 
   // Results view
   if (submitted && results) {
     return (
-      <div className="max-w-lg mx-auto py-12 text-center space-y-6">
-        <div className="text-6xl font-bold text-primary">{results.score}</div>
+      <div className="max-w-lg mx-auto py-16 text-center space-y-6">
+        <div className="text-7xl font-bold text-primary">{results.score}</div>
         <div className="text-xl text-gray-600">分</div>
         <div className="flex justify-center gap-8 text-base">
           <div>总题数: {results.total}</div>
           <div>答对: {results.correct}</div>
           <div>正确率: {results.total > 0 ? Math.round(results.correct / results.total * 100) : 0}%</div>
         </div>
-        <Button size="lg" onClick={() => router.push('/student/exams')} className="text-lg px-8 py-3">
-          返回考试列表
-        </Button>
+        <div className={`inline-block px-6 py-2 rounded-full text-lg font-medium ${
+          results.passed ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+        }`}>
+          {results.passed ? '✓ 通过' : '✗ 未通过'}
+        </div>
+        <div>
+          <Button size="lg" onClick={() => router.push('/student/exams')} className="text-lg px-8 py-3">
+            返回考试列表
+          </Button>
+        </div>
       </div>
     );
   }
 
   const currentQ = questions[currentIndex];
-  if (!currentQ) return <div className="text-center py-12">无题目</div>;
+  if (!currentQ) return <div className="text-center py-12">试卷暂无题目</div>;
 
   const answeredCount = Object.keys(answers).length;
   const isTrueFalse = currentQ.question_type === 'true_false';
-  const tfOptions = { A: '正确', B: '错误' };
+  const tfOptions: Record<string, string> = { A: '正确', B: '错误' };
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
@@ -160,7 +191,10 @@ export default function ExamTakePage() {
       {/* Question */}
       <Card>
         <CardContent className="py-8 px-6 space-y-6">
-          <p className="text-xl font-medium leading-relaxed">{currentQ.stem}</p>
+          <div className="flex items-start justify-between">
+            <p className="text-xl font-medium leading-relaxed flex-1">{currentQ.stem}</p>
+            <span className="text-sm text-gray-400 ml-4 shrink-0">{currentQ.score}分</span>
+          </div>
 
           <div className="space-y-3">
             {Object.entries(isTrueFalse ? tfOptions : currentQ.options).map(([key, text]) => {
@@ -197,7 +231,7 @@ export default function ExamTakePage() {
           上一题
         </Button>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-center max-w-md">
           {questions.map((_, i) => (
             <button
               key={i}
@@ -234,6 +268,20 @@ export default function ExamTakePage() {
           </Button>
         )}
       </div>
+
+      {/* Bottom submit bar */}
+      {answeredCount > 0 && !submitted && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t px-6 py-3 flex items-center justify-center z-50">
+          <Button
+            size="lg"
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="text-lg px-12 py-4 bg-accent hover:bg-accent/90"
+          >
+            {submitting ? '交卷中...' : `交卷（已答 ${answeredCount}/${questions.length}）`}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
