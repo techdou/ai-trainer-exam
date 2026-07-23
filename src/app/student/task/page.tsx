@@ -1,832 +1,991 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { apiFetch } from '@/lib/session-client';
+import { toast } from 'sonner';
 
-/* ------------------------------------------------------------------ */
-/*  Types                                                              */
-/* ------------------------------------------------------------------ */
-interface TaskInfo {
+// ─── 类型 ──────────────────────────────────────────────────────
+
+interface TaskItem {
   id: string;
   title: string;
   taskType: string;
   instructions: string;
   difficulty: number;
   practiceOnly: boolean;
-  configPreview: { description: string; type: string };
-  lastAttempt: { id: string; score: number; correct: boolean; createdAt: string } | null;
+  config: TaskConfig | null;
+  lastAttempt: { score: number; passed: boolean } | null;
 }
 
-type Phase = 'list' | 'working' | 'result';
+interface TaskConfig {
+  // excel_delete_rows
+  columns?: string[];
+  dataRows?: string[][];
+  // stats_table
+  rows?: string[][];
+  editableCells?: string[];
+  // file_classify
+  categories?: string[];
+  files?: { name: string; size: string }[];
+  // image_clean
+  images?: { id: string; description: string; issues: string[] }[];
+  // image_annotation
+  imageUrl?: string;
+  targetLabels?: string[];
+  // text_sentiment
+  texts?: { id: string; content: string }[];
+  labels?: string[];
+  // audio_transcription
+  audioUrl?: string;
+  // shared
+  instructions?: string;
+}
 
-/* ------------------------------------------------------------------ */
-/*  主页面                                                             */
-/* ------------------------------------------------------------------ */
+interface SubmitResult {
+  correct: boolean;
+  score: number;
+  feedback: string;
+  passed: boolean;
+}
+
+// ─── 主页面 ────────────────────────────────────────────────────
+
 export default function TaskPage() {
-  const router = useRouter();
-  const [phase, setPhase] = useState<Phase>('list');
-  const [tasks, setTasks] = useState<TaskInfo[]>([]);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentTask, setCurrentTask] = useState<TaskInfo | null>(null);
-  const [result, setResult] = useState<{ correct: boolean; score: number; feedback: string } | null>(null);
+  const [activeTask, setActiveTask] = useState<TaskItem | null>(null);
+  const [result, setResult] = useState<SubmitResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // 获取任务列表
   useEffect(() => {
-    (async () => {
+    apiFetch<{ success: boolean; data: TaskItem[]; error?: string }>('/api/student/practice/task')
+      .then(data => {
+        if (data.ok && data.data?.success) {
+          setTasks(
+            (data.data.data as TaskItem[]).map(t => ({
+              ...t,
+              config: t.config ?? null,
+            })),
+          );
+        } else {
+          toast.error(data.error || data.data?.error || '加载任务失败');
+        }
+      })
+      .catch(() => toast.error('网络错误，请稍后重试'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSubmit = useCallback(
+    async (submission: unknown, graderId: string) => {
+      if (!activeTask) return;
+      setSubmitting(true);
       try {
-        const token = localStorage.getItem('accessToken');
-        const res = await fetch('/api/student/practice/task', {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const data = await res.json();
-        if (data.success) setTasks(data.data);
-      } catch { /* ignore */ }
-      finally { setLoading(false); }
-    })();
-  }, []);
-
-  // 开始任务
-  const startTask = useCallback((task: TaskInfo) => {
-    setCurrentTask(task);
-    setPhase('working');
-    setResult(null);
-  }, []);
-
-  // 提交答案
-  const submitAnswer = useCallback(async (submission: unknown, graderId: string) => {
-    if (!currentTask) return;
-    setSubmitting(true);
-    try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('/api/student/practice/submit', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ taskId: currentTask.id, submission, graderId }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setResult(data.data);
-        setPhase('result');
-      } else {
-        alert(data.error || '提交失败');
+        const res = await apiFetch<{ success: boolean; data: SubmitResult; error?: string }>(
+          '/api/student/practice/submit',
+          {
+            method: 'POST',
+            body: {
+              taskId: activeTask.id,
+              submission,
+              graderId,
+            },
+          },
+        );
+        if (res.ok && res.data?.success) {
+          setResult(res.data.data as SubmitResult);
+        } else {
+          toast.error(res.error || res.data?.error || '提交失败');
+        }
+      } catch {
+        toast.error('网络错误，请稍后重试');
+      } finally {
+        setSubmitting(false);
       }
-    } catch {
-      alert('网络错误，请重试');
-    } finally {
-      setSubmitting(false);
-    }
-  }, [currentTask]);
+    },
+    [activeTask],
+  );
 
-  // 返回列表
-  const backToList = useCallback(() => {
-    setPhase('list');
-    setCurrentTask(null);
-    setResult(null);
-    // 刷新列表
-    setLoading(true);
-    (async () => {
-      try {
-        const token = localStorage.getItem('accessToken');
-        const res = await fetch('/api/student/practice/task', {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const data = await res.json();
-        if (data.success) setTasks(data.data);
-      } catch { /* ignore */ }
-      finally { setLoading(false); }
-    })();
-  }, []);
-
-  const taskTypeLabel: Record<string, string> = {
-    excel_delete_rows: 'Excel删行',
-    stats_table: '统计表填写',
-    stats_table_fill: '统计表填写',
-    file_classify: '文件分类',
-    file_classification: '文件分类',
-    image_clean: '图片清洗',
-    image_cleaning: '图片清洗',
-    image_annotate: '图片标注',
-    image_annotation: '图片标注',
-    text_sentiment: '文本情感',
-    audio_transcription: '音频转写',
-  };
-
-  const difficultyLabel = (d: number) => d <= 1 ? '入门' : d <= 2 ? '基础' : d <= 3 ? '进阶' : '挑战';
-
-  /* ---- 列表视图 ---- */
-  if (phase === 'list') {
+  // ─── 列表视图 ───
+  if (loading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        <div className="flex items-center gap-3 mb-6">
-          <button
-            onClick={() => router.push('/student/home')}
-            className="text-[oklch(0.45_0.09_175)] hover:underline text-lg"
-            aria-label="返回首页"
-          >
-            ← 返回
-          </button>
-          <h1 className="text-2xl font-bold">实操练习</h1>
-        </div>
-
-        {loading ? (
-          <div className="text-center py-12 text-lg text-gray-500">加载中…</div>
-        ) : tasks.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-lg text-gray-500">暂无实操作业</p>
-            <p className="text-sm text-gray-400 mt-2">请联系老师安排实操作业</p>
-          </div>
-        ) : (
-          <div className="grid gap-4">
-            {tasks.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => startTask(t)}
-                className="w-full text-left p-5 rounded-xl border-2 border-[oklch(0.90_0.02_95)] hover:border-[oklch(0.45_0.09_175)] bg-white transition-colors focus:outline-none focus:ring-2 focus:ring-[oklch(0.45_0.09_175)]"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="inline-block px-2 py-0.5 rounded text-sm font-medium bg-[oklch(0.96_0.02_155)] text-[oklch(0.45_0.09_175)]">
-                        {taskTypeLabel[t.taskType] || t.taskType}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        {difficultyLabel(t.difficulty)}
-                      </span>
-                    </div>
-                    <h2 className="text-xl font-bold">{t.title}</h2>
-                    {t.instructions && (
-                      <p className="text-gray-600 mt-1 line-clamp-2">{t.instructions}</p>
-                    )}
-                  </div>
-                  <div className="ml-4 flex-shrink-0 text-right">
-                    {t.lastAttempt ? (
-                      t.lastAttempt.correct ? (
-                        <span className="text-[oklch(0.55_0.12_155)] font-bold text-lg">✓ 已通过</span>
-                      ) : (
-                        <span className="text-[oklch(0.55_0.15_25)] font-medium">得 {t.lastAttempt.score} 分</span>
-                      )
-                    ) : (
-                      <span className="text-[oklch(0.68_0.15_60)] font-medium">开始练习</span>
-                    )}
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <p className="text-muted-foreground text-lg">正在加载任务...</p>
       </div>
     );
   }
 
-  /* ---- 工作区视图 ---- */
-  if (phase === 'working' && currentTask) {
+  if (result && activeTask) {
     return (
-      <div className="max-w-5xl mx-auto px-4 py-4">
-        <div className="flex items-center gap-3 mb-4">
-          <button
-            onClick={backToList}
-            className="text-[oklch(0.45_0.09_175)] hover:underline text-lg"
-            aria-label="返回列表"
-          >
-            ← 返回
-          </button>
-          <h1 className="text-xl font-bold">{currentTask.title}</h1>
-        </div>
+      <ResultView
+        result={result}
+        taskTitle={activeTask.title}
+        onRetry={() => {
+          setResult(null);
+        }}
+        onBack={() => {
+          setResult(null);
+          setActiveTask(null);
+        }}
+      />
+    );
+  }
 
-        {currentTask.instructions && (
-          <div className="bg-[oklch(0.96_0.02_155)] border border-[oklch(0.88_0.04_155)] rounded-lg p-4 mb-4">
-            <p className="text-lg font-medium">{currentTask.instructions}</p>
-          </div>
-        )}
-
+  if (activeTask) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-6">
+        <button
+          onClick={() => setActiveTask(null)}
+          className="text-muted-foreground hover:text-foreground mb-4 flex items-center gap-1 text-base transition-colors"
+        >
+          ← 返回任务列表
+        </button>
         <TaskWorkspace
-          taskType={currentTask.taskType}
-          onSubmit={submitAnswer}
+          task={activeTask}
           submitting={submitting}
+          onSubmit={handleSubmit}
         />
       </div>
     );
   }
 
-  /* ---- 结果视图 ---- */
-  if (phase === 'result' && result) {
-    return (
-      <div className="max-w-2xl mx-auto px-4 py-8 text-center">
-        {result.correct ? (
-          <>
-            <div className="text-6xl mb-4">✓</div>
-            <h2 className="text-2xl font-bold text-[oklch(0.55_0.12_155)] mb-2">做对了！</h2>
-          </>
-        ) : (
-          <>
-            <div className="text-6xl mb-4">✗</div>
-            <h2 className="text-2xl font-bold text-[oklch(0.55_0.15_25)] mb-2">还需努力</h2>
-          </>
-        )}
-        <p className="text-lg mb-2">得分：{result.score} 分</p>
-        {result.feedback && (
-          <p className="text-gray-600 mb-6">{result.feedback}</p>
-        )}
-        <div className="flex gap-4 justify-center">
+  return (
+    <div className="mx-auto max-w-3xl px-4 py-6">
+      <h1 className="mb-2 text-2xl font-bold">实操任务</h1>
+      <p className="text-muted-foreground mb-6 text-base">
+        通过实操练习掌握人工智能训练师的核心技能。每个任务完成后会自动评分并记录。
+      </p>
+      <div className="space-y-3">
+        {tasks.map(task => (
           <button
-            onClick={backToList}
-            className="px-6 py-3 rounded-lg border-2 border-[oklch(0.45_0.09_175)] text-[oklch(0.45_0.09_175)] font-bold text-lg hover:bg-[oklch(0.96_0.02_155)] transition-colors"
+            key={task.id}
+            onClick={() => {
+              setActiveTask(task);
+              setResult(null);
+            }}
+            className="hover:border-primary bg-card flex w-full items-center justify-between rounded-xl border p-5 text-left transition-all hover:shadow-sm"
+          >
+            <div className="flex-1">
+              <div className="mb-1 flex items-center gap-2">
+                <span className="text-lg font-semibold">{task.title}</span>
+                <DifficultyBadge level={task.difficulty} />
+              </div>
+              <p className="text-muted-foreground line-clamp-1 text-sm">
+                {task.instructions}
+              </p>
+            </div>
+            {task.lastAttempt ? (
+              <span
+                className={`ml-4 shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium ${
+                  task.lastAttempt.passed
+                    ? 'bg-success/10 text-success'
+                    : 'bg-destructive/10 text-destructive'
+                }`}
+              >
+                {task.lastAttempt.passed ? '✓ 已通过' : `上次 ${task.lastAttempt.score}分`}
+              </span>
+            ) : (
+              <span className="text-primary ml-4 shrink-0 text-sm font-medium">开始 →</span>
+            )}
+          </button>
+        ))}
+        {tasks.length === 0 && (
+          <div className="text-muted-foreground rounded-xl border border-dashed py-16 text-center">
+            <p className="text-lg">暂无实操任务</p>
+            <p className="mt-1 text-sm">请等待老师发布任务</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── 辅助组件 ──────────────────────────────────────────────────
+
+function DifficultyBadge({ level }: { level: number }) {
+  const labels = ['', '简单', '中等', '较难'];
+  const colors = [
+    '',
+    'bg-success/10 text-success',
+    'bg-warning/10 text-warning',
+    'bg-destructive/10 text-destructive',
+  ];
+  return (
+    <span className={`rounded px-2 py-0.5 text-xs font-medium ${colors[level] || colors[1]}`}>
+      {labels[level] || '简单'}
+    </span>
+  );
+}
+
+function ResultView({
+  result,
+  taskTitle,
+  onRetry,
+  onBack,
+}: {
+  result: SubmitResult;
+  taskTitle: string;
+  onRetry: () => void;
+  onBack: () => void;
+}) {
+  return (
+    <div className="mx-auto max-w-lg px-4 py-12">
+      <div className="bg-card rounded-2xl border p-8 text-center">
+        <div
+          className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full text-3xl ${
+            result.passed ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning'
+          }`}
+        >
+          {result.passed ? '✓' : '!'}
+        </div>
+        <h2 className="mb-1 text-xl font-bold">
+          {result.passed ? '做对了！' : '还需努力'}
+        </h2>
+        <p className="text-muted-foreground mb-4 text-sm">任务：{taskTitle}</p>
+        <div className="bg-muted mb-6 rounded-xl py-4">
+          <span className="text-3xl font-bold">{Math.round(result.score * 100)}</span>
+          <span className="text-muted-foreground">分</span>
+        </div>
+        {result.feedback && (
+          <div
+            className={`mb-6 rounded-lg p-4 text-left text-sm ${
+              result.passed ? 'bg-success/5 text-success' : 'bg-warning/5 text-warning'
+            }`}
+          >
+            <p className="font-medium">反馈</p>
+            <p className="mt-1">{result.feedback}</p>
+          </div>
+        )}
+        <div className="flex gap-3">
+          <button
+            onClick={onRetry}
+            className="hover:border-primary flex-1 rounded-xl border py-3 text-base font-medium transition-colors"
+          >
+            再做一次
+          </button>
+          <button
+            onClick={onBack}
+            className="bg-primary text-primary-foreground hover:bg-primary/90 flex-1 rounded-xl py-3 text-base font-medium transition-colors"
           >
             返回列表
           </button>
-          {currentTask && !result.correct && (
-            <button
-              onClick={() => { setPhase('working'); setResult(null); }}
-              className="px-6 py-3 rounded-lg bg-[oklch(0.45_0.09_175)] text-white font-bold text-lg hover:opacity-90 transition-opacity"
-            >
-              再试一次
-            </button>
-          )}
         </div>
       </div>
-    );
-  }
-
-  return null;
+    </div>
+  );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Task Workspace — 根据任务类型渲染不同交互界面                        */
-/* ------------------------------------------------------------------ */
-interface TaskWorkspaceProps {
-  taskType: string;
-  onSubmit: (submission: unknown, graderId: string) => Promise<void>;
+// ─── 任务工作区路由 ────────────────────────────────────────────
+
+function TaskWorkspace({
+  task,
+  submitting,
+  onSubmit,
+}: {
+  task: TaskItem;
   submitting: boolean;
+  onSubmit: (submission: unknown, graderId: string) => void;
+}) {
+  const cfg = task.config;
+
+  return (
+    <div>
+      <div className="bg-secondary/50 mb-4 rounded-xl p-4">
+        <h2 className="mb-1 text-xl font-bold">{task.title}</h2>
+        <p className="text-muted-foreground text-base">
+          {cfg?.instructions || task.instructions}
+        </p>
+      </div>
+
+      {task.taskType === 'excel_delete_rows' && (
+        <ExcelDeleteRowsTask
+          config={cfg}
+          submitting={submitting}
+          onSubmit={onSubmit}
+        />
+      )}
+      {task.taskType === 'stats_table' && (
+        <StatsTableFillTask
+          config={cfg}
+          submitting={submitting}
+          onSubmit={onSubmit}
+        />
+      )}
+      {task.taskType === 'file_classify' && (
+        <FileClassificationTask
+          config={cfg}
+          submitting={submitting}
+          onSubmit={onSubmit}
+        />
+      )}
+      {task.taskType === 'image_clean' && (
+        <ImageCleaningTask
+          config={cfg}
+          submitting={submitting}
+          onSubmit={onSubmit}
+        />
+      )}
+      {task.taskType === 'text_sentiment' && (
+        <TextSentimentTask
+          config={cfg}
+          submitting={submitting}
+          onSubmit={onSubmit}
+        />
+      )}
+      {task.taskType === 'image_annotation' && (
+        <ImageAnnotationTask
+          config={cfg}
+          submitting={submitting}
+          onSubmit={onSubmit}
+        />
+      )}
+      {task.taskType === 'audio_transcription' && (
+        <AudioTranscriptionTask
+          config={cfg}
+          submitting={submitting}
+          onSubmit={onSubmit}
+        />
+      )}
+      {![
+        'excel_delete_rows',
+        'stats_table',
+        'file_classify',
+        'image_clean',
+        'text_sentiment',
+        'image_annotation',
+        'audio_transcription',
+      ].includes(task.taskType) && <GenericTaskPlaceholder title={task.title} />}
+    </div>
+  );
 }
 
-function TaskWorkspace({ taskType, onSubmit, submitting }: TaskWorkspaceProps) {
-  switch (taskType) {
-    case 'excel_delete_rows':
-      return <ExcelDeleteRowsTask onSubmit={onSubmit} submitting={submitting} />;
-    case 'stats_table':
-    case 'stats_table_fill':
-      return <StatsTableFillTask onSubmit={onSubmit} submitting={submitting} />;
-    case 'file_classify':
-    case 'file_classification':
-      return <FileClassificationTask onSubmit={onSubmit} submitting={submitting} />;
-    case 'image_clean':
-    case 'image_cleaning':
-      return <ImageCleaningTask onSubmit={onSubmit} submitting={submitting} />;
-    case 'text_sentiment':
-      return <TextSentimentTask onSubmit={onSubmit} submitting={submitting} />;
-    case 'image_annotate':
-    case 'image_annotation':
-      return <ImageAnnotationTask onSubmit={onSubmit} submitting={submitting} />;
-    case 'audio_transcription':
-      return <AudioTranscriptionTask onSubmit={onSubmit} submitting={submitting} />;
-    default:
-      return <GenericTaskPlaceholder taskType={taskType} />;
-  }
-}
+// ─── 1. Excel 删行任务 ─────────────────────────────────────────
 
-/* ------------------------------------------------------------------ */
-/*  Excel 删行任务                                                     */
-/* ------------------------------------------------------------------ */
-interface ExcelDeleteRowsProps {
-  onSubmit: (submission: unknown, graderId: string) => Promise<void>;
+interface TaskProps {
+  config: TaskConfig | null;
   submitting: boolean;
+  onSubmit: (submission: unknown, graderId: string) => void;
 }
 
-function ExcelDeleteRowsTask({ onSubmit, submitting }: ExcelDeleteRowsProps) {
-  // 模拟数据：学员需要删除"不合格"的行
-  const initialData = [
-    { id: 1, name: '张三', age: '25', score: '85', status: '合格' },
-    { id: 2, name: '李四', age: '-5', score: '72', status: '合格' },     // 异常：年龄为负
-    { id: 3, name: '王五', age: '30', score: '-10', status: '合格' },    // 异常：分数为负
-    { id: 4, name: '赵六', age: '28', score: '90', status: '合格' },
-    { id: 5, name: '', age: '22', score: '65', status: '合格' },         // 异常：姓名为空
-    { id: 6, name: '孙七', age: '35', score: '78', status: '不合格' },   // 异常：状态不合格
-    { id: 7, name: '周八', age: '40', score: '95', status: '合格' },
-    { id: 8, name: '吴九', age: 'abc', score: '88', status: '合格' },   // 异常：年龄非数字
-  ];
+function ExcelDeleteRowsTask({ config, submitting, onSubmit }: TaskProps) {
+  const columns = config?.columns ?? ['序号', '姓名', '年龄', '成绩', '备注'];
+  const dataRows = config?.dataRows ?? [];
+  const [selectedIndexes, setSelectedIndexes] = useState<Set<number>>(new Set());
 
-  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
-
-  const toggleRow = (id: number) => {
-    setSelectedRows(prev => {
+  const toggleRow = (idx: number) => {
+    setSelectedIndexes(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
       return next;
     });
   };
 
   const handleSubmit = () => {
-    onSubmit(
-      { deletedRowIds: Array.from(selectedRows).sort() },
-      'excel_delete_rows',
-    );
+    // grader expects: retainedRowIndexes = 保留的行（未被删除的）
+    const retainedRowIndexes = dataRows
+      .map((_, idx) => idx)
+      .filter(idx => !selectedIndexes.has(idx));
+    onSubmit({ retainedRowIndexes }, 'excel_delete_rows');
   };
 
   return (
-    <div>
-      <p className="text-lg mb-3 text-gray-700">
-        请选出数据中有问题的行，点击选中后提交。问题行包括：姓名为空、年龄异常（负数或非数字）、分数为负、状态为"不合格"的记录。
-      </p>
-
-      <div className="overflow-x-auto border rounded-lg">
-        <table className="w-full text-left">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-3 w-12">选择</th>
-              <th className="px-4 py-3">序号</th>
-              <th className="px-4 py-3">姓名</th>
-              <th className="px-4 py-3">年龄</th>
-              <th className="px-4 py-3">分数</th>
-              <th className="px-4 py-3">状态</th>
+    <div className="space-y-4">
+      <div className="bg-card overflow-hidden rounded-xl border">
+        <table className="w-full text-base">
+          <thead>
+            <tr className="bg-secondary/60 border-b">
+              <th className="px-3 py-2 text-center font-medium" style={{ width: 48 }}>删?</th>
+              {columns.map((col, ci) => (
+                <th key={ci} className="px-3 py-2 text-left font-medium">{col}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {initialData.map((row, i) => (
-              <tr
-                key={row.id}
-                className={`border-t cursor-pointer transition-colors ${
-                  selectedRows.has(row.id)
-                    ? 'bg-red-50 hover:bg-red-100'
-                    : 'hover:bg-gray-50'
-                }`}
-                onClick={() => toggleRow(row.id)}
-              >
-                <td className="px-4 py-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedRows.has(row.id)}
-                    onChange={() => toggleRow(row.id)}
-                    className="w-5 h-5 accent-[oklch(0.55_0.15_25)]"
-                    aria-label={`选择第${i + 1}行`}
-                  />
-                </td>
-                <td className="px-4 py-3">{row.id}</td>
-                <td className="px-4 py-3">{row.name || <span className="text-red-500 italic">（空）</span>}</td>
-                <td className="px-4 py-3">{row.age}</td>
-                <td className="px-4 py-3">{row.score}</td>
-                <td className="px-4 py-3">{row.status}</td>
+            {dataRows.map((row, ri) => {
+              const selected = selectedIndexes.has(ri);
+              return (
+                <tr
+                  key={ri}
+                  className={`border-b transition-colors last:border-0 ${selected ? 'bg-destructive/10 opacity-60' : 'hover:bg-secondary/30'}`}
+                >
+                  <td className="px-3 py-2 text-center">
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => toggleRow(ri)}
+                      className="h-5 w-5 cursor-pointer accent-[var(--destructive)]"
+                      aria-label={`选中第 ${ri + 1} 行删除`}
+                    />
+                  </td>
+                  {row.map((cell, ci) => (
+                    <td key={ci} className="px-3 py-2">{cell}</td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {selectedIndexes.size > 0 && (
+        <p className="text-muted-foreground text-sm">
+          已选中 {selectedIndexes.size} 行待删除
+        </p>
+      )}
+      <SubmitButton
+        submitting={submitting}
+        disabled={selectedIndexes.size === 0}
+        onClick={handleSubmit}
+        label="提交评分"
+      />
+    </div>
+  );
+}
+
+// ─── 2. 统计表填写任务 ────────────────────────────────────────
+
+function StatsTableFillTask({ config, submitting, onSubmit }: TaskProps) {
+  const columns = config?.columns ?? [];
+  const rows = config?.dataRows ?? config?.rows ?? [];
+  const editableCells = new Set(config?.editableCells ?? []);
+  const [cellValues, setCellValues] = useState<Record<string, string>>({});
+
+  const cellKey = (rowIdx: number, colIdx: number): string => {
+    const colLetter = String.fromCharCode(65 + colIdx);
+    return `${colLetter}${rowIdx + 1}`;
+  };
+
+  const handleCellChange = (key: string, val: string) => {
+    setCellValues(prev => ({ ...prev, [key]: val }));
+  };
+
+  const handleSubmit = () => {
+    // grader expects: { cells: { "E2": value, ... } }
+    const cells: Record<string, string | number> = {};
+    for (const [k, v] of Object.entries(cellValues)) {
+      const num = parseFloat(v);
+      cells[k] = isNaN(num) ? v : num;
+    }
+    onSubmit({ cells }, 'stats_table');
+  };
+
+  const hasContent = Object.values(cellValues).some(v => v.trim() !== '');
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-card overflow-x-auto rounded-xl border">
+        <table className="w-full text-base">
+          <thead>
+            <tr className="bg-secondary/60 border-b">
+              {columns.map((col, ci) => (
+                <th key={ci} className="px-3 py-2 text-left font-medium whitespace-nowrap">{col}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, ri) => (
+              <tr key={ri} className="border-b last:border-0">
+                {row.map((cell, ci) => {
+                  const key = cellKey(ri, ci);
+                  const isEditable = editableCells.has(key);
+                  return (
+                    <td key={ci} className="px-3 py-2 whitespace-nowrap">
+                      {isEditable ? (
+                        <input
+                          type="text"
+                          value={cellValues[key] ?? ''}
+                          onChange={e => handleCellChange(key, e.target.value)}
+                          className="bg-secondary/30 focus:border-primary w-24 rounded border px-2 py-1 text-base outline-none transition-colors"
+                          placeholder="填写"
+                          aria-label={`单元格 ${key}`}
+                        />
+                      ) : (
+                        cell
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-
-      <div className="mt-4 flex items-center gap-4">
-        <span className="text-lg">已选择 {selectedRows.size} 行</span>
-        <button
-          onClick={handleSubmit}
-          disabled={submitting}
-          className="px-8 py-3 rounded-lg bg-[oklch(0.45_0.09_175)] text-white font-bold text-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-        >
-          {submitting ? '提交中…' : '提交答案'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  统计表填写任务                                                      */
-/* ------------------------------------------------------------------ */
-interface StatsTableFillProps {
-  onSubmit: (submission: unknown, graderId: string) => Promise<void>;
-  submitting: boolean;
-}
-
-function StatsTableFillTask({ onSubmit, submitting }: StatsTableFillProps) {
-  const [values, setValues] = useState<Record<string, string>>({});
-
-  const fields = [
-    { key: 'total_records', label: '数据总条数' },
-    { key: 'valid_records', label: '有效数据条数' },
-    { key: 'avg_score', label: '平均分数' },
-    { key: 'max_score', label: '最高分' },
-    { key: 'min_score', label: '最低分' },
-  ];
-
-  const handleChange = (key: string, val: string) => {
-    setValues(prev => ({ ...prev, [key]: val }));
-  };
-
-  const handleSubmit = () => {
-    const numericValues: Record<string, number> = {};
-    for (const [k, v] of Object.entries(values)) {
-      numericValues[k] = Number(v);
-    }
-    onSubmit({ values: numericValues }, 'stats_table_fill');
-  };
-
-  return (
-    <div>
-      <p className="text-lg mb-3 text-gray-700">
-        根据给定的数据集，请填写以下统计指标。所有数值请填写整数或小数。
-      </p>
-
-      <div className="bg-white border rounded-lg divide-y">
-        {fields.map(f => (
-          <div key={f.key} className="flex items-center px-4 py-3">
-            <label className="flex-1 text-lg" htmlFor={f.key}>{f.label}</label>
-            <input
-              id={f.key}
-              type="text"
-              inputMode="decimal"
-              className="w-40 px-3 py-2 border rounded-lg text-lg text-right focus:outline-none focus:ring-2 focus:ring-[oklch(0.45_0.09_175)]"
-              placeholder="请输入"
-              value={values[f.key] || ''}
-              onChange={e => handleChange(f.key, e.target.value)}
-            />
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-4">
-        <button
-          onClick={handleSubmit}
-          disabled={submitting}
-          className="px-8 py-3 rounded-lg bg-[oklch(0.45_0.09_175)] text-white font-bold text-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-        >
-          {submitting ? '提交中…' : '提交答案'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  文件分类任务                                                        */
-/* ------------------------------------------------------------------ */
-interface FileClassificationProps {
-  onSubmit: (submission: unknown, graderId: string) => Promise<void>;
-  submitting: boolean;
-}
-
-function FileClassificationTask({ onSubmit, submitting }: FileClassificationProps) {
-  const files = [
-    { id: 'f1', name: 'report.docx', type: '文档' },
-    { id: 'f2', name: 'photo.jpg', type: '图片' },
-    { id: 'f3', name: 'data.xlsx', type: '表格' },
-    { id: 'f4', name: 'video.mp4', type: '视频' },
-    { id: 'f5', name: 'notes.txt', type: '文档' },
-    { id: 'f6', name: 'screenshot.png', type: '图片' },
-    { id: 'f7', name: 'backup.csv', type: '表格' },
-    { id: 'f8', name: 'music.mp3', type: '音频' },
-  ];
-
-  const categories = ['文档', '图片', '表格', '视频', '音频'];
-
-  const [classification, setClassification] = useState<Record<string, string>>({});
-
-  const handleClassify = (fileId: string, category: string) => {
-    setClassification(prev => ({ ...prev, [fileId]: category }));
-  };
-
-  const handleSubmit = () => {
-    onSubmit({ classification }, 'file_classification');
-  };
-
-  const classified = Object.keys(classification).length;
-
-  return (
-    <div>
-      <p className="text-lg mb-3 text-gray-700">
-        请将以下文件分到正确的类别中。每个文件选择一个类别。
-      </p>
-
-      <div className="space-y-3">
-        {files.map(f => (
-          <div key={f.id} className="flex items-center gap-4 p-3 border rounded-lg bg-white">
-            <span className="text-lg font-medium w-48">{f.name}</span>
-            <div className="flex gap-2 flex-wrap">
-              {categories.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => handleClassify(f.id, cat)}
-                  className={`px-3 py-1.5 rounded-lg text-base font-medium transition-colors ${
-                    classification[f.id] === cat
-                      ? 'bg-[oklch(0.45_0.09_175)] text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-4 flex items-center gap-4">
-        <span className="text-lg">已分类 {classified}/{files.length} 个文件</span>
-        <button
-          onClick={handleSubmit}
-          disabled={submitting || classified < files.length}
-          className="px-8 py-3 rounded-lg bg-[oklch(0.45_0.09_175)] text-white font-bold text-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-        >
-          {submitting ? '提交中…' : '提交答案'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  图片清洗任务                                                        */
-/* ------------------------------------------------------------------ */
-interface ImageCleaningProps {
-  onSubmit: (submission: unknown, graderId: string) => Promise<void>;
-  submitting: boolean;
-}
-
-function ImageCleaningTask({ onSubmit, submitting }: ImageCleaningProps) {
-  const images = [
-    { id: 'img1', label: '图片1：猫', quality: 'good' as const },
-    { id: 'img2', label: '图片2：模糊狗', quality: 'blurry' as const },
-    { id: 'img3', label: '图片3：鸟', quality: 'good' as const },
-    { id: 'img4', label: '图片4：过曝花', quality: 'overexposed' as const },
-    { id: 'img5', label: '图片5：鱼', quality: 'good' as const },
-    { id: 'img6', label: '图片6：全黑', quality: 'blank' as const },
-  ];
-
-  const [decisions, setDecisions] = useState<Record<string, string>>({});
-
-  const handleDecision = (imgId: string, decision: string) => {
-    setDecisions(prev => ({ ...prev, [imgId]: decision }));
-  };
-
-  const handleSubmit = () => {
-    onSubmit({ decisions }, 'image_cleaning');
-  };
-
-  const decided = Object.keys(decisions).length;
-
-  return (
-    <div>
-      <p className="text-lg mb-3 text-gray-700">
-        检查每张图片，判断是否可以保留。模糊、过曝、全黑等质量不合格的图片应标记为"丢弃"。
-      </p>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {images.map(img => (
-          <div key={img.id} className="border rounded-lg p-4 bg-white">
-            <div className="h-32 bg-gray-100 rounded mb-3 flex items-center justify-center text-gray-500 text-sm">
-              {img.label}
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleDecision(img.id, 'keep')}
-                className={`flex-1 py-2 rounded-lg font-medium text-base transition-colors ${
-                  decisions[img.id] === 'keep'
-                    ? 'bg-[oklch(0.55_0.12_155)] text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                ✓ 保留
-              </button>
-              <button
-                onClick={() => handleDecision(img.id, 'discard')}
-                className={`flex-1 py-2 rounded-lg font-medium text-base transition-colors ${
-                  decisions[img.id] === 'discard'
-                    ? 'bg-[oklch(0.55_0.15_25)] text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                ✗ 丢弃
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-4 flex items-center gap-4">
-        <span className="text-lg">已判断 {decided}/{images.length} 张</span>
-        <button
-          onClick={handleSubmit}
-          disabled={submitting || decided < images.length}
-          className="px-8 py-3 rounded-lg bg-[oklch(0.45_0.09_175)] text-white font-bold text-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-        >
-          {submitting ? '提交中…' : '提交答案'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  文本情感标注任务                                                      */
-/* ------------------------------------------------------------------ */
-interface TextSentimentProps {
-  onSubmit: (submission: unknown, graderId: string) => Promise<void>;
-  submitting: boolean;
-}
-
-function TextSentimentTask({ onSubmit, submitting }: TextSentimentProps) {
-  const samples = [
-    { text: '今天天气真好，阳光明媚，心情很愉快！', sentiment: 'positive' },
-    { text: '这个产品质量太差了，完全不推荐购买。', sentiment: 'negative' },
-    { text: '我去超市买了一瓶水。', sentiment: 'neutral' },
-    { text: '服务态度很好，下次还会再来。', sentiment: 'positive' },
-    { text: '等了一个小时才送到，太让人失望了。', sentiment: 'negative' },
-  ];
-
-  const [answers, setAnswers] = useState<Record<number, string>>({});
-
-  const handleSubmit = () => {
-    onSubmit(
-      {
-        answers: samples.map((s, i) => ({ text: s.text, userLabel: answers[i] || '' })),
-      },
-      'text_sentiment',
-    );
-  };
-
-  const allAnswered = samples.every((_, i) => answers[i]);
-
-  return (
-    <div>
-      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-        <h3 className="text-lg font-bold text-green-800 mb-1">文本情感标注</h3>
-        <p className="text-base text-green-700">请阅读每条文本，判断其情感倾向：正面、负面 或 中性。</p>
-      </div>
-      <div className="space-y-4">
-        {samples.map((s, i) => (
-          <div key={i} className="border border-gray-200 rounded-lg p-4 bg-white">
-            <p className="text-lg mb-3">{s.text}</p>
-            <div className="flex gap-3">
-              {[
-                { value: 'positive', label: '正面', icon: '😊', color: 'bg-green-100 border-green-500' },
-                { value: 'negative', label: '负面', icon: '😞', color: 'bg-red-100 border-red-500' },
-                { value: 'neutral', label: '中性', icon: '😐', color: 'bg-gray-100 border-gray-500' },
-              ].map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setAnswers((prev) => ({ ...prev, [i]: opt.value }))}
-                  className={`flex-1 px-4 py-3 rounded-lg border-2 text-base font-medium transition-all ${
-                    answers[i] === opt.value
-                      ? `${opt.color} border-2 shadow-md`
-                      : 'bg-white border-gray-200 hover:border-gray-400'
-                  }`}
-                >
-                  <span className="text-2xl mr-2">{opt.icon}</span>
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-      <button
+      <SubmitButton
+        submitting={submitting}
+        disabled={!hasContent}
         onClick={handleSubmit}
-        disabled={!allAnswered || submitting}
-        className="w-full mt-4 py-4 bg-green-600 text-white text-lg font-bold rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-      >
-        {submitting ? '提交中...' : '提交答案'}
-      </button>
+        label="提交评分"
+      />
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  图片标注任务                                                          */
-/* ------------------------------------------------------------------ */
-interface ImageAnnotationProps {
-  onSubmit: (submission: unknown, graderId: string) => Promise<void>;
-  submitting: boolean;
-}
+// ─── 3. 文件分类任务 ──────────────────────────────────────────
 
-function ImageAnnotationTask({ onSubmit, submitting }: ImageAnnotationProps) {
-  const regions = [
-    { id: 1, label: '人物', x: 20, y: 10, w: 40, h: 60 },
-    { id: 2, label: '背景', x: 50, y: 50, w: 40, h: 40 },
-  ];
+function FileClassificationTask({ config, submitting, onSubmit }: TaskProps) {
+  const categories = config?.categories ?? [];
+  const files = config?.files ?? [];
+  const [classifications, setClassifications] = useState<Record<string, string>>({});
+  const [draggedFile, setDraggedFile] = useState<string | null>(null);
 
-  const handleSubmit = () => {
-    onSubmit({ regions }, 'image_annotation');
+  const assignFile = (fileName: string, category: string) => {
+    setClassifications(prev => ({ ...prev, [fileName]: category }));
   };
 
+  const handleSubmit = () => {
+    onSubmit({ classifications }, 'file_classify');
+  };
+
+  const unclassifiedFiles = files.filter(f => !classifications[f.name]);
+
   return (
-    <div>
-      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-        <h3 className="text-lg font-bold text-green-800 mb-1">图片标注</h3>
-        <p className="text-base text-green-700">在图片中框选目标物体，并为其分配标签。下方已预置示例标注区域供参考。</p>
-      </div>
-      <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50 mb-4">
-        <div
-          className="relative w-full"
-          style={{
-            backgroundImage:
-              'linear-gradient(45deg, #e0e0e0 25%, transparent 25%), linear-gradient(-45deg, #e0e0e0 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e0e0e0 75%), linear-gradient(-45deg, transparent 75%, #e0e0e0 75%)',
-            backgroundSize: '20px 20px',
-            height: '400px',
-          }}
-        >
-          {regions.map((r) => (
+    <div className="space-y-4">
+      <div>
+        <h3 className="mb-2 text-base font-semibold">待分类文件</h3>
+        <div className="flex flex-wrap gap-2">
+          {unclassifiedFiles.length === 0 && (
+            <span className="text-muted-foreground text-sm">全部文件已分类</span>
+          )}
+          {unclassifiedFiles.map(f => (
             <div
-              key={r.id}
-              className="absolute border-2 border-blue-500 bg-blue-200/30 flex items-start justify-between p-1"
-              style={{ left: `${r.x}%`, top: `${r.y}%`, width: `${r.w}%`, height: `${r.h}%` }}
+              key={f.name}
+              draggable
+              onDragStart={() => setDraggedFile(f.name)}
+              onDragEnd={() => setDraggedFile(null)}
+              className="bg-card hover:border-primary flex cursor-grab items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors active:cursor-grabbing"
             >
-              <span className="text-xs bg-blue-500 text-white px-1.5 py-0.5 rounded">{r.label}</span>
+              <span className="font-medium">{f.name}</span>
+              <span className="text-muted-foreground text-xs">{f.size}</span>
             </div>
           ))}
         </div>
       </div>
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-        <p className="text-sm text-blue-800">
-          已标注 <strong>{regions.length}</strong> 个区域。每个区域包含标签和位置坐标(x, y, w, h)。
-        </p>
+      <div className="grid grid-cols-2 gap-3">
+        {categories.map(cat => {
+          const items = files.filter(f => classifications[f.name] === cat);
+          return (
+            <div
+              key={cat}
+              onDragOver={e => e.preventDefault()}
+              onDrop={() => {
+                if (draggedFile) assignFile(draggedFile, cat);
+                setDraggedFile(null);
+              }}
+              className="bg-secondary/30 min-h-[120px] rounded-xl border-2 border-dashed p-3"
+            >
+              <p className="mb-2 text-sm font-semibold">{cat}</p>
+              <div className="space-y-1">
+                {items.map(f => (
+                  <div
+                    key={f.name}
+                    className="bg-card flex items-center justify-between rounded border px-2 py-1 text-sm"
+                  >
+                    <span>{f.name}</span>
+                    <button
+                      onClick={() =>
+                        setClassifications(prev => {
+                          const next = { ...prev };
+                          delete next[f.name];
+                          return next;
+                        })
+                      }
+                      className="text-muted-foreground hover:text-destructive text-xs"
+                    >
+                      移除
+                    </button>
+                  </div>
+                ))}
+                {items.length === 0 && (
+                  <p className="text-muted-foreground py-4 text-center text-xs">
+                    拖放文件到此
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
-      <button
+      <SubmitButton
+        submitting={submitting}
+        disabled={unclassifiedFiles.length > 0}
         onClick={handleSubmit}
-        disabled={submitting}
-        className="w-full mt-4 py-4 bg-green-600 text-white text-lg font-bold rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-      >
-        {submitting ? '提交中...' : '提交答案'}
-      </button>
+        label="提交评分"
+      />
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  音频转写任务                                                          */
-/* ------------------------------------------------------------------ */
-interface AudioTranscriptionProps {
-  onSubmit: (submission: unknown, graderId: string) => Promise<void>;
-  submitting: boolean;
-}
+// ─── 4. 图片清洗任务 ──────────────────────────────────────────
 
-function AudioTranscriptionTask({ onSubmit, submitting }: AudioTranscriptionProps) {
-  const [transcript, setTranscript] = useState('');
+function ImageCleaningTask({ config, submitting, onSubmit }: TaskProps) {
+  const images = config?.images ?? [];
+  const [decisions, setDecisions] = useState<Record<string, 'keep' | 'discard'>>({});
 
-  const phrases = ['欢迎使用人工智能训练师练习系统', '请按照提示完成数据标注任务'];
+  const handleDecide = (imgId: string, decision: 'keep' | 'discard') => {
+    setDecisions(prev => ({ ...prev, [imgId]: decision }));
+  };
 
   const handleSubmit = () => {
-    onSubmit({ transcript, expectedPhrases: phrases }, 'audio_transcription');
+    onSubmit({ decisions }, 'image_clean');
+  };
+
+  const allDecided = images.every(img => decisions[img.id]);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        {images.map(img => {
+          const decision = decisions[img.id];
+          const hasIssues = img.issues && img.issues.length > 0;
+          return (
+            <div
+              key={img.id}
+              className={`bg-card rounded-xl border p-4 transition-all ${
+                decision === 'keep'
+                  ? 'border-success'
+                  : decision === 'discard'
+                    ? 'border-destructive'
+                    : ''
+              }`}
+            >
+              <div className="mb-2 flex items-center gap-2">
+                <span className="bg-muted flex h-10 w-10 items-center justify-center rounded-lg text-xl">
+                  {hasIssues ? '⚠' : '🖼'}
+                </span>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{img.description}</p>
+                  {hasIssues && (
+                    <p className="text-destructive text-xs">
+                      质量问题：{img.issues.join('、')}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleDecide(img.id, 'keep')}
+                  className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
+                    decision === 'keep'
+                      ? 'bg-success text-success-foreground'
+                      : 'bg-secondary hover:bg-secondary/70 text-secondary-foreground'
+                  }`}
+                >
+                  ✓ 保留
+                </button>
+                <button
+                  onClick={() => handleDecide(img.id, 'discard')}
+                  className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
+                    decision === 'discard'
+                      ? 'bg-destructive text-destructive-foreground'
+                      : 'bg-secondary hover:bg-secondary/70 text-secondary-foreground'
+                  }`}
+                >
+                  ✗ 丢弃
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <SubmitButton
+        submitting={submitting}
+        disabled={!allDecided}
+        onClick={handleSubmit}
+        label="提交评分"
+      />
+    </div>
+  );
+}
+
+// ─── 5. 文本情感标注任务 ──────────────────────────────────────
+
+function TextSentimentTask({ config, submitting, onSubmit }: TaskProps) {
+  const texts = config?.texts ?? [];
+  const labels = config?.labels ?? ['正面', '负面', '中性'];
+  const [sentiments, setSentiments] = useState<Record<string, string>>({});
+
+  const handleSelect = (textId: string, label: string) => {
+    setSentiments(prev => ({ ...prev, [textId]: label }));
+  };
+
+  const handleSubmit = () => {
+    onSubmit({ sentiments }, 'text_sentiment');
+  };
+
+  const allLabeled = texts.every(t => sentiments[t.id]);
+  const labelColors: Record<string, string> = {
+    '正面': 'bg-success text-success-foreground',
+    '负面': 'bg-destructive text-destructive-foreground',
+    '中性': 'bg-muted text-muted-foreground',
   };
 
   return (
-    <div>
-      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-        <h3 className="text-lg font-bold text-green-800 mb-1">音频转写</h3>
-        <p className="text-base text-green-700">请点击播放按钮听取音频，将听到的内容逐字转写到下方输入框中。</p>
-      </div>
-      <div className="bg-white border border-gray-200 rounded-lg p-6 mb-4">
-        <div className="flex items-center gap-4 mb-4">
-          <button
-            className="w-14 h-14 rounded-full bg-green-600 text-white text-2xl flex items-center justify-center hover:bg-green-700"
-            type="button"
-            onClick={() => {
-              if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-                const u = new SpeechSynthesisUtterance(phrases.join('。'));
-                u.lang = 'zh-CN';
-                u.rate = 0.8;
-                window.speechSynthesis.speak(u);
-              }
-            }}
-          >
-            {'\u25B6'}
-          </button>
-          <div className="flex-1">
-            <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
-              <div className="h-full w-1/3 bg-green-500 rounded-full"></div>
+    <div className="space-y-4">
+      <div className="space-y-3">
+        {texts.map(t => (
+          <div key={t.id} className="bg-card rounded-xl border p-4">
+            <p className="mb-3 text-base">{t.content}</p>
+            <div className="flex flex-wrap gap-2">
+              {labels.map(label => {
+                const selected = sentiments[t.id] === label;
+                return (
+                  <button
+                    key={label}
+                    onClick={() => handleSelect(t.id, label)}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                      selected
+                        ? labelColors[label] ?? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary hover:bg-secondary/70 text-secondary-foreground'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
             </div>
-            <p className="text-sm text-gray-500 mt-1">音频时长: 约 5 秒</p>
           </div>
-        </div>
-        <textarea
-          className="w-full border border-gray-300 rounded-lg p-3 text-lg min-h-[120px] focus:outline-none focus:ring-2 focus:ring-green-500"
-          placeholder="在这里输入听到的文字..."
-          value={transcript}
-          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setTranscript(e.target.value)}
-        />
+        ))}
       </div>
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
-        <p className="text-sm text-yellow-800">提示：可以反复点击播放按钮。转写时注意标点符号和准确用词。</p>
-      </div>
-      <button
+      <SubmitButton
+        submitting={submitting}
+        disabled={!allLabeled}
         onClick={handleSubmit}
-        disabled={transcript.trim().length === 0 || submitting}
-        className="w-full mt-4 py-4 bg-green-600 text-white text-lg font-bold rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-      >
-        {submitting ? '提交中...' : '提交答案'}
-      </button>
+        label="提交评分"
+      />
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  通用占位符                                                          */
-/* ------------------------------------------------------------------ */
-function GenericTaskPlaceholder({ taskType }: { taskType: string }) {
+// ─── 6. 图片标注任务 ──────────────────────────────────────────
+
+interface DrawBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string;
+}
+
+function ImageAnnotationTask({ config, submitting, onSubmit }: TaskProps) {
+  const imageUrl = config?.imageUrl ?? '';
+  const targetLabels = config?.targetLabels ?? ['目标'];
+  const [boxes, setBoxes] = useState<DrawBox[]>([]);
+  const [drawing, setDrawing] = useState(false);
+  const [startPt, setStartPt] = useState<{ x: number; y: number } | null>(null);
+  const [currentLabel, setCurrentLabel] = useState(targetLabels[0]);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setDrawing(true);
+    setStartPt({ x, y });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!drawing || !startPt) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+    const lastBox = boxes[boxes.length - 1];
+    if (lastBox && drawing) {
+      const newBoxes = [...boxes];
+      newBoxes[newBoxes.length - 1] = {
+        ...lastBox,
+        width: Math.abs(x - startPt.x),
+        height: Math.abs(y - startPt.y),
+        x: Math.min(x, startPt.x),
+        y: Math.min(y, startPt.y),
+      };
+      setBoxes(newBoxes);
+    }
+  };
+
+  const handleMouseUp = () => {
+    setDrawing(false);
+    setStartPt(null);
+    const lastBox = boxes[boxes.length - 1];
+    if (lastBox && (lastBox.width < 5 || lastBox.height < 5)) {
+      setBoxes(boxes.slice(0, -1));
+    }
+  };
+
+  const startDrawing = () => {
+    setBoxes([...boxes, { x: 0, y: 0, width: 0, height: 0, label: currentLabel }]);
+  };
+
+  const removeBox = (idx: number) => {
+    setBoxes(boxes.filter((_, i) => i !== idx));
+  };
+
+  const handleSubmit = () => {
+    onSubmit({ boxes }, 'image_annotation');
+  };
+
   return (
-    <div className="text-center py-12">
-      <p className="text-xl text-gray-500">
-        {taskType} 任务类型的工作区正在开发中
-      </p>
-      <p className="text-sm text-gray-400 mt-2">敬请期待</p>
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        <span className="text-muted-foreground self-center text-sm">选择标签：</span>
+        {targetLabels.map(label => (
+          <button
+            key={label}
+            onClick={() => setCurrentLabel(label)}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+              currentLabel === label
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-secondary text-secondary-foreground hover:bg-secondary/70'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div
+        className="relative w-full cursor-crosshair overflow-hidden rounded-xl border bg-muted"
+        style={{ minHeight: 300 }}
+        onMouseDown={(e) => { startDrawing(); handleMouseDown(e); }}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
+        {imageUrl && (
+          <img
+            src={imageUrl}
+            alt="标注图片"
+            className="pointer-events-none max-h-[400px] w-full object-contain"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+          />
+        )}
+        {!imageUrl && (
+          <div className="flex min-h-[300px] items-center justify-center text-muted-foreground">
+            <div className="text-center">
+              <p className="mb-2 text-4xl">🖼</p>
+              <p className="text-sm">图片区域 - 在此处拖拽绘制标注框</p>
+            </div>
+          </div>
+        )}
+        {boxes.filter(b => b.width > 0 && b.height > 0).map((box, idx) => (
+          <div
+            key={idx}
+            className="absolute border-2 border-primary bg-primary/15"
+            style={{
+              left: box.x,
+              top: box.y,
+              width: box.width,
+              height: box.height,
+            }}
+          >
+            <span className="bg-primary text-primary-foreground absolute -top-6 left-0 whitespace-nowrap rounded px-1 text-xs">
+              {box.label}
+            </span>
+          </div>
+        ))}
+      </div>
+      {boxes.filter(b => b.width > 5).length > 0 && (
+        <div>
+          <p className="mb-2 text-sm font-medium">已标注 {boxes.filter(b => b.width > 5).length} 个框</p>
+          <div className="flex flex-wrap gap-2">
+            {boxes.filter(b => b.width > 5).map((box, idx) => (
+              <button
+                key={idx}
+                onClick={() => removeBox(boxes.indexOf(box))}
+                className="bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg px-3 py-1 text-xs transition-colors"
+              >
+                {box.label} ×
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <SubmitButton
+        submitting={submitting}
+        disabled={boxes.filter(b => b.width > 5).length === 0}
+        onClick={handleSubmit}
+        label="提交评分"
+      />
     </div>
+  );
+}
+
+// ─── 7. 音频转写任务 ──────────────────────────────────────────
+
+function AudioTranscriptionTask({ config, submitting, onSubmit }: TaskProps) {
+  const audioUrl = config?.audioUrl ?? '';
+  const [transcript, setTranscript] = useState('');
+
+  const handleSubmit = () => {
+    onSubmit({ transcript }, 'audio_transcription');
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-card rounded-xl border p-4">
+        {audioUrl ? (
+          <audio controls className="w-full">
+            <source src={audioUrl} />
+            您的浏览器不支持音频播放
+          </audio>
+        ) : (
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <p className="mb-2 text-4xl">🎵</p>
+              <p className="text-muted-foreground text-sm">音频区域 - 请听音频并转写</p>
+            </div>
+          </div>
+        )}
+      </div>
+      <div>
+        <label className="mb-2 block text-base font-medium">请输入听到的文字：</label>
+        <textarea
+          value={transcript}
+          onChange={e => setTranscript(e.target.value)}
+          rows={5}
+          className="bg-card focus:border-primary w-full rounded-xl border p-4 text-base outline-none transition-colors"
+          placeholder="在此输入转写内容..."
+          aria-label="转写文本输入"
+        />
+      </div>
+      <SubmitButton
+        submitting={submitting}
+        disabled={!transcript.trim()}
+        onClick={handleSubmit}
+        label="提交评分"
+      />
+    </div>
+  );
+}
+
+// ─── 占位组件 ─────────────────────────────────────────────────
+
+function GenericTaskPlaceholder({ title }: { title: string }) {
+  return (
+    <div className="bg-card flex min-h-[300px] flex-col items-center justify-center rounded-xl border">
+      <p className="text-muted-foreground text-lg">{title}</p>
+      <p className="text-muted-foreground mt-2 text-sm">该任务类型暂未上线，敬请期待</p>
+    </div>
+  );
+}
+
+// ─── 共享提交按钮 ─────────────────────────────────────────────
+
+function SubmitButton({
+  submitting,
+  disabled,
+  onClick,
+  label,
+}: {
+  submitting: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={submitting || disabled}
+      className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground w-full rounded-xl py-3.5 text-lg font-medium transition-colors disabled:cursor-not-allowed"
+    >
+      {submitting ? '评分中...' : label}
+    </button>
   );
 }

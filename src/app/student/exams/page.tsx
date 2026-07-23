@@ -52,7 +52,7 @@ export default function ExamsPage() {
       <div className="flex items-center gap-3 mb-6">
         <button
           onClick={() => router.push('/student/home')}
-          className="text-[oklch(0.45_0.09_175)] hover:underline text-lg"
+          className="text-primary hover:underline text-lg"
         >
           ← 返回
         </button>
@@ -71,7 +71,7 @@ export default function ExamsPage() {
           {exams.map(exam => (
             <div
               key={exam.id}
-              className="p-5 rounded-xl border-2 border-[oklch(0.90_0.02_95)] bg-white"
+              className="p-5 rounded-xl border-2 border-border bg-white"
             >
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-xl font-bold">{exam.title}</h2>
@@ -85,7 +85,7 @@ export default function ExamsPage() {
               {exam.timeStatus === 'open' && !exam.attempt && (
                 <button
                   onClick={() => router.push(`/student/exams/${exam.id}`)}
-                  className="mt-4 px-6 py-3 rounded-lg bg-[oklch(0.45_0.09_175)] text-white font-bold text-lg hover:opacity-90 transition-opacity"
+                  className="mt-4 px-6 py-3 rounded-lg bg-primary text-white font-bold text-lg hover:opacity-90 transition-opacity"
                 >
                   进入考试
                 </button>
@@ -93,7 +93,7 @@ export default function ExamsPage() {
               {exam.attempt?.status === 'submitted' && (
                 <button
                   onClick={() => router.push(`/student/results?examId=${exam.id}`)}
-                  className="mt-4 px-6 py-3 rounded-lg border-2 border-[oklch(0.45_0.09_175)] text-[oklch(0.45_0.09_175)] font-bold text-lg hover:bg-[oklch(0.96_0.02_155)] transition-colors"
+                  className="mt-4 px-6 py-3 rounded-lg border-2 border-primary text-primary font-bold text-lg hover:bg-secondary transition-colors"
                 >
                   查看成绩
                 </button>

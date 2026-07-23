@@ -96,7 +96,7 @@ export default function ImportPage() {
             type="file"
             accept=".docx"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="block w-full text-base text-gray-700 file:mr-4 file:rounded-md file:border-0 file:bg-[oklch(0.45_0.09_175)] file:px-4 file:py-2 file:text-white file:cursor-pointer"
+            className="block w-full text-base text-gray-700 file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-4 file:py-2 file:text-white file:cursor-pointer"
           />
           <p className="mt-1 text-sm text-gray-500">
             支持 .docx 格式，自动识别单选题和判断题
@@ -113,7 +113,7 @@ export default function ImportPage() {
           <button
             onClick={handleUpload}
             disabled={!file || loading}
-            className="rounded-md bg-[oklch(0.45_0.09_175)] px-6 py-3 text-base font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-110 transition"
+            className="rounded-md bg-primary px-6 py-3 text-base font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-110 transition"
           >
             {loading ? '正在导入...' : '开始导入'}
           </button>

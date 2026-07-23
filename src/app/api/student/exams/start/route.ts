@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireRole } from '@/server/auth';
 import { dbQuery, dbExec } from '@/server/db';
-import { ok, fail } from '@/lib/api';
+import {ok, fail, catchError} from '@/lib/api';
 
 /**
  * POST /api/student/exams/start
@@ -97,12 +97,6 @@ export async function POST(request: NextRequest) {
 
     return ok({ attemptId, resumed: false });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : '未知错误';
-    if (msg.includes('401') || msg.includes('403')) {
-      const code = msg.includes('401') ? 401 : 403;
-      return fail(code, msg);
-    }
-    console.error('开始考试失败:', e);
-    return fail(500, '服务器开小差了，请稍后再试');
+    return catchError(e);
   }
 }

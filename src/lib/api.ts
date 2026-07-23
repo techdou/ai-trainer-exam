@@ -37,13 +37,18 @@ export function handler<Args extends unknown[]>(
     try {
       return await fn(...args);
     } catch (err) {
-      if (err instanceof ApiError) {
-        return fail(err.status, err.message);
-      }
-      console.error('[api] unexpected error:', err);
-      return fail(500, '服务器开小差了，请稍后再试');
+      return catchError(err);
     }
   };
+}
+
+/** 统一 catch 块错误处理，替代字符串匹配 */
+export function catchError(e: unknown): Response {
+  if (e instanceof ApiError) {
+    return fail(e.status, e.message);
+  }
+  console.error('[api] unexpected error:', e);
+  return fail(500, '服务器开小差了，请稍后再试');
 }
 
 /** 生成随机初始密码（易读、适合零基础学员抄写） */

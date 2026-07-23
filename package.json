@@ -6,6 +6,8 @@
     "build": "bash ./scripts/build.sh",
     "dev": "bash ./scripts/dev.sh",
     "preinstall": "npx only-allow pnpm",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "eslint",
     "lint:build": "eslint . --quiet",
     "lint:style": "stylelint \"src/**/*.css\"",

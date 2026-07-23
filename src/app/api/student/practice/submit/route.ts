@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server';
 import { requireRole } from '@/server/auth';
 import { dbQuery, dbExec } from '@/server/db';
-import { ok, fail } from '@/lib/api';
+import { ok, fail, catchError } from '@/lib/api';
 import { gradeByType } from '@/server/grading';
+import { getPracticeMaxScore, getPracticePassScore } from '@/server/settings';
 
 /**
  * POST /api/student/practice/submit - 提交实操任务答案并评分
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
       return fail(400, '缺少参数：taskId, submission, graderId');
     }
 
-    // 获取任务模板的 answer_key
+    // 获取任务模板的 answer_key 和 config
     const rows = await dbQuery<{ answer_key: string; title: string }>(
       `SELECT answer_key, title FROM practice_task_templates WHERE id = $1 AND deleted_at IS NULL`,
       taskId,
@@ -42,8 +43,10 @@ export async function POST(req: NextRequest) {
     // 评分
     const result = gradeByType(graderId, submission, answerKey);
 
-    const maxScore = 100;
-    const passed = result.score >= 60;
+    // 从系统设置读取阈值（不再硬编码）
+    const maxScore = await getPracticeMaxScore();
+    const passScore = await getPracticePassScore();
+    const passed = result.score >= passScore;
 
     // 记录尝试
     await dbExec(
@@ -60,7 +63,6 @@ export async function POST(req: NextRequest) {
     );
 
     // 如果做错了，记录到错题本
-    // practice_wrong_items schema: user_id, item_type, item_id, wrong_count, resolved, last_wrong_at
     if (!result.correct) {
       await dbExec(
         `INSERT INTO practice_wrong_items (user_id, item_type, item_id, wrong_count, resolved, last_wrong_at, created_at, updated_at)
@@ -91,8 +93,6 @@ export async function POST(req: NextRequest) {
       passed,
     });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : '未知错误';
-    const status = msg.includes('请先登录') ? 401 : msg.includes('权限') ? 403 : 500;
-    return fail(status, status === 500 ? '服务器开小差了，请稍后再试' : msg);
+    return catchError(e);
   }
 }

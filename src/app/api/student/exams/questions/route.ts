@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireRole } from '@/server/auth';
 import { dbQuery } from '@/server/db';
-import { ok, fail } from '@/lib/api';
+import {ok, fail, catchError} from '@/lib/api';
 
 /**
  * GET /api/student/exams/questions?scheduleId=xxx
@@ -167,12 +167,6 @@ export async function GET(req: NextRequest) {
       attemptId,
     });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : '未知错误';
-    if (msg.includes('401') || msg.includes('403')) {
-      const code = msg.includes('401') ? 401 : 403;
-      return fail(code, msg);
-    }
-    console.error('获取考试题目失败:', e);
-    return fail(500, '服务器开小差了，请稍后再试');
+    return catchError(e);
   }
 }

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireRole } from '@/server/auth';
 import { updateQuestion, retireQuestion } from '@/server/question-bank';
 import { insertAudit } from '@/server/audit';
+import { catchError } from '@/lib/api';
 
 export async function PATCH(
   request: NextRequest,
@@ -47,8 +48,6 @@ export async function PATCH(
 
     return Response.json({ success: true });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '更新失败';
-    const status = msg.includes('权限') || msg.includes('登录') ? 403 : 500;
-    return Response.json({ success: false, error: msg }, { status });
+    return catchError(e);
   }
 }

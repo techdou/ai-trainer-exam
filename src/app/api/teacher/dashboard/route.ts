@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireRole } from '@/server/auth';
 import { dbQuery } from '@/server/db';
-import { ok, fail } from '@/lib/api';
+import {ok, fail, catchError } from '@/lib/api';
 
 /** GET /api/teacher/dashboard - 教师仪表盘数据 */
 export async function GET(req: NextRequest) {
@@ -56,8 +56,6 @@ export async function GET(req: NextRequest) {
       avgPracticeScore,
     });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : '未知错误';
-    const status = msg.includes('请先登录') ? 401 : msg.includes('权限') ? 403 : 500;
-    return fail(status, status === 500 ? '服务器开小差了，请稍后再试' : msg);
+    return catchError(e);
   }
 }

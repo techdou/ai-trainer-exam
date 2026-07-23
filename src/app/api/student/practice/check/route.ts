@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireRole } from '@/server/auth';
 import { dbExec, dbOne } from '@/server/db';
 import { insertAudit } from '@/server/audit';
+import { catchError } from '@/lib/api';
 
 /** POST /api/student/practice/check — 学员提交练习答案，即时判分 */
 export async function POST(request: NextRequest) {
@@ -85,8 +86,6 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '判分失败';
-    const status = msg.includes('权限') || msg.includes('登录') ? 403 : 500;
-    return Response.json({ success: false, error: msg }, { status });
+    return catchError(e);
   }
 }

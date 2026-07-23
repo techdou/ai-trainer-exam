@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireRole } from '@/server/auth';
 import { dbQuery } from '@/server/db';
-import { ok, fail } from '@/lib/api';
+import {ok, fail, catchError} from '@/lib/api';
 
 /**
  * GET /api/admin/reports/overview
@@ -166,13 +166,7 @@ export async function GET(request: NextRequest) {
         {},
       ),
     });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : '未知错误';
-    if (msg.includes('401') || msg.includes('403')) {
-      const code = msg.includes('401') ? 401 : 403;
-      return fail(code, msg);
-    }
-    console.error('报表查询失败:', err);
-    return fail(500, '服务器开小差了，请稍后再试');
+  } catch (e: unknown) {
+    return catchError(e);
   }
 }

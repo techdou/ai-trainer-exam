@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { requireRole } from '@/server/auth';
 import { dbQuery, dbExec } from '@/server/db';
-import { ok, fail } from '@/lib/api';
+import { getSettingNumber } from '@/server/settings';
+import { ok, fail, catchError } from '@/lib/api';
 
 /**
  * POST /api/student/exams/submit
@@ -173,6 +174,7 @@ export async function POST(request: NextRequest) {
 
     let totalScore = 0;
     let maxScore = 0;
+    let theoryScore = 0;
 
     // 重新获取所有 responses 以计算分数
     const responses = await dbQuery<{ item_id: string; response: { isCorrect: boolean } }>(
@@ -182,22 +184,38 @@ export async function POST(request: NextRequest) {
 
     const respMap = new Map(responses.map(r => [r.item_id, r.response]));
 
+    // 获取每道题的类型，用于分类计分
+    const itemTypes = new Map<string, string>();
     for (const pi of paperItems) {
-      // pg 驱动对 numeric 类型可能返回 string/Decimal，统一转为 number
+      const typeRows = await dbQuery<{ question_type: string }>(
+        `SELECT question_type FROM exam_question_items WHERE id = $1
+         UNION SELECT question_type FROM practice_question_items WHERE id = $1`,
+        pi.item_id,
+      );
+      itemTypes.set(pi.item_id, typeRows[0]?.question_type ?? 'unknown');
+    }
+
+    for (const pi of paperItems) {
       const itemScore = Number(pi.score);
       maxScore += itemScore;
       const resp = respMap.get(pi.item_id);
       if (resp && resp.isCorrect) {
         totalScore += itemScore;
+        const qt = itemTypes.get(pi.item_id);
+        if (qt === 'single_choice' || qt === 'true_false') {
+          theoryScore += itemScore;
+        }
       }
     }
 
-    const passed = totalScore >= 60;
+    const passScore = await getSettingNumber('exam_pass_score');
+    const passed = totalScore >= passScore;
 
     const autoScoreDetail = JSON.stringify({
       theory: { correct: theoryCorrect, total: theoryTotal },
       totalScore,
       maxScore,
+      theoryScore,
       gradedAt: new Date().toISOString(),
     });
 
@@ -213,7 +231,7 @@ export async function POST(request: NextRequest) {
           theory_score = $1, total_score = $2, max_score = $3, passed = $4,
           auto_score_detail = $5, status = 'auto_graded'
          WHERE attempt_id = $6`,
-        theoryCorrect * (theoryTotal > 0 ? Math.round(60 / theoryTotal) : 0),
+        theoryScore,
         totalScore,
         maxScore,
         passed,
@@ -228,7 +246,7 @@ export async function POST(request: NextRequest) {
            total_score, max_score, passed, auto_score_detail, status)
          VALUES ($1, $2, $3, $4, 0, 0, 0, 0, 0, $5, $6, $7, $8, 'auto_graded')`,
         finalAttemptId, scheduleId, user.id,
-        theoryCorrect * (theoryTotal > 0 ? Math.round(60 / theoryTotal) : 0),
+        theoryScore,
         totalScore,
         maxScore,
         passed,
@@ -251,12 +269,6 @@ export async function POST(request: NextRequest) {
       passed,
     });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : '未知错误';
-    console.error('考试提交失败:', e);
-    if (msg.includes('401') || msg.includes('403')) {
-      const code = msg.includes('401') ? 401 : 403;
-      return fail(code, msg);
-    }
-    return fail(500, '服务器开小差了，请稍后再试');
+    return catchError(e);
   }
 }
