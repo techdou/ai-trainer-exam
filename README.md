@@ -1,363 +1,150 @@
-# projects
+# 人工智能训练师五级零基础练习与考试系统
 
-这是一个基于 [Next.js 16](https://nextjs.org) + [shadcn/ui](https://ui.shadcn.com) 的全栈应用项目，由扣子编程 CLI 创建。
+面向职业培训学校零基础学员的练习与考试一体化平台。服务三类角色：**零基础学员**、**教师**、**超级管理员**，覆盖理论练习、实操任务、在线考试、自动阅卷、成绩管理与数据报表全流程。
 
-## 快速开始
+> 设计意象：培训教室里的护眼绿黑板 + 干净白色练习册 + 老师的大字板书。耐心、稳重、可信赖。
 
-### 启动开发服务器
+---
 
-```bash
-coze dev
-```
+## 目录
 
-启动后，在浏览器中打开 [http://localhost:5000](http://localhost:5000) 查看应用。
+- [功能概览](#功能概览)
+- [技术栈](#技术栈)
+- [项目结构](#项目结构)
+- [快速开始](#快速开始)
+- [环境变量](#环境变量)
+- [核心设计](#核心设计)
+- [开发命令](#开发命令)
+- [许可协议](#许可协议)
 
-开发服务器支持热更新，修改代码后页面会自动刷新。
+---
 
-### 构建生产版本
+## 功能概览
 
-```bash
-coze build
-```
+### 学员端
 
-### 启动生产服务器
+| 模块 | 说明 |
+|------|------|
+| 理论练习 | 按题型/知识点练习，即时判分，温和鼓励反馈 |
+| 实操任务 | 数据清洗、图片标注、文本情感、音频转写等 12 类实操任务 |
+| 错题本 | 自动收录错题，支持重做 |
+| 在线考试 | 服务端时间锁、自动倒计时交卷、超时自动判 expired |
+| 成绩查询 | 历次成绩与通过状态 |
 
-```bash
-coze start
-```
+### 教师端
+
+| 模块 | 说明 |
+|------|------|
+| 仪表盘 | 班级概况与关键指标 |
+| 考试管理 | 创建/管理考试安排 |
+| 学员管理 | 查看班级学员列表与进度 |
+
+### 管理端
+
+| 模块 | 说明 |
+|------|------|
+| 系统统计 | 用户/组织/考试全局概览 |
+| 用户管理 | 角色分配与账号管理 |
+| 组织与班级 | 多层级组织 + 班级管理 |
+| 考试安排 | 排期与试卷绑定 |
+| 试卷管理 | 题目组卷 |
+| 成绩管理 | 列表查看、复核调分、成绩发布 |
+| 数据报表 | 成绩分布、通过率、班级对比、薄弱题型分析 |
+| 审计日志 | 全操作可追溯 |
+| AI 媒体生成 | 图片生成 / TTS 音频（用于实操题目素材） |
+| 系统设置 | 全局配置项管理 |
+
+---
+
+## 技术栈
+
+| 分类 | 技术 |
+|------|------|
+| 框架 | Next.js 16 (App Router) |
+| 核心 | React 19 |
+| 语言 | TypeScript 5 (strict) |
+| UI 组件 | shadcn/ui (基于 Radix UI) |
+| 样式 | Tailwind CSS 4 |
+| 数据库 | Supabase PostgreSQL + RLS 行级安全 |
+| 认证 | Supabase Auth (email/password) |
+| 通知 | sonner |
+
+---
 
 ## 项目结构
 
 ```
-src/
-├── app/                      # Next.js App Router 目录
-│   ├── layout.tsx           # 根布局组件
-│   ├── page.tsx             # 首页
-│   ├── globals.css          # 全局样式（包含 shadcn 主题变量）
-│   └── [route]/             # 其他路由页面
-├── components/              # React 组件目录
-│   └── ui/                  # shadcn/ui 基础组件（优先使用）
-│       ├── button.tsx
-│       ├── card.tsx
-│       └── ...
-├── lib/                     # 工具函数库
-│   └── utils.ts            # cn() 等工具函数
-└── hooks/                   # 自定义 React Hooks（可选）
-
-server/
-├── index.ts                 # 自定义服务器入口
-├── tsconfig.json           # Server TypeScript 配置
-└── dist/                    # 编译输出目录（自动生成）
+├── public/                     # 静态资源
+├── scripts/                    # 构建/启动/校验脚本
+│   └── db/                     # 数据库种子与迁移脚本
+├── docs/                       # 项目文档（架构/数据模型/评分规范等）
+├── drizzle/                    # Drizzle ORM 数据库迁移文件
+├── src/
+│   ├── app/                    # 页面路由与布局
+│   │   ├── admin/              # 管理员端
+│   │   ├── api/                # API 路由 (auth/student/teacher/admin)
+│   │   ├── login/              # 登录页
+│   │   └── student/            # 学员端 (exams/practice/results/task/wrong)
+│   ├── components/             # 业务组件 + shadcn/ui 组件库
+│   ├── hooks/                  # 自定义 Hooks
+│   ├── lib/                    # 工具库 (api/session-client/utils)
+│   ├── server/                 # 服务端逻辑
+│   │   ├── auth.ts             # 认证与会话
+│   │   ├── audit.ts            # 审计日志
+│   │   ├── db.ts               # 数据库查询封装
+│   │   ├── docx-importer.ts    # DOCX 题库导入解析
+│   │   ├── grading/            # 12 个评分器 + gradeByType 统一入口
+│   │   └── question-bank.ts    # 题库 CRUD
+│   └── storage/                # 存储层 (Supabase 客户端)
+├── .coze                       # 部署配置（构建与启动命令，必须入库）
+├── AGENTS.md                   # AI 协作规范文件
+├── DESIGN.md                   # 设计规范文件
+└── README.md
 ```
 
-## 核心开发规范
+---
 
-### 1. 组件开发
+## 快速开始
 
-**优先使用 shadcn/ui 基础组件**
+### 前置要求
 
-本项目已预装完整的 shadcn/ui 组件库，位于 `src/components/ui/` 目录。开发时应优先使用这些组件作为基础：
+- Node.js 24+
+- pnpm（包管理器）
+- Supabase 项目（需提供连接凭证）
 
-```tsx
-// ✅ 推荐：使用 shadcn 基础组件
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-
-export default function MyComponent() {
-  return (
-    <Card>
-      <CardHeader>标题</CardHeader>
-      <CardContent>
-        <Input placeholder="输入内容" />
-        <Button>提交</Button>
-      </CardContent>
-    </Card>
-  );
-}
-```
-
-**可用的 shadcn 组件清单**
-
-- 表单：`button`, `input`, `textarea`, `select`, `checkbox`, `radio-group`, `switch`, `slider`
-- 布局：`card`, `separator`, `tabs`, `accordion`, `collapsible`, `scroll-area`
-- 反馈：`alert`, `alert-dialog`, `dialog`, `toast`, `sonner`, `progress`
-- 导航：`dropdown-menu`, `menubar`, `navigation-menu`, `context-menu`
-- 数据展示：`table`, `avatar`, `badge`, `hover-card`, `tooltip`, `popover`
-- 其他：`calendar`, `command`, `carousel`, `resizable`, `sidebar`
-
-详见 `src/components/ui/` 目录下的具体组件实现。
-
-### 2. 路由开发
-
-Next.js 使用文件系统路由，在 `src/app/` 目录下创建文件夹即可添加路由：
+### 安装与启动
 
 ```bash
-# 创建新路由 /about
-src/app/about/page.tsx
-
-# 创建动态路由 /posts/[id]
-src/app/posts/[id]/page.tsx
-
-# 创建路由组（不影响 URL）
-src/app/(marketing)/about/page.tsx
-
-# 创建 API 路由
-src/app/api/users/route.ts
-```
-
-**页面组件示例**
-
-```tsx
-// src/app/about/page.tsx
-import { Button } from '@/components/ui/button';
-
-export const metadata = {
-  title: '关于我们',
-  description: '关于页面描述',
-};
-
-export default function AboutPage() {
-  return (
-    <div>
-      <h1>关于我们</h1>
-      <Button>了解更多</Button>
-    </div>
-  );
-}
-```
-
-**动态路由示例**
-
-```tsx
-// src/app/posts/[id]/page.tsx
-export default async function PostPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-
-  return <div>文章 ID: {id}</div>;
-}
-```
-
-**API 路由示例**
-
-```tsx
-// src/app/api/users/route.ts
-import { NextResponse } from 'next/server';
-
-export async function GET() {
-  return NextResponse.json({ users: [] });
-}
-
-export async function POST(request: Request) {
-  const body = await request.json();
-  return NextResponse.json({ success: true });
-}
-```
-
-### 3. 依赖管理
-
-**必须使用 pnpm 管理依赖**
-
-```bash
-# ✅ 安装依赖
+# 安装依赖
 pnpm install
 
-# ✅ 添加新依赖
-pnpm add package-name
-
-# ✅ 添加开发依赖
-pnpm add -D package-name
-
-# ❌ 禁止使用 npm 或 yarn
-# npm install  # 错误！
-# yarn add     # 错误！
+# 启动开发服务器（默认端口 5000）
+pnpm run dev
 ```
 
-项目已配置 `preinstall` 脚本，使用其他包管理器会报错。
+启动后在浏览器打开 `http://localhost:5000` 查看应用。开发服务器支持热更新。
 
-### 4. 样式开发
+### 生产构建
 
-**使用 Tailwind CSS v4**
-
-本项目使用 Tailwind CSS v4 进行样式开发，并已配置 shadcn 主题变量。
-
-```tsx
-// 使用 Tailwind 类名
-<div className="flex items-center gap-4 p-4 rounded-lg bg-background">
-  <Button className="bg-primary text-primary-foreground">
-    主要按钮
-  </Button>
-</div>
-
-// 使用 cn() 工具函数合并类名
-import { cn } from '@/lib/utils';
-
-<div className={cn(
-  "base-class",
-  condition && "conditional-class",
-  className
-)}>
-  内容
-</div>
+```bash
+pnpm run build    # 构建
+pnpm run start    # 启动生产服务器
 ```
 
-**主题变量**
+---
 
-主题变量定义在 `src/app/globals.css` 中，支持亮色/暗色模式：
+## 环境变量
 
-- `--background`, `--foreground`
-- `--primary`, `--primary-foreground`
-- `--secondary`, `--secondary-foreground`
-- `--muted`, `--muted-foreground`
-- `--accent`, `--accent-foreground`
-- `--destructive`, `--destructive-foreground`
-- `--border`, `--input`, `--ring`
+所有密钥与连接凭证通过环境变量注入，**绝不硬编码入库**。项目启动时会自动从运行时环境读取：
 
-### 5. 表单开发
+| 变量名 | 说明 |
+|--------|------|
+| `COZE_SUPABASE_URL` | Supabase 项目 URL |
+| `COZE_SUPABASE_ANON_KEY` | Supabase 匿名密钥 |
+| `COZE_SUPABASE_SERVICE_ROLE_KEY` | Supabase 服务端密钥（绕过 RLS） |
+| `DEPLOY_RUN_PORT` | 服务监听端口（默认 5000） |
 
-推荐使用 `react-hook-form` + `zod` 进行表单开发：
+> 本地开发时可将变量写入 `.env.local`（已被 `.gitignore` 忽略，不会入库）。
 
-```tsx
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+---
 
-const formSchema = z.object({
-  username: z.string().min(2, '用户名至少 2 个字符'),
-  email: z.string().email('请输入有效的邮箱'),
-});
-
-export default function MyForm() {
-  const form = useForm({
-    resolver: zodResolver(formSchema),
-    defaultValues: { username: '', email: '' },
-  });
-
-  const onSubmit = (data: z.infer<typeof formSchema>) => {
-    console.log(data);
-  };
-
-  return (
-    <form onSubmit={form.handleSubmit(onSubmit)}>
-      <Input {...form.register('username')} />
-      <Input {...form.register('email')} />
-      <Button type="submit">提交</Button>
-    </form>
-  );
-}
-```
-
-### 6. 数据获取
-
-**服务端组件（推荐）**
-
-```tsx
-// src/app/posts/page.tsx
-async function getPosts() {
-  const res = await fetch('https://api.example.com/posts', {
-    cache: 'no-store', // 或 'force-cache'
-  });
-  return res.json();
-}
-
-export default async function PostsPage() {
-  const posts = await getPosts();
-
-  return (
-    <div>
-      {posts.map(post => (
-        <div key={post.id}>{post.title}</div>
-      ))}
-    </div>
-  );
-}
-```
-
-**客户端组件**
-
-```tsx
-'use client';
-
-import { useEffect, useState } from 'react';
-
-export default function ClientComponent() {
-  const [data, setData] = useState(null);
-
-  useEffect(() => {
-    fetch('/api/data')
-      .then(res => res.json())
-      .then(setData);
-  }, []);
-
-  return <div>{JSON.stringify(data)}</div>;
-}
-```
-
-## 常见开发场景
-
-### 添加新页面
-
-1. 在 `src/app/` 下创建文件夹和 `page.tsx`
-2. 使用 shadcn 组件构建 UI
-3. 根据需要添加 `layout.tsx` 和 `loading.tsx`
-
-### 创建业务组件
-
-1. 在 `src/components/` 下创建组件文件（非 UI 组件）
-2. 优先组合使用 `src/components/ui/` 中的基础组件
-3. 使用 TypeScript 定义 Props 类型
-
-### 添加全局状态
-
-推荐使用 React Context 或 Zustand：
-
-```tsx
-// src/lib/store.ts
-import { create } from 'zustand';
-
-interface Store {
-  count: number;
-  increment: () => void;
-}
-
-export const useStore = create<Store>((set) => ({
-  count: 0,
-  increment: () => set((state) => ({ count: state.count + 1 })),
-}));
-```
-
-### 集成数据库
-
-推荐使用 Prisma 或 Drizzle ORM，在 `src/lib/db.ts` 中配置。
-
-## 技术栈
-
-- **框架**: Next.js 16.1.1 (App Router)
-- **UI 组件**: shadcn/ui (基于 Radix UI)
-- **样式**: Tailwind CSS v4
-- **表单**: React Hook Form + Zod
-- **图标**: Lucide React
-- **字体**: Geist Sans & Geist Mono
-- **包管理器**: pnpm 9+
-- **TypeScript**: 5.x
-
-## 参考文档
-
-- [Next.js 官方文档](https://nextjs.org/docs)
-- [shadcn/ui 组件文档](https://ui.shadcn.com)
-- [Tailwind CSS 文档](https://tailwindcss.com/docs)
-- [React Hook Form](https://react-hook-form.com)
-
-## 重要提示
-
-1. **必须使用 pnpm** 作为包管理器
-2. **优先使用 shadcn/ui 组件** 而不是从零开发基础组件
-3. **遵循 Next.js App Router 规范**，正确区分服务端/客户端组件
-4. **使用 TypeScript** 进行类型安全开发
-5. **使用 `@/` 路径别名** 导入模块（已配置）
