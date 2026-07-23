@@ -2,6 +2,7 @@ import { dbExec } from './db';
 
 export interface AuditLogInput {
   actorId: string;
+  actorRole?: string;
   action: string;
   entityType: string;
   entityId: string | null;
@@ -23,13 +24,14 @@ export async function bulkInsertAudit(logs: AuditLogInput[]): Promise<void> {
 export async function insertAudit(log: AuditLogInput): Promise<void> {
   try {
     await dbExec(
-      `INSERT INTO audit_logs (actor_id, action, entity_type, entity_id, details, organization_id)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+      `INSERT INTO audit_logs (actor_id, actor_role, action, entity_type, entity_id, detail, organization_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       log.actorId,
+      log.actorRole ?? null,
       log.action,
       log.targetType ?? log.entityType,
       log.entityId,
-      log.details ?? null,
+      log.details ? JSON.stringify({ message: log.details }) : JSON.stringify({}),
       log.organizationId ?? null,
     );
   } catch {
