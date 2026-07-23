@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getSupabaseBrowserClientAsync } from '@/lib/supabase-browser';
 import { saveSession, homeForRoles, type ClientUser } from '@/lib/session-client';
 import { BookOpenCheck, Loader2 } from 'lucide-react';
 
@@ -24,23 +23,18 @@ export default function LoginPage() {
     try {
       // 支持输入"用户名"或完整邮箱：不含 @ 时补全学员伪邮箱域
       const email = account.includes('@') ? account.trim() : `${account.trim()}@student.exam.local`;
-      const supabase = await getSupabaseBrowserClientAsync();
-      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
-      if (authError || !data.session) {
-        setError('账号或密码不正确，请检查后重试。如果忘记密码，请联系老师。');
-        return;
-      }
-      // 获取角色信息
       const res = await fetch('/api/auth/session', {
-        headers: { Authorization: `Bearer ${data.session.access_token}` },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) {
-        setError('登录成功但读取用户信息失败，请刷新重试');
+        setError(json.error || '账号或密码不正确，请检查后重试。如果忘记密码，请联系老师。');
         return;
       }
-      const user = json.data as ClientUser;
-      saveSession(data.session.access_token, user);
+      const user = json.data.user as ClientUser;
+      saveSession(json.data.accessToken, user);
       router.replace(homeForRoles(user.roles));
     } catch {
       setError('网络连接失败，请检查网络后重试');
