@@ -48,12 +48,12 @@ export default function ExamMonitorPage() {
   }, []);
 
   const getTimeStatus = (s: Schedule) => {
-    if (!now) return { label: '加载中', color: 'text-gray-400', icon: Clock };
+    if (!now) return { label: '加载中', color: 'text-muted-foreground', icon: Clock };
     const start = new Date(s.examStartAt).getTime();
     const end = new Date(s.examEndAt).getTime();
-    if (now < start) return { label: '未开始', color: 'text-yellow-600', icon: Clock };
-    if (now >= start && now <= end) return { label: '进行中', color: 'text-green-600', icon: MonitorCheck };
-    return { label: '已结束', color: 'text-gray-400', icon: CheckCircle2 };
+    if (now < start) return { label: '未开始', color: 'text-warning', icon: Clock };
+    if (now >= start && now <= end) return { label: '进行中', color: 'text-success', icon: MonitorCheck };
+    return { label: '已结束', color: 'text-muted-foreground', icon: CheckCircle2 };
   };
 
   if (loading) return <div className="text-center py-12 text-lg text-gray-500">加载中...</div>;

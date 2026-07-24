@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { requireRole } from '@/server/auth';
-import { dbOne, dbExec } from '@/server/db';
+import { dbNow, dbOne, dbExec } from '@/server/db';
 import { handler, ok, fail, parseBody } from '@/lib/api';
 import { getScheduleForStudent } from '@/server/exam-security';
 
@@ -13,5 +13,5 @@ export const POST = handler(async (request: Request) => {
   if (!attempt) return fail(404,'考试记录不存在');
   await dbExec(`UPDATE exam_attempts SET last_heartbeat_at=NOW(),updated_at=NOW() WHERE id=$1`,attempt.id);
   await dbExec(`INSERT INTO exam_heartbeats (attempt_id,server_at,client_offset_ms,status,created_at) VALUES ($1,NOW(),$2,$3,NOW())`,attempt.id,body.clientOffsetMs??null,attempt.status==='in_progress'?'ok':'closed');
-  return ok({ status:attempt.status,serverAt:new Date().toISOString(),serverDeadline:attempt.server_deadline });
+  return ok({ status:attempt.status,serverAt:(await dbNow()).toISOString(),serverDeadline:attempt.server_deadline });
 });

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { BookOpenCheck, LogOut } from 'lucide-react';
-import { clearSession, type ClientUser } from '@/lib/session-client';
+import { apiFetch, clearSession, type ClientUser } from '@/lib/session-client';
 import { cn } from '@/lib/utils';
 
 const links = [
@@ -22,6 +22,8 @@ export function StudentTopbar({ user }: { user: ClientUser }) {
   const router = useRouter();
 
   function handleLogout() {
+    // 通知服务端登出(审计留痕),失败不阻塞本地退出。
+    void apiFetch('/api/auth/session', { method: 'DELETE' });
     clearSession();
     router.replace('/login');
   }
@@ -74,6 +76,7 @@ export function StudentTopbar({ user }: { user: ClientUser }) {
                 href={l.href}
                 className={cn(
                   'px-3.5 py-2 rounded-lg text-base font-medium whitespace-nowrap',
+                  'focus:outline-none focus:ring-2 focus:ring-ring',
                   active ? 'bg-primary text-primary-foreground' : 'hover:bg-accent',
                 )}
               >

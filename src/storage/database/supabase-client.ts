@@ -16,6 +16,8 @@ function loadEnv(): void {
 
   try {
     try {
+      // dotenv 是可选依赖,运行时动态加载;缺失时落入下方的 workload identity 分支。
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       require('dotenv').config();
       if (process.env.COZE_SUPABASE_URL && process.env.COZE_SUPABASE_ANON_KEY) {
         envLoaded = true;
@@ -63,8 +65,9 @@ except Exception as e:
     }
 
     envLoaded = true;
-  } catch {
-    // Silently fail
+  } catch (err) {
+    // workload identity 加载失败时保留诊断信息,否则凭据缺失的根因无法排查。
+    console.warn('[supabase-client] loadEnv failed:', (err as Error).message);
   }
 }
 
@@ -100,7 +103,7 @@ function getSupabaseClient(token?: string): SupabaseClient {
     key = serviceRoleKey ?? anonKey;
   }
 
-  const globalOptions: Record<string, any> = {};
+  const globalOptions: { headers?: Record<string, string>; fetch?: typeof fetch } = {};
   if (token) {
     globalOptions.headers = { Authorization: `Bearer ${token}` };
   }

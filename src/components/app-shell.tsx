@@ -10,7 +10,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { clearSession, type ClientUser } from '@/lib/session-client';
+import { apiFetch, clearSession, type ClientUser } from '@/lib/session-client';
 import { cn } from '@/lib/utils';
 
 export interface NavItem {
@@ -43,6 +43,8 @@ export function AppShell({ user, navItems, title, children }: AppShellProps) {
   );
 
   function handleLogout() {
+    // 通知服务端登出(审计留痕),失败不阻塞本地退出。
+    void apiFetch('/api/auth/session', { method: 'DELETE' });
     clearSession();
     router.replace('/login');
   }

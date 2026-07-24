@@ -1,5 +1,5 @@
 import { requireRole } from '@/server/auth';
-import { dbOne, dbQuery } from '@/server/db';
+import { dbNow, dbOne, dbQuery } from '@/server/db';
 import { handler, ok, fail } from '@/lib/api';
 import { assertAttemptOpen, getScheduleForStudent } from '@/server/exam-security';
 
@@ -13,7 +13,8 @@ export const GET = handler(async (request: Request) => {
     `SELECT id,status,server_deadline FROM exam_attempts WHERE schedule_id=$1 AND user_id=$2`, scheduleId,user.id,
   );
   if (!attempt) return fail(409, '请先点击“开始考试”');
-  assertAttemptOpen(attempt, schedule);
+  const now = await dbNow();
+  assertAttemptOpen(attempt, schedule, now.getTime());
 
   const items = await dbQuery<{
     id: string; item_type: string; sort_order: number; score: number; section: string;
@@ -29,7 +30,7 @@ export const GET = handler(async (request: Request) => {
   return ok({
     attemptId: attempt.id,
     scheduleId,
-    serverNow: new Date().toISOString(),
+    serverNow: now.toISOString(),
     serverDeadline: attempt.server_deadline,
     durationMinutes: schedule.duration_minutes,
     items: items.map(item => ({

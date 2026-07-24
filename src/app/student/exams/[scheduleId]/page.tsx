@@ -47,40 +47,65 @@ export default function ExamTakePage() {
   const dirtyRef=useRef(new Set<string>());
   const saveTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
 
+  // 用 ref 承载高频变化的状态,让 flush/submit/定时器引用稳定,避免每答一题重建全部定时器。
+  const payloadRef=useRef<ExamPayload|null>(null);
+  const responsesRef=useRef<Record<string,unknown>>({});
+  const receiptRef=useRef<string|null>(null);
+  const submittingRef=useRef(false);
+  const idemKeyRef=useRef<string|null>(null);
+  useEffect(()=>{payloadRef.current=payload},[payload]);
+  useEffect(()=>{responsesRef.current=responses},[responses]);
+  useEffect(()=>{receiptRef.current=receipt},[receipt]);
+
   const load=useCallback(async()=>{
     setLoading(true);
     const start=await apiFetch<{attemptId:string;serverDeadline:string}>('/api/student/exams/start',{method:'POST',body:{scheduleId}});
-    if(!start.ok){toast.error(start.error??'无法开始考试');setLoading(false);return;}
+    if(!start.ok||!start.data){toast.error(start.error??'无法开始考试');setLoading(false);return;}
     const result=await apiFetch<ExamPayload>(`/api/student/exams/questions?scheduleId=${encodeURIComponent(scheduleId)}`);
     if(!result.ok||!result.data){toast.error(result.error??'试卷加载失败');setLoading(false);return;}
+    if(result.data.attemptId!==start.data.attemptId){toast.error('考试状态异常,请返回列表重试');setLoading(false);return;}
     setPayload(result.data);
     setResponses(result.data.savedResponses??{});
     setServerOffset(new Date(result.data.serverNow).getTime()-Date.now());
+    // 幂等键按 attempt 固定:重复交卷/断网重试时服务端可识别为同一次提交。
+    idemKeyRef.current=`submit-${result.data.attemptId}`;
     setLoading(false);
   },[scheduleId]);
   useEffect(()=>{void load()},[load]);
 
   const flush=useCallback(async()=>{
-    if(!payload||dirtyRef.current.size===0||receipt)return true;
+    const p=payloadRef.current;
+    if(!p||dirtyRef.current.size===0||receiptRef.current)return true;
     const ids=[...dirtyRef.current];
-    const body=ids.map(itemId=>({itemId,response:responses[itemId]??{},workspaceSnapshot:responses[itemId]??{}}));
+    const body=ids.map(itemId=>({itemId,response:responsesRef.current[itemId]??{},workspaceSnapshot:responsesRef.current[itemId]??{}}));
     setSaving(true);
-    const result=await apiFetch<{saved:number}>('/api/student/exams/save',{method:'POST',body:{scheduleId,attemptId:payload.attemptId,responses:body}});
+    const result=await apiFetch<{saved:number}>('/api/student/exams/save',{method:'POST',body:{scheduleId,attemptId:p.attemptId,responses:body}});
     setSaving(false);
     if(result.ok){ids.forEach(id=>dirtyRef.current.delete(id));return true;}
     toast.error('自动保存失败',{description:result.error});return false;
-  },[payload,receipt,responses,scheduleId]);
+  },[scheduleId]);
 
+  // 答题后 1.2s 防抖保存
   useEffect(()=>{
     if(!payload||receipt)return;
     if(saveTimer.current)clearTimeout(saveTimer.current);
     saveTimer.current=setTimeout(()=>void flush(),1200);
     return()=>{if(saveTimer.current)clearTimeout(saveTimer.current)};
   },[responses,payload,receipt,flush]);
+  // 15s 周期兜底保存
   useEffect(()=>{
     if(!payload||receipt)return;
     const timer=setInterval(()=>void flush(),15_000);
     return()=>clearInterval(timer);
+  },[payload,receipt,flush]);
+  // 离开页面/切后台时尽力保存,避免丢失最近作答
+  useEffect(()=>{
+    if(!payload||receipt)return;
+    const onUnload=()=>{void flush()};
+    const onVisibility=()=>{if(document.visibilityState==='hidden')void flush()};
+    window.addEventListener('beforeunload',onUnload);
+    document.addEventListener('visibilitychange',onVisibility);
+    return()=>{window.removeEventListener('beforeunload',onUnload);document.removeEventListener('visibilitychange',onVisibility)};
   },[payload,receipt,flush]);
   useEffect(()=>{
     if(!payload||receipt)return;
@@ -94,15 +119,20 @@ export default function ExamTakePage() {
   },[payload,receipt,serverOffset]);
 
   const submit=useCallback(async()=>{
-    if(!payload||submitting||receipt)return;
-    setSubmitting(true);
-    await flush();
-    const result=await apiFetch<{receipt:string;message:string}>('/api/student/exams/submit',{method:'POST',body:{scheduleId,attemptId:payload.attemptId,idempotencyKey:crypto.randomUUID(),responses:Object.entries(responses).map(([itemId,response])=>({itemId,response,workspaceSnapshot:response}))}});
-    setSubmitting(false);
-    if(!result.ok||!result.data){toast.error('交卷失败',{description:result.error});return;}
-    setReceipt(result.data.receipt);toast.success('交卷成功');
-  },[payload,submitting,receipt,flush,scheduleId,responses]);
-  useEffect(()=>{if(payload&&timeLeft===0&&!receipt&&!submitting)void submit()},[payload,timeLeft,receipt,submitting,submit]);
+    const p=payloadRef.current;
+    // 同步 ref 锁:快速双击/倒计时归零与手动交卷并发时只放行一次。
+    if(!p||submittingRef.current||receiptRef.current)return;
+    submittingRef.current=true;setSubmitting(true);
+    try{
+      await flush();
+      const result=await apiFetch<{receipt:string;message:string}>('/api/student/exams/submit',{method:'POST',body:{scheduleId,attemptId:p.attemptId,idempotencyKey:idemKeyRef.current??`submit-${p.attemptId}`,responses:Object.entries(responsesRef.current).map(([itemId,response])=>({itemId,response,workspaceSnapshot:response}))}});
+      if(!result.ok||!result.data){toast.error('交卷失败',{description:result.error});return;}
+      setReceipt(result.data.receipt);toast.success('交卷成功');
+    }finally{
+      submittingRef.current=false;setSubmitting(false);
+    }
+  },[flush,scheduleId]);
+  useEffect(()=>{if(payload&&timeLeft===0&&!receipt)void submit()},[payload,timeLeft,receipt,submit]);
 
   const change=(itemId:string,value:unknown)=>{setResponses(prev=>({...prev,[itemId]:value}));dirtyRef.current.add(itemId)};
   const count=useMemo(()=>Object.values(responses).filter(answered).length,[responses]);
@@ -110,7 +140,7 @@ export default function ExamTakePage() {
 
   if(loading)return <div className="flex min-h-[60vh] items-center justify-center text-lg text-muted-foreground">正在安全加载试卷…</div>;
   if(!payload)return <div className="mx-auto max-w-lg py-16 text-center"><p className="mb-4 text-lg">无法进入考试，请返回考试列表查看开放时间。</p><Button onClick={()=>router.push('/student/exams')}>返回考试列表</Button></div>;
-  if(receipt)return <div className="mx-auto max-w-xl py-16 text-center"><div className="mb-4 text-6xl">✓</div><h1 className="mb-3 text-2xl font-bold">交卷成功</h1><p className="mb-2 text-muted-foreground">成绩将在学校审核并发布后显示。</p><p className="mb-8 break-all text-xs text-muted-foreground">交卷回执：{receipt}</p><Button size="lg" onClick={()=>router.replace('/student/exams')}>返回考试列表</Button></div>;
+  if(receipt)return <div className="mx-auto max-w-xl py-16 text-center"><div className="mb-4 text-6xl text-success" aria-hidden>✓</div><h1 className="mb-3 text-2xl font-bold">交卷成功</h1><p className="mb-2 text-muted-foreground">成绩将在学校审核并发布后显示。</p><p className="mb-8 break-all text-xs text-muted-foreground">交卷回执：{receipt}</p><Button size="lg" onClick={()=>router.replace('/student/exams')}>返回考试列表</Button></div>;
 
   const item=payload.items[index];
   if(!item)return <div className="py-16 text-center">试卷没有可作答内容，请联系考务人员。</div>;
@@ -118,13 +148,18 @@ export default function ExamTakePage() {
   const options=(item.content.options??{}) as Record<string,string>;
   const current=responses[item.id];
   const selected=typeof current==='string'?current:String((current as {answer?:unknown;selectedOption?:unknown}|undefined)?.answer??(current as {selectedOption?:unknown}|undefined)?.selectedOption??'');
+  const lowTime=timeLeft<300;
 
   return <div className="mx-auto max-w-5xl space-y-4 pb-28">
     <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/95 px-5 py-3 backdrop-blur">
-      <strong>第 {index+1}/{payload.items.length} 项</strong><span>已完成 {count}/{payload.items.length}</span><span className="text-sm text-muted-foreground">{saving?'正在保存…':'已启用自动保存'}</span><strong className={timeLeft<300?'text-red-600':'text-primary'}>{format(timeLeft)}</strong>
+      <strong>第 {index+1}/{payload.items.length} 项</strong><span>已完成 {count}/{payload.items.length}</span><span className="text-sm text-muted-foreground">{saving?'正在保存…':'已启用自动保存'}</span>
+      <span className="flex items-center gap-2">
+        {lowTime&&<span className="text-sm font-medium text-destructive" role="alert">⚠ 时间不多了，请检查未答项目</span>}
+        <strong className={lowTime?'text-destructive':'text-primary'} aria-label="剩余时间">{format(timeLeft)}</strong>
+      </span>
     </div>
     <Card><CardContent className="space-y-6 p-6 sm:p-8">
-      <div className="flex items-start justify-between gap-4"><div><span className="mb-2 inline-block rounded bg-primary/10 px-2 py-1 text-sm text-primary">{item.itemType==='question'?(questionType==='true_false'?'判断题':'单选题'):'实操题'}</span><h1 className="text-xl font-semibold leading-relaxed">{String(item.content.stem??item.content.title??'')}</h1>{item.content.instructions&&<p className="mt-2 text-base text-muted-foreground">{String(item.content.instructions)}</p>}</div><span className="shrink-0 text-sm text-muted-foreground">{item.score}分</span></div>
+      <div className="flex items-start justify-between gap-4"><div><span className="mb-2 inline-block rounded bg-primary/10 px-2 py-1 text-sm text-primary">{item.itemType==='question'?(questionType==='true_false'?'判断题':'单选题'):'实操题'}</span><h1 className="text-xl font-semibold leading-relaxed">{String(item.content.stem??item.content.title??'')}</h1>{item.content.instructions?<p className="mt-2 text-base text-muted-foreground">{String(item.content.instructions)}</p>:null}</div><span className="shrink-0 text-sm text-muted-foreground">{item.score}分</span></div>
       {item.itemType==='question'?<div className="space-y-3">{Object.entries(questionType==='true_false'?{A:'正确',B:'错误'}:options).map(([key,text])=><button key={key} type="button" onClick={()=>change(item.id,key)} className={`w-full rounded-lg border-2 p-4 text-left text-lg ${selected===key?'border-primary bg-primary/5':'hover:border-primary/40'}`}><strong className="mr-3 text-primary">{key}.</strong>{text}</button>)}</div>:<ExamTaskInput content={item.content} value={current} onChange={value=>change(item.id,value)} />}
     </CardContent></Card>
     <div className="flex items-center justify-between gap-3"><Button size="lg" variant="outline" disabled={index===0} onClick={()=>setIndex(i=>i-1)}>上一项</Button><div className="hidden max-w-2xl flex-wrap justify-center gap-1 md:flex">{payload.items.map((x,i)=><button key={x.id} onClick={()=>setIndex(i)} className={`h-9 min-w-9 rounded px-2 text-sm ${i===index?'bg-primary text-primary-foreground':answered(responses[x.id])?'bg-primary/15 text-primary':'bg-muted'}`}>{i+1}</button>)}</div><Button size="lg" disabled={index===payload.items.length-1} onClick={()=>setIndex(i=>i+1)}>下一项</Button></div>

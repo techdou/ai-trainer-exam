@@ -59,7 +59,11 @@ export async function getScheduleForStudent(scheduleId: string, userId: string):
   );
 }
 
-export function assertScheduleCanStart(schedule: ScheduleAccessRow, now = Date.now()): void {
+/**
+ * 以下时间断言的 now 一律要求调用方传入数据库时间(dbNow() 或事务内 SELECT now()),
+ * 进程时间(Date.now())在多实例部署或时钟漂移时会破坏考试公平性。
+ */
+export function assertScheduleCanStart(schedule: ScheduleAccessRow, now: number): void {
   if (!ACTIVE_EXAM_STATUSES.has(schedule.status)) throw new ApiError(403, '考试尚未发布');
   const start = new Date(schedule.exam_start_at).getTime();
   const end = new Date(schedule.exam_end_at).getTime();
@@ -69,13 +73,13 @@ export function assertScheduleCanStart(schedule: ScheduleAccessRow, now = Date.n
   if (now > latestEntry) throw new ApiError(409, '已超过迟到入场时间');
 }
 
-export function attemptDeadline(schedule: ScheduleAccessRow, startedAt = Date.now()): Date {
+export function attemptDeadline(schedule: ScheduleAccessRow, startedAt: number): Date {
   const scheduleEnd = new Date(schedule.exam_end_at).getTime();
   const durationEnd = startedAt + schedule.duration_minutes * 60_000;
   return new Date(Math.min(scheduleEnd, durationEnd));
 }
 
-export function assertAttemptOpen(attempt: { status: string; server_deadline: Date | string | null }, schedule: ScheduleAccessRow, now = Date.now()): void {
+export function assertAttemptOpen(attempt: { status: string; server_deadline: Date | string | null }, schedule: ScheduleAccessRow, now: number): void {
   if (!['not_started', 'in_progress'].includes(attempt.status)) throw new ApiError(409, '考试已经提交，不能继续作答');
   const deadline = attempt.server_deadline ? new Date(attempt.server_deadline).getTime() : new Date(schedule.exam_end_at).getTime();
   const graceEnd = deadline + schedule.submit_grace_seconds * 1000;

@@ -199,10 +199,10 @@ export default function ExamSchedulesPage() {
               </div>
               <div className="flex items-center gap-3">
                 <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  s.status === 'published' ? 'bg-green-50 text-green-700' :
-                  s.status === 'draft' ? 'bg-yellow-50 text-yellow-700' :
-                  s.status === 'in_progress' ? 'bg-blue-50 text-blue-700' :
-                  'bg-gray-100 text-gray-600'
+                  s.status === 'published' ? 'bg-success/10 text-success' :
+                  s.status === 'draft' ? 'bg-warning/10 text-warning' :
+                  s.status === 'in_progress' ? 'bg-primary/10 text-primary' :
+                  'bg-muted text-muted-foreground'
                 }`}>
                   {statusLabel[s.status] || s.status}
                 </span>

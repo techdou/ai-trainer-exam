@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/session-client';
+import { Clock, PlayCircle, CheckCircle2, RotateCcw } from 'lucide-react';
 
 interface ExamInfo {
   id: string;
@@ -18,12 +19,24 @@ export default function ExamsPage() {
   const router = useRouter();
   const [exams, setExams] = useState<ExamInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadExams = () => {
+    setLoading(true);
+    setError(null);
     apiFetch<ExamInfo[]>('/api/student/exams').then(r => {
-      if (r.ok && r.data) setExams(r.data);
+      if (r.ok && r.data) {
+        setExams(r.data);
+      } else {
+        setError(r.error || '加载考试失败，请稍后重试');
+      }
       setLoading(false);
     });
+  };
+
+  useEffect(() => {
+    loadExams();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const formatTime = (iso: string) => {
@@ -36,15 +49,31 @@ export default function ExamsPage() {
 
   const statusBadge = (exam: ExamInfo) => {
     if (exam.attempt?.status === 'submitted') {
-      return <span className="px-3 py-1 rounded-lg bg-gray-200 text-gray-700 font-medium text-base">已交卷</span>;
+      return (
+        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-muted text-muted-foreground font-medium text-base">
+          <CheckCircle2 className="w-4 h-4" aria-hidden /> 已交卷
+        </span>
+      );
     }
     if (exam.timeStatus === 'upcoming') {
-      return <span className="px-3 py-1 rounded-lg bg-blue-100 text-blue-700 font-medium text-base">未开始</span>;
+      return (
+        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-muted text-muted-foreground font-medium text-base">
+          <Clock className="w-4 h-4" aria-hidden /> 未开始
+        </span>
+      );
     }
     if (exam.timeStatus === 'open') {
-      return <span className="px-3 py-1 rounded-lg bg-green-100 text-green-700 font-medium text-base">进行中</span>;
+      return (
+        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-success/10 text-success font-medium text-base">
+          <PlayCircle className="w-4 h-4" aria-hidden /> 进行中
+        </span>
+      );
     }
-    return <span className="px-3 py-1 rounded-lg bg-gray-200 text-gray-700 font-medium text-base">已结束</span>;
+    return (
+      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-muted text-muted-foreground font-medium text-base">
+        <CheckCircle2 className="w-4 h-4" aria-hidden /> 已结束
+      </span>
+    );
   };
 
   return (
@@ -60,11 +89,21 @@ export default function ExamsPage() {
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-lg text-gray-500">加载中…</div>
+        <div className="text-center py-12 text-lg text-muted-foreground">加载中…</div>
+      ) : error ? (
+        <div className="text-center py-12">
+          <p className="text-lg text-destructive mb-3">{error}</p>
+          <button
+            onClick={loadExams}
+            className="inline-flex items-center gap-1 px-5 py-2.5 rounded-lg border-2 border-primary text-primary font-medium hover:bg-secondary transition-colors"
+          >
+            <RotateCcw className="w-4 h-4" aria-hidden /> 重试
+          </button>
+        </div>
       ) : exams.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-lg text-gray-500">暂无考试安排</p>
-          <p className="text-sm text-gray-400 mt-2">请等待老师安排考试</p>
+          <p className="text-lg text-muted-foreground">暂无考试安排</p>
+          <p className="text-base text-muted-foreground mt-2">请等待老师安排考试</p>
         </div>
       ) : (
         <div className="grid gap-4">

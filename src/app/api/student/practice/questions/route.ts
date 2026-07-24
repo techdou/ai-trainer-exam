@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireRole } from '@/server/auth';
 import { assertPracticeUnlocked } from '@/server/exam-security';
 import { listPracticeQuestionsForStudent } from '@/server/question-bank';
-import { catchError } from '@/lib/api';
+import { catchError, ok } from '@/lib/api';
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
     const rows = await listPracticeQuestionsForStudent({ module: module2, limit, organizationId: user.organizationId });
 
-    return Response.json({ success: true, data: rows });
+    return ok(rows);
   } catch (e) {
     return catchError(e);
   }

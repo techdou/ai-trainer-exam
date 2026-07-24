@@ -35,10 +35,10 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  draft: { label: '草稿', color: 'bg-gray-100 text-gray-600' },
-  pending_review: { label: '待审核', color: 'bg-yellow-50 text-yellow-700' },
-  published: { label: '已发布', color: 'bg-green-50 text-green-700' },
-  retired: { label: '已下架', color: 'bg-red-50 text-red-700' },
+  draft: { label: '草稿', color: 'bg-muted text-muted-foreground' },
+  pending_review: { label: '待审核', color: 'bg-warning/10 text-warning' },
+  published: { label: '已发布', color: 'bg-success/10 text-success' },
+  retired: { label: '已下架', color: 'bg-destructive/10 text-destructive' },
 };
 
 export default function ExamBankPage() {
@@ -83,7 +83,7 @@ export default function ExamBankPage() {
       ) : (
         <div className="space-y-2">
           {questions.map(q => {
-            const st = STATUS_LABELS[q.review_status] || { label: q.review_status, color: 'bg-gray-100 text-gray-600' };
+            const st = STATUS_LABELS[q.review_status] || { label: q.review_status, color: 'bg-muted text-muted-foreground' };
             return (
               <Card key={q.id}>
                 <CardContent className="py-3 flex items-start gap-3">

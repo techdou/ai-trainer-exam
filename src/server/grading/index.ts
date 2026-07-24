@@ -26,21 +26,25 @@ const versionOf = (grader: { id: string; version: string }): string => `${grader
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 const asString = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
+/** 记录型标签比较的统一归一:两端 trim,避免提交带尾随空格被误判。 */
+const normLabel = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
 const unique = <T>(values: T[]): T[] => [...new Set(values)];
 
 function invalid(grader: { id: string; version: string }, message = '提交内容格式不正确'): GraderResult {
   return { correct: false, score: 0, feedback: message, graderVersion: versionOf(grader), details: { invalid: true } };
 }
 
-// 1. 单选题
+// 1. 单选题。选项键严格限定单个 A-Z 字母,防止把文本型 answer_key 误判为合法选项。
+const OPTION_KEY = /^[A-Z]$/;
 export interface SingleChoiceSubmission { selectedOption: string }
 export interface SingleChoiceAnswerKey { correctOption: string }
 export const singleChoiceGrader: Grader<SingleChoiceSubmission, SingleChoiceAnswerKey> = {
-  id: 'single_choice', version: '2.0.0',
+  id: 'single_choice', version: '2.1.0',
   grade(submission, answerKey) {
     const selected = asString(submission?.selectedOption).toUpperCase();
     const expected = asString(answerKey?.correctOption).toUpperCase();
-    if (!selected || !expected) return invalid(singleChoiceGrader);
+    if (!OPTION_KEY.test(expected)) return invalid(singleChoiceGrader, '标准答案选项键配置异常');
+    if (!OPTION_KEY.test(selected)) return invalid(singleChoiceGrader);
     const correct = selected === expected;
     return { correct, score: correct ? 1 : 0, feedback: correct ? '做对了！' : `选错了，正确答案是 ${expected}`, graderVersion: versionOf(singleChoiceGrader) };
   },
@@ -95,9 +99,9 @@ function parseStrictNumber(value: unknown): number | null {
   if (typeof value !== 'string') return null;
   const text = value.trim().replace(/，/g, ',');
   if (!STRICT_NUMBER.test(text)) return null;
-  const percentage = text.endsWith('%');
+  // 百分比与纯数字同尺度比较(50% 按 50 处理),题库编辑需保证两端单位一致。
   const n = Number(text.replace(/%$/, ''));
-  return Number.isFinite(n) ? (percentage ? n : n) : null;
+  return Number.isFinite(n) ? n : null;
 }
 export const statsTableGrader: Grader<StatsTableSubmission, StatsTableAnswerKey> = {
   id: 'stats_table', version: '2.0.0',
@@ -139,7 +143,7 @@ export const fileClassifyGrader: Grader<FileClassifySubmission, FileClassifyAnsw
     let correctCount = 0;
     const wrong: string[] = [];
     for (const id of keys) {
-      if (submission.classifications[id] === answerKey.correctClassifications[id]) correctCount++;
+      if (normLabel(submission.classifications[id]) === normLabel(answerKey.correctClassifications[id])) correctCount++;
       else wrong.push(`${id} 分类不正确`);
     }
     const extras = Object.keys(submission.classifications).filter(k => !keys.includes(k));
@@ -360,7 +364,7 @@ export const textSentimentGrader: Grader<TextSentimentSubmission, TextSentimentA
   grade(submission, answerKey) {
     if (!isRecord(submission?.sentiments) || !isRecord(answerKey?.correctSentiments)) return invalid(textSentimentGrader);
     const keys = Object.keys(answerKey.correctSentiments); if (!keys.length) return invalid(textSentimentGrader, '标准答案未配置');
-    const wrong = keys.filter(k => submission.sentiments[k] !== answerKey.correctSentiments[k]);
+    const wrong = keys.filter(k => normLabel(submission.sentiments[k]) !== normLabel(answerKey.correctSentiments[k]));
     const score = (keys.length - wrong.length) / keys.length;
     return { correct: !wrong.length, score, feedback: !wrong.length ? '做对了！好评、中评、差评均标注正确。' : `${wrong.length} 条评论标注不正确`, graderVersion: versionOf(textSentimentGrader), details: { wrongItemIds: wrong } };
   },
@@ -412,7 +416,7 @@ export const dataLabelingGrader: Grader<DataLabelingSubmission, DataLabelingAnsw
   grade(submission, answerKey) {
     if (!isRecord(submission?.labels) || !isRecord(answerKey?.correctLabels)) return invalid(dataLabelingGrader);
     const keys = Object.keys(answerKey.correctLabels); if (!keys.length) return invalid(dataLabelingGrader, '标准答案未配置');
-    const wrong = keys.filter(k => submission.labels[k] !== answerKey.correctLabels[k]);
+    const wrong = keys.filter(k => normLabel(submission.labels[k]) !== normLabel(answerKey.correctLabels[k]));
     return { correct: !wrong.length, score: (keys.length - wrong.length) / keys.length, feedback: !wrong.length ? '全部标注正确。' : `${wrong.length} 项标注不正确`, graderVersion: versionOf(dataLabelingGrader), details: { wrongItemIds: wrong } };
   },
 };
@@ -439,7 +443,8 @@ export const compositeTaskGrader: Grader<CompositeTaskSubmission, CompositeTaskA
     if (!isRecord(submission?.subtasks) || !isRecord(answerKey?.subtasks)) return invalid(compositeTaskGrader);
     let totalWeight = 0, weighted = 0; const feedback: string[] = [], details: Record<string, unknown> = {};
     for (const [id, cfg] of Object.entries(answerKey.subtasks)) {
-      if (!isRecord(cfg) || typeof cfg.weight !== 'number' || typeof cfg.graderId !== 'string') continue;
+      // 禁止子任务再次路由到综合任务评分器,防止递归加权计分。
+      if (!isRecord(cfg) || typeof cfg.weight !== 'number' || typeof cfg.graderId !== 'string' || cfg.graderId === compositeTaskGrader.id) continue;
       totalWeight += Math.max(0, cfg.weight);
       const result = gradeByType(cfg.graderId, submission.subtasks[id], cfg.answerKey);
       weighted += result.score * Math.max(0, cfg.weight); details[id] = result;
@@ -480,7 +485,43 @@ export function gradeTaskByType(taskType: string, submission: unknown, answerKey
 export function gradeByType(graderId: string, submission: unknown, answerKey: unknown): GraderResult {
   const grader = graderRegistry.get(graderId);
   if (!grader) return { correct: false, score: 0, feedback: `未知评分器：${graderId}`, graderVersion: 'unknown@0.0.0' };
-  try { return grader.grade(submission, answerKey); }
+  try {
+    const result = grader.grade(submission, answerKey);
+    // 契约兜底:无论评分器内部如何计算,出口分数强制落在 0..1。
+    return { ...result, score: clamp(result.score) };
+  }
   catch { return { correct: false, score: 0, feedback: '评分输入格式不正确', graderVersion: versionOf(grader), details: { invalid: true } }; }
 }
 export function getRegisteredGraderIds(): string[] { return [...graderRegistry.keys()]; }
+
+/* ---------- 学员作答与题库 answer_key 的共享归一(练习/考试两个入口必须使用同一套) ---------- */
+
+const TRUE_TOKENS = new Set(['A', 'TRUE', 'T', 'YES', 'Y', '1', '正确', '对', '是']);
+
+/** 学员判断题作答归一为布尔。练习与考试入口共用,保证同一答案判定一致。 */
+export function normalizeTrueFalseAnswer(raw: unknown): boolean {
+  if (typeof raw === 'boolean') return raw;
+  return TRUE_TOKENS.has(String(raw ?? '').trim().toUpperCase());
+}
+
+/** 从题库 answer_key(JSONB 形态不一:布尔/字符串/对象)解析判断题标准答案,无法解析返回 null。 */
+export function parseTrueFalseAnswerKey(raw: unknown): boolean | null {
+  if (typeof raw === 'boolean') return raw;
+  if (isRecord(raw) && typeof raw.correctAnswer === 'boolean') return raw.correctAnswer;
+  if (typeof raw === 'string') {
+    const text = raw.trim().replace(/^["']|["']$/g, '');
+    const upper = text.toUpperCase();
+    if (TRUE_TOKENS.has(upper)) return true;
+    // 判断题常以 A=正确 / B=错误 存储;FALSE/F/错误/错/否/B 均为假。
+    if (['FALSE', 'F', 'NO', 'N', '0', 'B', '错误', '错', '否'].includes(upper)) return false;
+  }
+  return null;
+}
+
+/** 从题库 answer_key 解析单选题正确选项键(单个 A-Z 字母),无法解析返回 null。 */
+export function parseSingleChoiceAnswerKey(raw: unknown): string | null {
+  const value: unknown = isRecord(raw) ? (raw.correctOption ?? raw.letter) : raw;
+  if (typeof value !== 'string') return null;
+  const text = value.trim().replace(/^["']|["']$/g, '').toUpperCase();
+  return OPTION_KEY.test(text) ? text : null;
+}

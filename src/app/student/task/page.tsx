@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/session-client';
 import { toast } from 'sonner';
+import { Image as ImageIcon, Music } from 'lucide-react';
 
 // ─── 类型 ──────────────────────────────────────────────────────
 
@@ -169,7 +170,7 @@ export default function TaskPage() {
                 <span className="text-lg font-semibold">{task.title}</span>
                 <DifficultyBadge level={task.difficulty} />
               </div>
-              <p className="text-muted-foreground line-clamp-1 text-sm">
+              <p className="text-muted-foreground line-clamp-1 text-base">
                 {task.instructions}
               </p>
             </div>
@@ -393,7 +394,7 @@ function ExcelDeleteRowsTask({ config, submitting, onSubmit }: TaskProps) {
         <table className="w-full text-base">
           <thead>
             <tr className="bg-secondary/60 border-b">
-              <th className="px-3 py-2 text-center font-medium" style={{ width: 48 }}>删?</th>
+              <th className="px-3 py-2 text-center font-medium" style={{ width: 48 }}>删除</th>
               {columns.map((col, ci) => (
                 <th key={ci} className="px-3 py-2 text-left font-medium">{col}</th>
               ))}
@@ -644,13 +645,13 @@ function ImageCleaningTask({ config, submitting, onSubmit }: TaskProps) {
               }`}
             >
               <div className="mb-3 overflow-hidden rounded-lg border bg-muted">
-                {img.url ? <img src={img.url} alt={img.description} className="h-36 w-full object-cover" /> : <div className="flex h-36 items-center justify-center text-4xl">🖼</div>}
+                {img.url ? <img src={img.url} alt={img.description} className="h-36 w-full object-cover" /> : <div className="flex h-36 flex-col items-center justify-center gap-1 text-muted-foreground"><ImageIcon className="w-10 h-10" aria-hidden /><span className="text-sm">图片占位</span></div>}
               </div>
               <p className="mb-3 text-sm font-medium">{img.description}</p>
               <div className="flex gap-2">
                 <button
                   onClick={() => handleDecide(img.id, 'keep')}
-                  className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
+                  className={`flex min-h-[44px] flex-1 items-center justify-center rounded-lg py-2 text-sm font-medium transition-colors ${
                     decision === 'keep'
                       ? 'bg-success text-success-foreground'
                       : 'bg-secondary hover:bg-secondary/70 text-secondary-foreground'
@@ -660,7 +661,7 @@ function ImageCleaningTask({ config, submitting, onSubmit }: TaskProps) {
                 </button>
                 <button
                   onClick={() => handleDecide(img.id, 'discard')}
-                  className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
+                  className={`flex min-h-[44px] flex-1 items-center justify-center rounded-lg py-2 text-sm font-medium transition-colors ${
                     decision === 'discard'
                       ? 'bg-destructive text-destructive-foreground'
                       : 'bg-secondary hover:bg-secondary/70 text-secondary-foreground'
@@ -718,7 +719,7 @@ function TextSentimentTask({ config, submitting, onSubmit }: TaskProps) {
                   <button
                     key={label}
                     onClick={() => handleSelect(t.id, label)}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                    className={`flex min-h-[44px] items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                       selected
                         ? labelColors[label] ?? 'bg-primary text-primary-foreground'
                         : 'bg-secondary hover:bg-secondary/70 text-secondary-foreground'
@@ -819,7 +820,7 @@ function ImageAnnotationTask({ config, submitting, onSubmit }: TaskProps) {
           <button
             key={label}
             onClick={() => setCurrentLabel(label)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`flex min-h-[44px] items-center justify-center rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
               currentLabel === label
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-secondary text-secondary-foreground hover:bg-secondary/70'
@@ -848,8 +849,8 @@ function ImageAnnotationTask({ config, submitting, onSubmit }: TaskProps) {
         )}
         {!imageUrl && (
           <div className="flex min-h-[300px] items-center justify-center text-muted-foreground">
-            <div className="text-center">
-              <p className="mb-2 text-4xl">🖼</p>
+            <div className="flex flex-col items-center gap-1 text-center">
+              <ImageIcon className="w-10 h-10" aria-hidden />
               <p className="text-sm">图片区域 - 在此处拖拽绘制标注框</p>
             </div>
           </div>
@@ -879,7 +880,7 @@ function ImageAnnotationTask({ config, submitting, onSubmit }: TaskProps) {
               <button
                 key={idx}
                 onClick={() => removeBox(boxes.indexOf(box))}
-                className="bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg px-3 py-1 text-xs transition-colors"
+                className="flex min-h-[44px] items-center justify-center bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg px-3 py-1 text-xs transition-colors"
               >
                 {box.label} ×
               </button>
@@ -917,8 +918,8 @@ function AudioTranscriptionTask({ config, submitting, onSubmit }: TaskProps) {
           </audio>
         ) : (
           <div className="flex items-center justify-center py-8">
-            <div className="text-center">
-              <p className="mb-2 text-4xl">🎵</p>
+            <div className="flex flex-col items-center gap-1 text-center">
+              <Music className="w-10 h-10 text-muted-foreground" aria-hidden />
               <p className="text-muted-foreground text-sm">音频区域 - 请听音频并转写</p>
             </div>
           </div>

@@ -93,10 +93,10 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full h-14 rounded-lg bg-primary text-primary-foreground text-lg font-semibold hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-60 flex items-center justify-center gap-2"
+            className="w-full h-14 rounded-lg bg-primary text-primary-foreground text-lg font-semibold tracking-wider hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-60 flex items-center justify-center gap-2"
           >
             {loading && <Loader2 className="w-5 h-5 animate-spin" aria-hidden />}
-            {loading ? '正在登录…' : '登 录'}
+            {loading ? '正在登录…' : '登录'}
           </button>
 
           <p className="text-sm text-muted-foreground text-center">

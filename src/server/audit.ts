@@ -34,8 +34,9 @@ export async function insertAudit(log: AuditLogInput): Promise<void> {
       log.details ? JSON.stringify({ message: log.details }) : JSON.stringify({}),
       log.organizationId ?? null,
     );
-  } catch {
-    // 审计日志失败不应阻断业务流程
+  } catch (err) {
+    // 审计日志失败不应阻断业务流程,但必须留痕,便于事后排查审计缺口。
+    console.error('[audit] insert failed:', (err as Error).message, log.action, log.entityType, log.entityId);
   }
 }
 

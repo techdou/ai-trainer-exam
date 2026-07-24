@@ -138,15 +138,17 @@ export async function searchQuestions(params: QuestionSearchParams): Promise<Que
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  // question_items VIEW 的 DDL 不在仓库迁移内,无法保证其过滤软删;在查询层显式兜底。
+  const softDeleteGuard = where ? `${where} AND deleted_at IS NULL` : 'WHERE deleted_at IS NULL';
 
   const countRes = await dbOne<{ count: string }>(
-    `SELECT count(*)::text as count FROM question_items ${where}`,
+    `SELECT count(*)::text as count FROM question_items ${softDeleteGuard}`,
     ...args,
   );
   const total = parseInt(countRes?.count ?? '0', 10);
 
   const items = await dbQuery<QuestionRow>(
-    `SELECT * FROM question_items ${where} ORDER BY created_at DESC LIMIT $${argIdx++} OFFSET $${argIdx++}`,
+    `SELECT * FROM question_items ${softDeleteGuard} ORDER BY created_at DESC LIMIT $${argIdx++} OFFSET $${argIdx++}`,
     ...args,
     pageSize,
     offset,
@@ -159,7 +161,7 @@ export async function searchQuestions(params: QuestionSearchParams): Promise<Que
  * 根据 ID 获取题目（通过 VIEW）
  */
 export async function getQuestionById(id: string): Promise<QuestionRow | null> {
-  return dbOne<QuestionRow>('SELECT * FROM question_items WHERE id = $1', id);
+  return dbOne<QuestionRow>('SELECT * FROM question_items WHERE id = $1 AND deleted_at IS NULL', id);
 }
 
 // ============================================================

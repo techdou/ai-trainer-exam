@@ -70,12 +70,12 @@ function getEntityLabel(entityType: string | null): string {
 }
 
 function getActionColor(action: string): string {
-  if (action.includes('create') || action.includes('import')) return 'bg-green-50 text-green-700';
-  if (action.includes('update') || action.includes('adjust')) return 'bg-blue-50 text-blue-700';
-  if (action.includes('delete')) return 'bg-red-50 text-red-700';
-  if (action.includes('submit') || action.includes('grade') || action.includes('publish')) return 'bg-purple-50 text-purple-700';
-  if (action.includes('login') || action.includes('logout')) return 'bg-gray-50 text-gray-700';
-  return 'bg-gray-50 text-gray-700';
+  if (action.includes('create') || action.includes('import')) return 'bg-success/10 text-success';
+  if (action.includes('update') || action.includes('adjust')) return 'bg-primary/10 text-primary';
+  if (action.includes('delete')) return 'bg-destructive/10 text-destructive';
+  if (action.includes('submit') || action.includes('grade') || action.includes('publish')) return 'bg-warning/10 text-warning';
+  if (action.includes('login') || action.includes('logout')) return 'bg-muted text-muted-foreground';
+  return 'bg-muted text-muted-foreground';
 }
 
 export default function AuditPage() {

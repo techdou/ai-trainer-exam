@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { requireRole } from '@/server/auth';
-import { dbOne, dbTx } from '@/server/db';
+import { dbNow, dbOne, dbTx } from '@/server/db';
 import { handler, ok, parseBody, fail } from '@/lib/api';
 import { assertScheduleCanStart, attemptDeadline, getScheduleForStudent } from '@/server/exam-security';
 
@@ -12,6 +12,7 @@ export const POST = handler(async (request: Request) => {
   const schedule = await getScheduleForStudent(scheduleId, user.id);
   if (!schedule) return fail(404, '考试不存在或您未被安排参加');
 
+  const now = (await dbNow()).getTime();
   const existing = await dbOne<{ id: string; status: string; server_deadline: Date | null }>(
     `SELECT id,status,server_deadline FROM exam_attempts WHERE schedule_id=$1 AND user_id=$2`,
     scheduleId, user.id,
@@ -19,14 +20,14 @@ export const POST = handler(async (request: Request) => {
   if (existing) {
     if (existing.status === 'in_progress') {
       const deadline = existing.server_deadline ? new Date(existing.server_deadline).getTime() : new Date(schedule.exam_end_at).getTime();
-      if (Date.now() > deadline + schedule.submit_grace_seconds * 1000) return fail(409, '考试已结束，请联系考务人员处理');
+      if (now > deadline + schedule.submit_grace_seconds * 1000) return fail(409, '考试已结束，请联系考务人员处理');
       return ok({ attemptId: existing.id, resumed: true, serverDeadline: existing.server_deadline });
     }
     return fail(409, '该考试已经提交，不能再次开始');
   }
 
-  assertScheduleCanStart(schedule);
-  const deadline = attemptDeadline(schedule);
+  assertScheduleCanStart(schedule, now);
+  const deadline = attemptDeadline(schedule, now);
   const attemptId = await dbTx(async client => {
     const result = await client.query<{ id: string }>(
       `INSERT INTO exam_attempts

@@ -59,7 +59,7 @@ export default function CohortsPage() {
     }
   };
 
-  if (loading) return <div className="text-center py-12 text-lg text-gray-500">加载中...</div>;
+  if (loading) return <div className="text-center py-12 text-lg text-muted-foreground">加载中...</div>;
 
   return (
     <div>
@@ -100,7 +100,7 @@ export default function CohortsPage() {
       )}
 
       <div className="space-y-3">
-        {cohorts.length === 0 && <div className="text-center py-12 text-gray-500">暂无班级数据</div>}
+        {cohorts.length === 0 && <div className="text-center py-12 text-muted-foreground">暂无班级数据</div>}
         {cohorts.map(c => (
           <Card key={c.id}>
             <CardContent className="py-4 flex items-center justify-between">
@@ -110,7 +110,7 @@ export default function CohortsPage() {
                 </div>
                 <div>
                   <div className="text-lg font-medium">{c.name}</div>
-                  <div className="text-base text-gray-500">
+                  <div className="text-base text-muted-foreground">
                     {c.organizationName} · {c.studentCount} 名学员
                   </div>
                 </div>

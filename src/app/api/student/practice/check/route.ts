@@ -4,7 +4,7 @@ import { assertPracticeUnlocked } from '@/server/exam-security';
 import { dbExec, dbOne } from '@/server/db';
 import { insertAudit } from '@/server/audit';
 import { catchError, fail, ok, parseBody } from '@/lib/api';
-import { gradeByType } from '@/server/grading';
+import { gradeByType, normalizeTrueFalseAnswer, parseSingleChoiceAnswerKey, parseTrueFalseAnswerKey } from '@/server/grading';
 const schema=z.object({questionId:z.string().uuid(),answer:z.union([z.string(),z.boolean()]).optional(),userAnswer:z.union([z.string(),z.boolean()]).optional()});
 export async function POST(request:Request){
  try{
@@ -15,11 +15,13 @@ export async function POST(request:Request){
   if(!q)return fail(404,'题目不存在或未发布');
   let answerKey:unknown,submission:unknown;
   if(q.question_type==='true_false'){
-   const raw=q.answer_key as unknown; const correct=typeof raw==='boolean'?raw:String(raw).replace(/"/g,'').trim().toUpperCase()==='A'||String(raw).toLowerCase()==='true';
-   answerKey={correctAnswer:correct}; const x=typeof finalAnswer==='boolean'?finalAnswer:['A','TRUE','正确','对'].includes(String(finalAnswer).trim().toUpperCase());submission={answer:x};
+   const correct=parseTrueFalseAnswerKey(q.answer_key);
+   if(correct===null)return fail(500,'题目答案配置异常，请联系老师');
+   answerKey={correctAnswer:correct};submission={answer:normalizeTrueFalseAnswer(finalAnswer)};
   }else{
-   const raw=typeof q.answer_key==='string'?q.answer_key:(q.answer_key as {correctOption?:unknown;letter?:unknown})?.correctOption??(q.answer_key as {letter?:unknown})?.letter??q.answer_key;
-   answerKey={correctOption:String(raw).replace(/"/g,'').trim().toUpperCase()};submission={selectedOption:String(finalAnswer).trim().toUpperCase()};
+   const key=parseSingleChoiceAnswerKey(q.answer_key);
+   if(!key)return fail(500,'题目答案配置异常，请联系老师');
+   answerKey={correctOption:key};submission={selectedOption:String(finalAnswer).trim().toUpperCase()};
   }
   const graded=gradeByType(q.question_type==='true_false'?'true_false':'single_choice',submission,answerKey); const score=graded.correct?1:0;
   await dbExec(`INSERT INTO practice_attempts(user_id,item_type,item_id,status,score,max_score,passed,feedback,workspace_snapshot,operation_log,engine_version,submitted_at,created_at,updated_at)

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { ApiError, requireRole } from '@/server/auth';
 import { dbTx } from '@/server/db';
 import { handler, ok, fail, parseBody } from '@/lib/api';
-import { gradeByType } from '@/server/grading';
+import { gradeByType, normalizeTrueFalseAnswer } from '@/server/grading';
 import { getScheduleForStudent } from '@/server/exam-security';
 
 const schema = z.object({
@@ -21,14 +21,12 @@ function stable(value: unknown): string {
   return JSON.stringify(value);
 }
 function hash(value: unknown): string { return createHash('sha256').update(stable(value)).digest('hex'); }
-function normalizeQuestionResponse(questionType: string, response: unknown): unknown {
+function normalizeQuestionResponse(graderId: string, response: unknown): unknown {
   const raw = typeof response === 'string' ? response : (response as { answer?: unknown; selectedOption?: unknown } | null)?.answer ?? (response as { selectedOption?: unknown } | null)?.selectedOption;
-  if (questionType === 'true_false') {
-    if (typeof raw === 'boolean') return { answer: raw };
-    const text = String(raw ?? '').trim().toUpperCase();
-    return { answer: text === 'A' || text === 'TRUE' || text === '正确' };
-  }
-  return { selectedOption: String(raw ?? '').trim().toUpperCase() };
+  if (graderId === 'true_false') return { answer: normalizeTrueFalseAnswer(raw) };
+  if (graderId === 'single_choice') return { selectedOption: String(raw ?? '').trim().toUpperCase() };
+  // 未知题型不归一,原样交给评分器判 invalid,绝不默认按单选处理。
+  return response ?? {};
 }
 function sectionColumn(section: string): 'theory'|'cleaning'|'image_annotation'|'text_annotation'|'audio'|'statistics' {
   if (section === 'theory') return 'theory';
@@ -62,8 +60,10 @@ export const POST = handler(async (request: Request) => {
       throw new ApiError(409, '考试已经提交，不能重复交卷');
     }
     if (attempt.status !== 'in_progress') throw new ApiError(409, '考试状态不允许交卷');
+    // 宽限校验使用事务内数据库时间,与“考试计时以数据库时间为唯一权威”的约定一致。
+    const now = (await client.query<{ now: Date }>('SELECT now() AS now')).rows[0].now.getTime();
     const deadline = attempt.server_deadline ? new Date(attempt.server_deadline).getTime() : new Date(schedule.exam_end_at).getTime();
-    if (Date.now() > deadline + schedule.submit_grace_seconds * 1000) throw new ApiError(409, '已超过交卷宽限时间');
+    if (now > deadline + schedule.submit_grace_seconds * 1000) throw new ApiError(409, '已超过交卷宽限时间');
 
     const paperItems = (await client.query<{
       id:string;item_type:string;score:number;section:string;item_snapshot:Record<string,unknown>;
@@ -93,9 +93,8 @@ export const POST = handler(async (request: Request) => {
     await client.query(`UPDATE exam_attempts SET status='grading',updated_at=NOW() WHERE id=$1`,[attempt.id]);
     for (const item of paperItems) {
       const savedResponse = responseMap.get(item.id);
-      const questionType = String(item.item_snapshot?.questionType ?? '');
       const normalized = item.item_type === 'question'
-        ? normalizeQuestionResponse(questionType, savedResponse?.response)
+        ? normalizeQuestionResponse(item.grader_id, savedResponse?.response)
         : (savedResponse?.response ?? {});
       const graded = gradeByType(item.grader_id, normalized, item.answer_key_snapshot);
       const max = Number(item.score);

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireRole } from '@/server/auth';
 import { assertPracticeUnlocked } from '@/server/exam-security';
 import { dbQuery } from '@/server/db';
+import { catchError, ok } from '@/lib/api';
 
 /** GET /api/student/practice/wrong — 获取学员错题本 */
 export async function GET(request: NextRequest) {
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest) {
 
     let whereClause = 'WHERE w.user_id = $1 AND w.item_type = $2';
     const params: unknown[] = [user.id, 'theory_question'];
-    let paramIdx = 3;
+    const paramIdx = 3;
 
     if (resolved === 'true') {
       whereClause += ` AND w.resolved = true`;
@@ -31,7 +32,8 @@ export async function GET(request: NextRequest) {
     );
     const total = parseInt(countResult[0]?.count || '0', 10);
 
-    // Get items with question details
+    // 安全约束:不返回 answer_key;explanation 仅对已掌握(resolved)的题返回。
+    // 待复习题的正确答案与解析必须在学员提交作答后由 practice/check 下发。
     const items = await dbQuery<{
       id: string;
       item_id: string;
@@ -41,12 +43,13 @@ export async function GET(request: NextRequest) {
       question_type: string;
       stem: string;
       options: unknown;
-      answer_key: unknown;
       explanation: string | null;
       knowledge_point: string | null;
     }>(
       `SELECT w.id, w.item_id, w.wrong_count, w.resolved, w.last_wrong_at,
-              q.question_type, q.stem, q.options, q.answer_key, q.explanation, q.knowledge_point
+              q.question_type, q.stem, q.options,
+              CASE WHEN w.resolved THEN q.explanation ELSE NULL END AS explanation,
+              q.knowledge_point
        FROM practice_wrong_items w
        LEFT JOIN practice_question_items q ON q.id = w.item_id
        ${whereClause}
@@ -57,20 +60,8 @@ export async function GET(request: NextRequest) {
       offset,
     );
 
-    return Response.json({
-      success: true,
-      data: {
-        items,
-        total,
-        page,
-        pageSize: limit,
-      },
-    });
+    return ok({ items, total, page, pageSize: limit });
   } catch (err) {
-    if ((err as { status?: number }).status === 401 || (err as { status?: number }).status === 403) {
-      return Response.json({ success: false, error: (err as Error).message }, { status: (err as { status: number }).status });
-    }
-    console.error('Error fetching wrong items:', err);
-    return Response.json({ success: false, error: '服务器开小差了，请稍后再试' }, { status: 500 });
+    return catchError(err);
   }
 }
