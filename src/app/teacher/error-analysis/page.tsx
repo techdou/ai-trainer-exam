@@ -1,0 +1,8 @@
+'use client';
+import { useEffect, useState } from 'react';
+import { apiFetch } from '@/lib/session-client';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
+interface Row{itemType:string;itemId:string;title:string;affectedStudents:number;wrongCount:number;unresolvedCount:number;lastWrongAt:string}
+export default function TeacherErrorAnalysisPage(){const [items,setItems]=useState<Row[]>([]);const [loading,setLoading]=useState(true);useEffect(()=>{void apiFetch<{items:Row[]}>('/api/teacher/error-analysis').then(r=>{if(r.ok&&r.data)setItems(r.data.items);else toast.error(r.error??'加载失败');setLoading(false)})},[]);return <div className="space-y-6"><div><h1 className="text-2xl font-bold">错题分析</h1><p className="mt-1 text-muted-foreground">按错误次数排序，帮助教师优先安排补练。</p></div>{loading?<div className="py-12 text-center">加载中…</div>:items.length===0?<Card><CardContent className="py-12 text-center text-muted-foreground">暂无错误记录</CardContent></Card>:items.map((item,index)=><Card key={`${item.itemType}-${item.itemId}`}><CardContent className="flex flex-wrap items-center gap-4 py-5"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-lg font-bold">{index+1}</div><div className="min-w-0 flex-1"><div className="truncate font-medium">{item.title}</div><div className="text-sm text-muted-foreground">影响 {item.affectedStudents} 名学员 · 最近错误 {new Date(item.lastWrongAt).toLocaleString('zh-CN')}</div></div><Badge variant="destructive">累计错误 {item.wrongCount}</Badge><Badge variant="outline">待巩固 {item.unresolvedCount}</Badge></CardContent></Card>)}</div>}

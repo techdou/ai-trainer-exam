@@ -1,0 +1,33 @@
+'use client';
+
+import type { ReactNode } from 'react';
+import {
+  LayoutDashboard,
+  UsersRound,
+  ClipboardList,
+  TrendingUp,
+  PieChart,
+  FileText,
+  Award,
+  GraduationCap,
+} from 'lucide-react';
+import { RoleLayout } from '@/components/role-layout';
+
+const navItems = [
+  { href: '/teacher/dashboard', label: '工作台', icon: LayoutDashboard },
+  { href: '/teacher/students', label: '学员管理', icon: GraduationCap },
+  { href: '/teacher/exams', label: '考试编排', icon: FileText },
+  { href: '/teacher/cohorts', label: '我的班级', icon: UsersRound },
+  { href: '/teacher/assignments', label: '练习作业', icon: ClipboardList },
+  { href: '/teacher/progress', label: '学习进度', icon: TrendingUp },
+  { href: '/teacher/error-analysis', label: '错题分析', icon: PieChart },
+  { href: '/teacher/results', label: '成绩查看', icon: Award },
+];
+
+export default function TeacherLayout({ children }: { children: ReactNode }) {
+  return (
+    <RoleLayout roles={['teacher']} navItems={navItems} title="教师工作台">
+      {children}
+    </RoleLayout>
+  );
+}

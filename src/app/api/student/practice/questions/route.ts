@@ -1,0 +1,22 @@
+import { NextRequest } from 'next/server';
+import { requireRole } from '@/server/auth';
+import { assertPracticeUnlocked } from '@/server/exam-security';
+import { listPracticeQuestionsForStudent } from '@/server/question-bank';
+import { catchError } from '@/lib/api';
+
+export async function GET(request: NextRequest) {
+  try {
+    const user = await requireRole(request, ['student']);
+    await assertPracticeUnlocked(user);
+
+    const { searchParams } = new URL(request.url);
+    const module2 = searchParams.get('module') || 'theory';
+    const limit = Math.min(50, parseInt(searchParams.get('limit') || '20', 10));
+
+    const rows = await listPracticeQuestionsForStudent({ module: module2, limit, organizationId: user.organizationId });
+
+    return Response.json({ success: true, data: rows });
+  } catch (e) {
+    return catchError(e);
+  }
+}
