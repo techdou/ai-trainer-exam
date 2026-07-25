@@ -775,9 +775,10 @@ function ImageAnnotationTask({ config, submitting, onSubmit }: TaskProps) {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
     const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-    const lastBox = boxes[boxes.length - 1];
-    if (lastBox && drawing) {
-      const newBoxes = [...boxes];
+    setBoxes(prev => {
+      const lastBox = prev[prev.length - 1];
+      if (!lastBox) return prev;
+      const newBoxes = [...prev];
       newBoxes[newBoxes.length - 1] = {
         ...lastBox,
         width: Math.abs(x - startPt.x),
@@ -785,21 +786,24 @@ function ImageAnnotationTask({ config, submitting, onSubmit }: TaskProps) {
         x: Math.min(x, startPt.x),
         y: Math.min(y, startPt.y),
       };
-      setBoxes(newBoxes);
-    }
+      return newBoxes;
+    });
   };
 
   const handleMouseUp = () => {
     setDrawing(false);
     setStartPt(null);
-    const lastBox = boxes[boxes.length - 1];
-    if (lastBox && (lastBox.width < 5 || lastBox.height < 5)) {
-      setBoxes(boxes.slice(0, -1));
-    }
+    setBoxes(prev => {
+      const lastBox = prev[prev.length - 1];
+      if (lastBox && (lastBox.width < 5 || lastBox.height < 5)) {
+        return prev.slice(0, -1);
+      }
+      return prev;
+    });
   };
 
   const startDrawing = () => {
-    setBoxes([...boxes, { x: 0, y: 0, width: 0, height: 0, label: currentLabel }]);
+    setBoxes(prev => [...prev, { x: 0, y: 0, width: 0, height: 0, label: currentLabel }]);
   };
 
   const removeBox = (idx: number) => {
@@ -809,7 +813,8 @@ function ImageAnnotationTask({ config, submitting, onSubmit }: TaskProps) {
   const handleSubmit = () => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0 || rect.height <= 0) return;
-    onSubmit({ boxes: boxes.map(box => ({ ...box, x: box.x / rect.width, y: box.y / rect.height, width: box.width / rect.width, height: box.height / rect.height })) });
+    const validBoxes = boxes.filter(box => box.width > 0 && box.height > 0);
+    onSubmit({ boxes: validBoxes.map(box => ({ ...box, x: box.x / rect.width, y: box.y / rect.height, width: box.width / rect.width, height: box.height / rect.height })) });
   };
 
   return (

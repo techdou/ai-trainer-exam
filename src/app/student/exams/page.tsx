@@ -8,8 +8,8 @@ import { Clock, PlayCircle, CheckCircle2, RotateCcw } from 'lucide-react';
 interface ExamInfo {
   id: string;
   title: string;
-  examOpenAt: string;
-  examCloseAt: string;
+  examStartAt: string;
+  examEndAt: string;
   durationMinutes: number;
   timeStatus: 'upcoming' | 'open' | 'closed';
   attempt: { id: string; status: string; startedAt: string; submittedAt: string | null } | null;
@@ -117,8 +117,8 @@ export default function ExamsPage() {
                 {statusBadge(exam)}
               </div>
               <div className="text-base text-gray-600 space-y-1">
-                <p>开考时间：{formatTime(exam.examOpenAt)}</p>
-                <p>截止时间：{formatTime(exam.examCloseAt)}</p>
+                <p>开考时间：{formatTime(exam.examStartAt)}</p>
+                <p>截止时间：{formatTime(exam.examEndAt)}</p>
                 <p>考试时长：{exam.durationMinutes} 分钟</p>
               </div>
               {exam.timeStatus === 'open' && !exam.attempt && (

@@ -17,7 +17,7 @@ interface HomeData {
   displayName: string;
   onboardingCompleted: boolean;
   practiceStats: { totalAttempts: number; correctRate: number | null };
-  upcomingExam: { id: string; title: string; examOpenAt: string; status: string } | null;
+  upcomingExam: { id: string; title: string; examStartAt: string; status: string } | null;
   lockedPractice: boolean;
 }
 
