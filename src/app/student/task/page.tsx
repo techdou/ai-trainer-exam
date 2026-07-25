@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/session-client';
 import { toast } from 'sonner';
 import { Image as ImageIcon, Music } from 'lucide-react';
+import { ExamTaskInput } from '@/components/exam-task-input';
 
 // ─── 类型 ──────────────────────────────────────────────────────
 
@@ -332,13 +333,6 @@ function TaskWorkspace({
           onSubmit={onSubmit}
         />
       )}
-      {task.taskType === 'image_annotation' && (
-        <ImageAnnotationTask
-          config={cfg}
-          submitting={submitting}
-          onSubmit={onSubmit}
-        />
-      )}
       {task.taskType === 'audio_transcription' && (
         <AudioTranscriptionTask
           config={cfg}
@@ -346,15 +340,65 @@ function TaskWorkspace({
           onSubmit={onSubmit}
         />
       )}
-      {![
-        'excel_delete_rows',
-        'stats_table',
-        'file_classify',
-        'image_clean',
-        'text_sentiment',
-        'image_annotation',
-        'audio_transcription',
-      ].includes(task.taskType) && <GenericTaskPlaceholder title={task.title} />}
+      {/* 标注类与通用题型统一走 ExamTaskInput(与考试端同一实现, 单一事实来源,
+          避免练习页像素坐标组件缺属性支持导致 bbox 题永远扣分的旧 bug)。 */}
+      {GENERIC_TASK_TYPES.includes(task.taskType) && (
+        <GenericTaskWorkspace task={task} submitting={submitting} onSubmit={onSubmit} />
+      )}
+      {!SPECIAL_TASK_TYPES.includes(task.taskType) &&
+        !GENERIC_TASK_TYPES.includes(task.taskType) && <GenericTaskPlaceholder title={task.title} />}
+    </div>
+  );
+}
+
+/** 有专属工作区组件的题型(历史实现, 工作正常, 不动)。 */
+const SPECIAL_TASK_TYPES = [
+  'excel_delete_rows',
+  'stats_table',
+  'file_classify',
+  'image_clean',
+  'text_sentiment',
+  'audio_transcription',
+];
+
+/** 走通用 ExamTaskInput 工作区的题型: 4 种标注 + 3 种新题型。 */
+const GENERIC_TASK_TYPES = [
+  'image_annotation',
+  'bounding_box',
+  'point_annotation',
+  'polyline_annotation',
+  'polygon_annotation',
+  'data_labeling',
+  'dataset_quality',
+  'composite_task',
+];
+
+/** 通用任务工作区: ExamTaskInput 受控输入 + 统一提交按钮。 */
+function GenericTaskWorkspace({
+  task,
+  submitting,
+  onSubmit,
+}: {
+  task: TaskItem;
+  submitting: boolean;
+  onSubmit: (submission: unknown) => void;
+}) {
+  const [value, setValue] = useState<unknown>(null);
+  return (
+    <div className="space-y-4">
+      <ExamTaskInput
+        content={{ taskType: task.taskType, config: task.config ?? {} }}
+        value={value}
+        onChange={setValue}
+        disabled={submitting}
+      />
+      <button
+        onClick={() => onSubmit(value)}
+        disabled={submitting || value === null}
+        className="bg-primary text-primary-foreground hover:bg-primary/90 w-full rounded-xl py-3 text-base font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {submitting ? '提交中...' : '提交答案'}
+      </button>
     </div>
   );
 }
@@ -743,165 +787,6 @@ function TextSentimentTask({ config, submitting, onSubmit }: TaskProps) {
   );
 }
 
-// ─── 6. 图片标注任务 ──────────────────────────────────────────
-
-interface DrawBox {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  label: string;
-}
-
-function ImageAnnotationTask({ config, submitting, onSubmit }: TaskProps) {
-  const imageUrl = config?.imageUrl ?? '';
-  const targetLabels = config?.targetLabels ?? ['目标'];
-  const [boxes, setBoxes] = useState<DrawBox[]>([]);
-  const [drawing, setDrawing] = useState(false);
-  const [startPt, setStartPt] = useState<{ x: number; y: number } | null>(null);
-  const [currentLabel, setCurrentLabel] = useState(targetLabels[0]);
-  const canvasRef = useRef<HTMLDivElement | null>(null);
-
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    setDrawing(true);
-    setStartPt({ x, y });
-  };
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!drawing || !startPt) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-    const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-    setBoxes(prev => {
-      const lastBox = prev[prev.length - 1];
-      if (!lastBox) return prev;
-      const newBoxes = [...prev];
-      newBoxes[newBoxes.length - 1] = {
-        ...lastBox,
-        width: Math.abs(x - startPt.x),
-        height: Math.abs(y - startPt.y),
-        x: Math.min(x, startPt.x),
-        y: Math.min(y, startPt.y),
-      };
-      return newBoxes;
-    });
-  };
-
-  const handleMouseUp = () => {
-    setDrawing(false);
-    setStartPt(null);
-    setBoxes(prev => {
-      const lastBox = prev[prev.length - 1];
-      if (lastBox && (lastBox.width < 5 || lastBox.height < 5)) {
-        return prev.slice(0, -1);
-      }
-      return prev;
-    });
-  };
-
-  const startDrawing = () => {
-    setBoxes(prev => [...prev, { x: 0, y: 0, width: 0, height: 0, label: currentLabel }]);
-  };
-
-  const removeBox = (idx: number) => {
-    setBoxes(boxes.filter((_, i) => i !== idx));
-  };
-
-  const handleSubmit = () => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect || rect.width <= 0 || rect.height <= 0) return;
-    const validBoxes = boxes.filter(box => box.width > 0 && box.height > 0);
-    onSubmit({ boxes: validBoxes.map(box => ({ ...box, x: box.x / rect.width, y: box.y / rect.height, width: box.width / rect.width, height: box.height / rect.height })) });
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        <span className="text-muted-foreground self-center text-sm">选择标签：</span>
-        {targetLabels.map(label => (
-          <button
-            key={label}
-            onClick={() => setCurrentLabel(label)}
-            className={`flex min-h-[44px] items-center justify-center rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-              currentLabel === label
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-secondary text-secondary-foreground hover:bg-secondary/70'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <div
-        ref={canvasRef}
-        className="relative w-full cursor-crosshair overflow-hidden rounded-xl border bg-muted"
-        style={{ minHeight: 300 }}
-        onMouseDown={(e) => { startDrawing(); handleMouseDown(e); }}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-      >
-        {imageUrl && (
-          <img
-            src={imageUrl}
-            alt="标注图片"
-            className="pointer-events-none block w-full h-auto"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-          />
-        )}
-        {!imageUrl && (
-          <div className="flex min-h-[300px] items-center justify-center text-muted-foreground">
-            <div className="flex flex-col items-center gap-1 text-center">
-              <ImageIcon className="w-10 h-10" aria-hidden />
-              <p className="text-sm">图片区域 - 在此处拖拽绘制标注框</p>
-            </div>
-          </div>
-        )}
-        {boxes.filter(b => b.width > 0 && b.height > 0).map((box, idx) => (
-          <div
-            key={idx}
-            className="absolute border-2 border-primary bg-primary/15"
-            style={{
-              left: box.x,
-              top: box.y,
-              width: box.width,
-              height: box.height,
-            }}
-          >
-            <span className="bg-primary text-primary-foreground absolute -top-6 left-0 whitespace-nowrap rounded px-1 text-xs">
-              {box.label}
-            </span>
-          </div>
-        ))}
-      </div>
-      {boxes.filter(b => b.width > 5).length > 0 && (
-        <div>
-          <p className="mb-2 text-sm font-medium">已标注 {boxes.filter(b => b.width > 5).length} 个框</p>
-          <div className="flex flex-wrap gap-2">
-            {boxes.filter(b => b.width > 5).map((box, idx) => (
-              <button
-                key={idx}
-                onClick={() => removeBox(boxes.indexOf(box))}
-                className="flex min-h-[44px] items-center justify-center bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg px-3 py-1 text-xs transition-colors"
-              >
-                {box.label} ×
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      <SubmitButton
-        submitting={submitting}
-        disabled={boxes.filter(b => b.width > 5).length === 0}
-        onClick={handleSubmit}
-        label="提交评分"
-      />
-    </div>
-  );
-}
 
 // ─── 7. 音频转写任务 ──────────────────────────────────────────
 

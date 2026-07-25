@@ -3,8 +3,14 @@
  * 运行前先执行 seed-core.mts。正式考试素材仅作为开发夹具，投入考试前必须人工审核。
  */
 import pg from 'pg';
+import { readFileSync } from 'node:fs';
 import { getDbUrl, loadEnv } from 'coze-coding-dev-sdk';
 loadEnv();
+// loadEnv 只读 .env; 数据库连接串在 .env.local, 手动补齐(与 verify-*.mts 同款)。
+for (const line of readFileSync('.env.local', 'utf-8').split('\n')) {
+  const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
+  if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+}
 const db = new pg.Client({ connectionString: await getDbUrl() }); await db.connect();
 const q = async <T,>(sql:string, values:unknown[]=[]):Promise<T[]> => (await db.query(sql,values)).rows as T[];
 const org=(await q<{id:string}>(`SELECT id FROM organizations WHERE status='active' ORDER BY created_at LIMIT 1`))[0];
@@ -54,6 +60,35 @@ const templates:Template[]=[
   instructions:'根据原始记录，填写好评、中评、差评、红灯、绿灯、缺失数据和完整数据数量。',
   config:{columns:['统计项目','数量'],rows:[['好评',''],['中评',''],['差评',''],['红灯',''],['绿灯',''],['缺失数据',''],['完整数据','']],editableCells:['B1','B2','B3','B4','B5','B6','B7'],sourceSummary:{reviews:['好评','好评','好评','中评','差评'],trafficLights:['红灯','绿灯','红灯','红灯'],records:['完整','完整','缺失','完整','缺失','完整']}},
   answer:{correctCells:{B1:3,B2:1,B3:1,B4:3,B5:1,B6:2,B7:4},numericTolerance:0,rejectExtraCells:true}},
+ // ─── 第二轮补齐: 3 种新题型(2026-07-26, 素材由 image2-api / MiMo TTS 生成) ───
+ {key:'labeling',type:'data_labeling',title:'图文数据分类标注',difficulty:1,
+  instructions:'请把每个条目正确分类为“动物”“植物”或“物品”。',
+  config:{labels:['动物','植物','物品'],items:[
+   {id:'img-cat',imageUrl:'/training/gen/cat-1.png',description:'条目 1'},
+   {id:'img-dog',imageUrl:'/training/gen/dog-1.png',description:'条目 2'},
+   {id:'img-plant',imageUrl:'/training/gen/plant-1.png',description:'条目 3'},
+   {id:'img-mug',imageUrl:'/training/gen/mug-1.png',description:'条目 4'},
+   {id:'txt-1',content:'一只在院子里奔跑的兔子',description:'条目 5(文本)'}]},
+  answer:{correctLabels:{'img-cat':'动物','img-dog':'动物','img-plant':'植物','img-mug':'物品','txt-1':'动物'}}},
+ {key:'quality',type:'dataset_quality',title:'数据集质量体检',difficulty:2,
+  instructions:'这是一批待入库的训练数据。请逐项检查，勾选所有“有问题”的条目（乱码、重复、空值、图文不符等）。',
+  config:{items:[
+   {id:'d1',content:'用户评论：这款产品非常好用，已经推荐给朋友了。',description:'文本数据'},
+   {id:'d2',content:'用户评论：??????########',description:'文本数据'},
+   {id:'d3',content:'用户评论：这款产品非常好用，已经推荐给朋友了。',description:'文本数据'},
+   {id:'d4',content:'',description:'文本数据(内容为空)'},
+   {id:'d5',content:'图片标签：猫。实际画面：一只金毛犬趴在草地上。',description:'标注数据'}]},
+  answer:{correctFlaggedItems:['d2','d3','d4','d5']}},
+ {key:'composite',type:'composite_task',title:'数据标注综合考核',difficulty:2,
+  instructions:'请依次完成两个子任务：先给评论标注情感，再把文件分进正确的素材文件夹。',
+  config:{subtasks:[
+   {id:'sentiment',title:'评论情感标注',instructions:'把每条评论标记为好评、中评或差评。',taskType:'text_sentiment',
+    config:{labels:['好评','中评','差评'],texts:[{id:'c1',content:'物流很快，包装也很好，会回购。'},{id:'c2',content:'东西一般般吧，无功无过。'}]}},
+   {id:'files',title:'素材文件分类',instructions:'把文件放进正确的文件夹。',taskType:'file_classify',
+    config:{categories:['图片素材','文档素材'],files:[{id:'f1',name:'street_scene.png',size:'120KB'},{id:'f2',name:'labeling_notes.docx',size:'30KB'}]}}]},
+  answer:{subtasks:{
+   sentiment:{weight:0.5,graderId:'text_sentiment',answerKey:{correctSentiments:{c1:'好评',c2:'中评'}}},
+   files:{weight:0.5,graderId:'file_classify',answerKey:{correctClassifications:{f1:'图片素材',f2:'文档素材'}}}}}},
 ];
 const practiceIds:Record<string,string>={},examIds:Record<string,string>={};
 try{
@@ -66,7 +101,7 @@ try{
   await db.query(`INSERT INTO exam_task_templates(id,organization_id,task_type,title,instructions,difficulty,config,answer_key,grading_config,practice_only,eligible_for_formal_exam,review_status,published_version,created_at,updated_at)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,false,true,'published',1,NOW(),NOW()) ON CONFLICT(id) DO UPDATE SET title=EXCLUDED.title,instructions=EXCLUDED.instructions,config=EXCLUDED.config,answer_key=EXCLUDED.answer_key,grading_config=EXCLUDED.grading_config,eligible_for_formal_exam=true,review_status='published',updated_at=NOW()`,[eId,org.id,t.type,t.title,t.instructions,t.difficulty??1,t.config,t.answer,t.grading??{}]);
   await db.query(`INSERT INTO practice_assignments(cohort_id,item_type,item_id,title,assigned_by,created_at)
-    SELECT $1,'task_template',$2,$3,$4,NOW() WHERE NOT EXISTS(SELECT 1 FROM practice_assignments WHERE cohort_id=$1 AND item_type='task_template' AND item_id=$2)`,[cohort.id,pId,t.title,actor.id]);
+    SELECT $1::varchar,'task_template',$2::varchar,$3,$4::varchar,NOW() WHERE NOT EXISTS(SELECT 1 FROM practice_assignments WHERE cohort_id=$1::varchar AND item_type='task_template' AND item_id=$2::varchar)`,[cohort.id,pId,t.title,actor.id]);
  }
  await db.query('COMMIT');
  console.log(`已写入 ${templates.length} 个练习任务和 ${templates.length} 个独立考试任务。`);

@@ -97,6 +97,14 @@ try {
       ORDER BY created_at ASC LIMIT 2`, [orgId])).rows;
   if (questions.length < 2) throw new Error(`本机构合格考试题不足 2 道(仅 ${questions.length})`);
 
+  // 实操题: 取一道情感标注(最容易程序化构造作答), 验证"实操进考试"链路
+  const task = (await db.query<{ id: string; answer_key: { correctSentiments: Record<string, string> } }>(
+    `SELECT id, answer_key FROM exam_task_templates
+      WHERE organization_id = $1 AND task_type = 'text_sentiment' AND review_status = 'published'
+        AND eligible_for_formal_exam = true AND practice_only = false AND deleted_at IS NULL
+      ORDER BY created_at ASC LIMIT 1`, [orgId])).rows[0];
+  if (!task) throw new Error('考试库没有可用的 text_sentiment 实操题(请先跑 seed-tasks.mts)');
+
   // answer_key 可能是 {letter:'A'} 或裸字符串/json 字符串
   const correctOption = (ak: unknown): string => {
     let v = ak;
@@ -123,9 +131,12 @@ try {
   const paperRes = await api(adminToken, 'POST', '/api/admin/papers', {
     title: `${TAG}卷`, organizationId: orgId, paperKind: 'formal',
     durationMinutes: 30, totalScore: 100, passScore: 60,
-    items: questions.map(q => ({ itemType: 'question', itemId: q.id })),
+    items: [
+      ...questions.map(q => ({ itemType: 'question', itemId: q.id })),
+      { itemType: 'task', itemId: task.id },
+    ],
   });
-  check('F3-建试卷(2题)', paperRes.status === 200 || paperRes.status === 201, `status=${paperRes.status} ${JSON.stringify(paperRes.json).slice(0, 150)}`);
+  check('F3-建试卷(2理论+1实操)', paperRes.status === 200 || paperRes.status === 201, `status=${paperRes.status} ${JSON.stringify(paperRes.json).slice(0, 150)}`);
   paperId = (paperRes.json.data as { id: string })?.id;
   if (!paperId) throw new Error('建试卷失败, 中止');
 
@@ -156,16 +167,17 @@ try {
   if (!attemptId) throw new Error('开考失败, 中止');
 
   const qRes = await api(stuToken, 'GET', `/api/student/exams/questions?scheduleId=${scheduleId}`);
-  const items = (qRes.json.data as { items?: Array<{ id: string; sourceItemId: string }> })?.items ?? [];
-  check('F9-取卷2题', qRes.status === 200 && items.length === 2, `status=${qRes.status} items=${items.length}`);
+  const items = (qRes.json.data as { items?: Array<{ id: string; sourceItemId: string; itemType: string }> })?.items ?? [];
+  check('F9-取卷3题', qRes.status === 200 && items.length === 3, `status=${qRes.status} items=${items.length}`);
   const leak = findAnswerField(items);
   check('F10-取卷无答案/解析泄露', leak === null, `泄露字段: ${leak}`);
 
-  // 构造作答: 题1答对, 题2答错 → 预期 50/100, 不通过(及格60)
+  // 构造作答: 理论题1答对、理论题2答错、实操题(情感标注)全对
   const findPaperItem = (sourceItemId: string) => items.find(i => i.sourceItemId === sourceItemId)?.id;
   const responses = [
     { itemId: findPaperItem(questions[0].id), response: right1 },
     { itemId: findPaperItem(questions[1].id), response: wrong2 },
+    { itemId: findPaperItem(task.id), response: { sentiments: task.answer_key.correctSentiments } },
   ];
   check('F11-作答映射到试卷题目', responses.every(r => !!r.itemId), `responses=${JSON.stringify(responses)}`);
 
@@ -191,27 +203,37 @@ try {
   check('F15-attempt状态graded', attemptRow?.status === 'graded', `status=${attemptRow?.status}`);
   check('F16-提交哈希已记录', !!attemptRow?.submission_hash, 'submission_hash 为空');
 
+  // 期望分值从试卷实际分配读取(不猜 allocateScores 的分配逻辑):
+  // 理论题1满分、理论题2零分、实操题满分。
+  const paperItems = (await db.query<{ item_id: string; score: string }>(
+    'SELECT item_id, score FROM exam_paper_items WHERE paper_id = $1', [paperId])).rows;
+  const scoreOf = (sourceId: string) => Number(paperItems.find(p => p.item_id === sourceId)?.score ?? 0);
+  const expectedTotal = Math.round((scoreOf(questions[0].id) + scoreOf(task.id)) * 100) / 100;
+
   const scoreRow = (await db.query<{ total_score: string; max_score: string; passed: boolean; status: string }>(
     'SELECT total_score, max_score, passed, status FROM exam_scores WHERE attempt_id = $1', [attemptId])).rows[0];
-  check('F17-成绩50/100不通过', !!scoreRow && Number(scoreRow.total_score) === 50 && Number(scoreRow.max_score) === 100 && scoreRow.passed === false,
-    `score=${JSON.stringify(scoreRow)}`);
+  check('F17-总分=理论对+实操对', !!scoreRow && Number(scoreRow.total_score) === expectedTotal && Number(scoreRow.max_score) === 100,
+    `score=${JSON.stringify(scoreRow)} 期望 total=${expectedTotal}`);
   check('F18-成绩状态auto_graded', scoreRow?.status === 'auto_graded', `status=${scoreRow?.status}`);
 
-  const respRows = (await db.query<{ item_id: string; score: string; max_score: string }>(
-    'SELECT item_id, score, max_score FROM exam_responses WHERE attempt_id = $1 ORDER BY item_id', [attemptId])).rows;
+  const respRows = (await db.query<{ item_id: string; score: string; max_score: string; item_type: string }>(
+    'SELECT item_id, score, max_score, item_type FROM exam_responses WHERE attempt_id = $1 ORDER BY item_id', [attemptId])).rows;
   const r1 = respRows.find(r => r.item_id === responses[0].itemId);
   const r2 = respRows.find(r => r.item_id === responses[1].itemId);
-  check('F19-逐题得分正确(对50错0)', respRows.length === 2 && Number(r1?.score) === 50 && Number(r2?.score) === 0,
+  const r3 = respRows.find(r => r.item_id === responses[2].itemId);
+  check('F19-理论题得分(对满错0)', respRows.length === 3 && Number(r1?.score) === Number(r1?.max_score) && Number(r2?.score) === 0,
     `responses=${JSON.stringify(respRows)}`);
+  check('F20-实操题满分判分', r3?.item_type === 'task' && Number(r3?.score) === Number(r3?.max_score) && Number(r3?.max_score) > 0,
+    `实操题行=${JSON.stringify(r3)}`);
 
   // ============ 4. 发布门禁 ============
   const resultsRes = await api(stuToken, 'GET', '/api/student/results');
   const inResults = ((resultsRes.json.data ?? []) as Array<{ scheduleId: string }>).some(r => r.scheduleId === scheduleId);
-  check('F20-未发布成绩学员不可见', !inResults, '学员成绩列表出现了未发布的成绩');
+  check('F21-未发布成绩学员不可见', !inResults, '学员成绩列表出现了未发布的成绩');
 
   const adminResults = await api(adminToken, 'GET', '/api/admin/results');
   const adminSeen = JSON.stringify(adminResults.json).includes(scheduleId);
-  check('F21-管理端可见待发布成绩', adminSeen, '管理端成绩列表找不到该成绩');
+  check('F22-管理端可见待发布成绩', adminSeen, '管理端成绩列表找不到该成绩');
 } finally {
   // ============ 5. 清理(外键全 NO ACTION, 按依赖顺序硬删) ============
   console.log('\n----- 清理测试数据 -----');
