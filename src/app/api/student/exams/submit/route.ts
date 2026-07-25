@@ -78,9 +78,10 @@ export const POST = handler(async (request: Request) => {
       const item = paperItems.find(x => x.id === response.itemId)!;
       await client.query(
         `INSERT INTO exam_responses (attempt_id,item_id,item_type,response,workspace_snapshot,saved_at,created_at,updated_at)
-         VALUES ($1,$2,$3,$4,$5,NOW(),NOW(),NOW())
+         VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,NOW(),NOW(),NOW())
          ON CONFLICT (attempt_id,item_id) DO UPDATE SET response=EXCLUDED.response,workspace_snapshot=EXCLUDED.workspace_snapshot,saved_at=NOW(),updated_at=NOW()`,
-        [attempt.id,item.id,item.item_type,response.response ?? {},response.workspaceSnapshot ?? {}],
+        // 必须 JSON.stringify: node-pg 只自动序列化对象,字符串(如选项 'C')会原样发给 jsonb 列报 22P02。
+        [attempt.id,item.id,item.item_type,JSON.stringify(response.response ?? {}),JSON.stringify(response.workspaceSnapshot ?? {})],
       );
     }
 
@@ -105,11 +106,12 @@ export const POST = handler(async (request: Request) => {
       await client.query(
         `INSERT INTO exam_responses
           (attempt_id,item_id,item_type,response,workspace_snapshot,saved_at,score,max_score,grader_version,grading_detail,graded_at,created_at,updated_at)
-         VALUES ($1,$2,$3,$4,$5,NOW(),$6,$7,$8,$9,NOW(),NOW(),NOW())
+         VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,NOW(),$6,$7,$8,$9::jsonb,NOW(),NOW(),NOW())
          ON CONFLICT (attempt_id,item_id) DO UPDATE SET
           score=EXCLUDED.score,max_score=EXCLUDED.max_score,grader_version=EXCLUDED.grader_version,
           grading_detail=EXCLUDED.grading_detail,graded_at=NOW(),updated_at=NOW()`,
-        [attempt.id,item.id,item.item_type,savedResponse?.response ?? {},savedResponse?.workspace_snapshot ?? {},score,max,graded.graderVersion,{ correct:graded.correct,feedback:graded.feedback,details:graded.details ?? {} }],
+        // response/workspace_snapshot 从 jsonb 读出后可能是字符串(如 'C'),同样要重新序列化。
+        [attempt.id,item.id,item.item_type,JSON.stringify(savedResponse?.response ?? {}),JSON.stringify(savedResponse?.workspace_snapshot ?? {}),score,max,graded.graderVersion,JSON.stringify({ correct:graded.correct,feedback:graded.feedback,details:graded.details ?? {} })],
       );
     }
 

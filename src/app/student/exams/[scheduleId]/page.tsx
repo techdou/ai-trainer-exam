@@ -43,7 +43,8 @@ export default function ExamTakePage() {
   const [submitting,setSubmitting]=useState(false);
   const [receipt,setReceipt]=useState<string|null>(null);
   const [serverOffset,setServerOffset]=useState(0);
-  const [timeLeft,setTimeLeft]=useState(0);
+  // null = 倒计时尚未初始化; 仅当初始化后归零才触发自动交卷,避免试卷刚加载时误交白卷。
+  const [timeLeft,setTimeLeft]=useState<number|null>(null);
   const dirtyRef=useRef(new Set<string>());
   const saveTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
 
@@ -132,7 +133,7 @@ export default function ExamTakePage() {
       submittingRef.current=false;setSubmitting(false);
     }
   },[flush,scheduleId]);
-  useEffect(()=>{if(payload&&timeLeft===0&&!receipt)void submit()},[payload,timeLeft,receipt,submit]);
+  useEffect(()=>{if(payload&&timeLeft!==null&&timeLeft<=0&&!receipt)void submit()},[payload,timeLeft,receipt,submit]);
 
   const change=(itemId:string,value:unknown)=>{setResponses(prev=>({...prev,[itemId]:value}));dirtyRef.current.add(itemId)};
   const count=useMemo(()=>Object.values(responses).filter(answered).length,[responses]);
@@ -148,14 +149,14 @@ export default function ExamTakePage() {
   const options=(item.content.options??{}) as Record<string,string>;
   const current=responses[item.id];
   const selected=typeof current==='string'?current:String((current as {answer?:unknown;selectedOption?:unknown}|undefined)?.answer??(current as {selectedOption?:unknown}|undefined)?.selectedOption??'');
-  const lowTime=timeLeft<300;
+  const lowTime=timeLeft!==null&&timeLeft<300;
 
   return <div className="mx-auto max-w-5xl space-y-4 pb-28">
     <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/95 px-5 py-3 backdrop-blur">
       <strong>第 {index+1}/{payload.items.length} 项</strong><span>已完成 {count}/{payload.items.length}</span><span className="text-sm text-muted-foreground">{saving?'正在保存…':'已启用自动保存'}</span>
       <span className="flex items-center gap-2">
         {lowTime&&<span className="text-sm font-medium text-destructive" role="alert">⚠ 时间不多了，请检查未答项目</span>}
-        <strong className={lowTime?'text-destructive':'text-primary'} aria-label="剩余时间">{format(timeLeft)}</strong>
+        <strong className={lowTime?'text-destructive':'text-primary'} aria-label="剩余时间">{timeLeft===null?'--:--':format(timeLeft)}</strong>
       </span>
     </div>
     <Card><CardContent className="space-y-6 p-6 sm:p-8">

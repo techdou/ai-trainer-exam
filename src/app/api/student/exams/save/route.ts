@@ -30,8 +30,10 @@ export const POST = handler(async (request: Request) => {
     for (const item of body.responses) {
       if (!validIds.has(item.itemId)) throw new ApiError(400, '提交包含不属于本试卷的题目');
       await client.query(
+        // $2/$3/$4 显式标注类型: 同一参数同时出现在 SELECT 输出列与 WHERE 比较中时,
+        // Postgres 会分别推导出 text/varchar 两种类型并报 42P08, 必须用显式 cast 统一。
         `INSERT INTO exam_responses (attempt_id,item_id,item_type,response,workspace_snapshot,saved_at,created_at,updated_at)
-         SELECT $1,$2,i.item_type,$3,$4,NOW(),NOW(),NOW() FROM exam_paper_items i WHERE i.id=$2 AND i.paper_id=$5
+         SELECT $1::varchar,$2::varchar,i.item_type,$3::jsonb,$4::jsonb,NOW(),NOW(),NOW() FROM exam_paper_items i WHERE i.id=$2 AND i.paper_id=$5
          ON CONFLICT (attempt_id,item_id) DO UPDATE SET response=EXCLUDED.response,workspace_snapshot=EXCLUDED.workspace_snapshot,saved_at=NOW(),updated_at=NOW()`,
         [attempt.id, item.itemId, JSON.stringify(item.response ?? {}), JSON.stringify(item.workspaceSnapshot ?? {}), schedule.paper_id],
       );

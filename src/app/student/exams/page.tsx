@@ -48,7 +48,8 @@ export default function ExamsPage() {
   };
 
   const statusBadge = (exam: ExamInfo) => {
-    if (exam.attempt?.status === 'submitted') {
+    // 交卷后服务端状态机为 submitted/grading/graded/released,都按“已交卷”展示。
+    if (exam.attempt && ['submitted', 'grading', 'graded', 'released'].includes(exam.attempt.status)) {
       return (
         <span className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-muted text-muted-foreground font-medium text-base">
           <CheckCircle2 className="w-4 h-4" aria-hidden /> 已交卷
@@ -129,7 +130,7 @@ export default function ExamsPage() {
                   进入考试
                 </button>
               )}
-              {exam.attempt?.status === 'submitted' && (
+              {exam.attempt && ['submitted', 'grading', 'graded', 'released'].includes(exam.attempt.status) && (
                 <button
                   onClick={() => router.push(`/student/results?examId=${exam.id}`)}
                   className="mt-4 px-6 py-3 rounded-lg border-2 border-primary text-primary font-bold text-lg hover:bg-secondary transition-colors"
