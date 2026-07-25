@@ -35,7 +35,9 @@ export async function GET(request: NextRequest) {
          JOIN enrollments e ON e.user_id = w.user_id AND e.status = 'active'
          JOIN cohorts c ON c.id = e.cohort_id AND c.deleted_at IS NULL
          LEFT JOIN practice_task_templates t ON w.item_type = 'task_template' AND t.id = w.item_id
-         LEFT JOIN practice_question_items q ON w.item_type IN ('question_item', 'theory') AND q.id = w.item_id
+         -- practice_wrong_items.item_type 实际取值是 theory_question(不是 question_item/theory),
+         -- 词表不匹配曾导致所有理论错题 JOIN 不上、标题全部显示"已退役题目"。三个历史名字都兼容。
+         LEFT JOIN practice_question_items q ON w.item_type IN ('question_item', 'theory', 'theory_question') AND q.id = w.item_id
         WHERE ${scope}
         GROUP BY w.item_type, w.item_id, t.title, q.stem
         ORDER BY SUM(w.wrong_count) DESC, MAX(w.last_wrong_at) DESC

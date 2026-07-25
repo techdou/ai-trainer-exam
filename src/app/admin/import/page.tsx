@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getToken } from '@/lib/session-client';
 
 export default function ImportPage() {
   const router = useRouter();
@@ -11,7 +12,6 @@ export default function ImportPage() {
   const [result, setResult] = useState<{
     inserted: number;
     skipped: number;
-    duplicates: number;
     errors: string[];
     totalParsed: number;
   } | null>(null);
@@ -28,11 +28,15 @@ export default function ImportPage() {
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('bankType', bankType);
+    // 后端读 bank_type; 历史上前端发 bankType 被静默忽略, 选考试库也会落进练习库。
+    formData.append('bank_type', bankType);
 
     try {
+      // 必须带 Authorization: 系统用 Bearer token(sessionStorage), 历史上裸 fetch 导致所有用户 401。
+      const token = getToken();
       const res = await fetch('/api/admin/import', {
         method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: formData,
       });
       const data = await res.json();
@@ -143,8 +147,8 @@ export default function ImportPage() {
               <div className="text-sm text-muted-foreground">跳过</div>
             </div>
             <div className="rounded-md bg-warning/10 p-3 text-center">
-              <div className="text-2xl font-bold text-warning">{result.duplicates}</div>
-              <div className="text-sm text-muted-foreground">重复题</div>
+              <div className="text-2xl font-bold text-warning">{result.errors.length}</div>
+              <div className="text-sm text-muted-foreground">错误数</div>
             </div>
           </div>
           {result.errors.length > 0 && (

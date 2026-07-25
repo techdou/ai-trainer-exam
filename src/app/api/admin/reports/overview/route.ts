@@ -10,23 +10,31 @@ import {ok, fail, catchError} from '@/lib/api';
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRole(request as unknown as Request, ['super_admin']);
+    // 菜单开放给 super_admin+school_admin+auditor, 这里必须对齐。
+    const user = await requireRole(request as unknown as Request, ['super_admin', 'school_admin', 'auditor']);
+    // 租户隔离: school_admin 只看本机构; super_admin/auditor 看全平台。
+    // 统一用 ($1::varchar IS NULL OR <表>.organization_id = $1) 注入每条 SQL。
+    const scopedOrg = user.roles.includes('school_admin') && !user.roles.includes('super_admin') ? user.organizationId : null;
+    const params: unknown[] = [scopedOrg];
 
     // 1. 成绩分布（按分数段统计）
     const scoreDistribution = await dbQuery<{ range: string; count: string }>(
       `SELECT
         CASE
-          WHEN total_score >= 90 THEN '90-100'
-          WHEN total_score >= 80 THEN '80-89'
-          WHEN total_score >= 70 THEN '70-79'
-          WHEN total_score >= 60 THEN '60-69'
-          WHEN total_score >= 50 THEN '50-59'
+          WHEN sc.total_score >= 90 THEN '90-100'
+          WHEN sc.total_score >= 80 THEN '80-89'
+          WHEN sc.total_score >= 70 THEN '70-79'
+          WHEN sc.total_score >= 60 THEN '60-69'
+          WHEN sc.total_score >= 50 THEN '50-59'
           ELSE '0-49'
         END AS range,
         COUNT(*) AS count
-       FROM exam_scores
+       FROM exam_scores sc
+       JOIN exam_schedules s ON s.id = sc.schedule_id
+       WHERE ($1::varchar IS NULL OR s.organization_id = $1)
        GROUP BY range
-       ORDER BY range DESC`
+       ORDER BY range DESC`,
+      ...params,
     );
 
     // 2. 考试通过率统计
@@ -45,13 +53,15 @@ export async function GET(request: NextRequest) {
         COALESCE(AVG(esv.total_score), 0) AS avg_score
        FROM exam_schedules es
        LEFT JOIN exam_scores esv ON esv.schedule_id = es.id
-       WHERE es.deleted_at IS NULL
+       WHERE es.deleted_at IS NULL AND ($1::varchar IS NULL OR es.organization_id = $1)
        GROUP BY es.id, es.title
        ORDER BY es.exam_start_at DESC
-       LIMIT 20`
+       LIMIT 20`,
+      ...params,
     );
 
     // 3. 各班级成绩对比
+    // pass_rate 分子分母同按"去重学员"口径: 曾用通过行数/去重人数, 一人多场全过时 >100%。
     const cohortPerformance = await dbQuery<{
       cohort_id: string;
       cohort_name: string;
@@ -65,16 +75,17 @@ export async function GET(request: NextRequest) {
         COUNT(DISTINCT esv.user_id) AS student_count,
         COALESCE(AVG(esv.total_score), 0) AS avg_score,
         COALESCE(
-          COUNT(CASE WHEN esv.passed THEN 1 END)::numeric / NULLIF(COUNT(DISTINCT esv.user_id), 0) * 100,
+          COUNT(DISTINCT CASE WHEN esv.passed THEN esv.user_id END)::numeric / NULLIF(COUNT(DISTINCT esv.user_id), 0) * 100,
           0
         ) AS pass_rate
        FROM cohorts c
        LEFT JOIN enrollments e ON e.cohort_id = c.id
        LEFT JOIN exam_scores esv ON esv.user_id = e.user_id
-       WHERE c.deleted_at IS NULL
+       WHERE c.deleted_at IS NULL AND ($1::varchar IS NULL OR c.organization_id = $1)
        GROUP BY c.id, c.name
        ORDER BY avg_score DESC
-       LIMIT 20`
+       LIMIT 20`,
+      ...params,
     );
 
     // 4. 练习题薄弱项（按错题类型统计）
@@ -84,12 +95,15 @@ export async function GET(request: NextRequest) {
       user_count: string;
     }>(
       `SELECT
-        item_type,
-        SUM(wrong_count) AS wrong_count_sum,
-        COUNT(DISTINCT user_id) AS user_count
-       FROM practice_wrong_items
-       GROUP BY item_type
-       ORDER BY wrong_count_sum DESC`
+        w.item_type,
+        SUM(w.wrong_count) AS wrong_count_sum,
+        COUNT(DISTINCT w.user_id) AS user_count
+       FROM practice_wrong_items w
+       JOIN profiles p ON p.id = w.user_id
+       WHERE ($1::varchar IS NULL OR p.organization_id = $1)
+       GROUP BY w.item_type
+       ORDER BY wrong_count_sum DESC`,
+      ...params,
     );
 
     // 5. 最近考试活动
@@ -107,24 +121,26 @@ export async function GET(request: NextRequest) {
        FROM exam_attempts ea
        JOIN profiles p ON p.id = ea.user_id
        JOIN exam_schedules es ON es.id = ea.schedule_id
-       WHERE ea.status IN ('submitted', 'graded')
+       WHERE ea.status IN ('submitted', 'graded') AND ($1::varchar IS NULL OR es.organization_id = $1)
        ORDER BY ea.submitted_at DESC
-       LIMIT 10`
+       LIMIT 10`,
+      ...params,
     );
 
     // 6. 总体统计概览
     const overallStats = await dbQuery<{ key: string; value: string }>(
-      `SELECT 'total_exams' AS key, COUNT(*)::text AS value FROM exam_schedules WHERE deleted_at IS NULL
+      `SELECT 'total_exams' AS key, COUNT(*)::text AS value FROM exam_schedules WHERE deleted_at IS NULL AND ($1::varchar IS NULL OR organization_id = $1)
        UNION ALL
-       SELECT 'total_attempts', COUNT(*)::text FROM exam_attempts
+       SELECT 'total_attempts', COUNT(*)::text FROM exam_attempts ea JOIN exam_schedules s ON s.id = ea.schedule_id WHERE ($1::varchar IS NULL OR s.organization_id = $1)
        UNION ALL
-       SELECT 'total_passed', COUNT(*)::text FROM exam_scores WHERE passed = true
+       SELECT 'total_passed', COUNT(*)::text FROM exam_scores sc JOIN exam_schedules s ON s.id = sc.schedule_id WHERE sc.passed = true AND ($1::varchar IS NULL OR s.organization_id = $1)
        UNION ALL
-       SELECT 'avg_score', COALESCE(AVG(total_score)::text, '0') FROM exam_scores
+       SELECT 'avg_score', COALESCE(AVG(sc.total_score)::text, '0') FROM exam_scores sc JOIN exam_schedules s ON s.id = sc.schedule_id WHERE ($1::varchar IS NULL OR s.organization_id = $1)
        UNION ALL
-       SELECT 'total_practice_items', COUNT(*)::text FROM practice_question_items WHERE deleted_at IS NULL
+       SELECT 'total_practice_items', COUNT(*)::text FROM practice_question_items WHERE deleted_at IS NULL AND ($1::varchar IS NULL OR organization_id = $1)
        UNION ALL
-       SELECT 'total_exam_items', COUNT(*)::text FROM exam_question_items WHERE deleted_at IS NULL`
+       SELECT 'total_exam_items', COUNT(*)::text FROM exam_question_items WHERE deleted_at IS NULL AND ($1::varchar IS NULL OR organization_id = $1)`,
+      ...params,
     ).catch(() => [] as { key: string; value: string }[]);
 
     return ok({

@@ -52,11 +52,13 @@ export async function GET(req: NextRequest) {
       cohort_name: string; paper_title: string; exam_start_at: string; exam_end_at: string;
       practice_open_at: string | null; practice_lock_at: string | null; results_release_at: string | null;
       late_entry_minutes: number; submit_grace_seconds: number; duration_minutes: number;
-      status: string; results_released: boolean; created_at: string; attempt_count: string;
+      status: string; results_released: boolean; created_at: string; attempt_count: string; submitted_count: string;
     }>(`SELECT s.id,s.title,s.organization_id,s.paper_id,s.cohort_id,c.name cohort_name,p.title paper_title,
                s.practice_open_at,s.practice_lock_at,s.exam_start_at,s.exam_end_at,s.results_release_at,
                s.late_entry_minutes,s.submit_grace_seconds,p.duration_minutes,s.status,s.results_released,s.created_at,
-               (SELECT count(*)::text FROM exam_attempts a WHERE a.schedule_id=s.id) attempt_count
+               (SELECT count(*)::text FROM exam_attempts a WHERE a.schedule_id=s.id) attempt_count,
+               -- 监控页"已交卷"需要用已提交口径(attempt_count 含未开始/进行中, 曾误当已交卷显示)。
+               (SELECT count(*)::text FROM exam_attempts a WHERE a.schedule_id=s.id AND a.status IN ('submitted','grading','graded','released')) submitted_count
           FROM exam_schedules s JOIN cohorts c ON c.id=s.cohort_id JOIN exam_papers p ON p.id=s.paper_id
          WHERE ${where.join(' AND ')} ORDER BY s.exam_start_at DESC`, ...params);
 
@@ -66,7 +68,7 @@ export async function GET(req: NextRequest) {
       practiceLockAt: s.practice_lock_at, examStartAt: s.exam_start_at, examEndAt: s.exam_end_at,
       resultsReleaseAt: s.results_release_at, lateEntryMinutes: s.late_entry_minutes,
       submitGraceSeconds: s.submit_grace_seconds, durationMinutes: s.duration_minutes,
-      status: s.status, resultsReleased: s.results_released, attemptCount: Number(s.attempt_count), createdAt: s.created_at,
+      status: s.status, resultsReleased: s.results_released, attemptCount: Number(s.attempt_count), submittedCount: Number(s.submitted_count), createdAt: s.created_at,
     })));
   } catch (error) { return catchError(error); }
 }
@@ -122,6 +124,9 @@ export async function PATCH(req: NextRequest) {
     const effectiveEnd = body.examEndAt ?? current.exam_end_at;
     if (new Date(effectiveEnd).getTime() <= new Date(effectiveStart).getTime()) return fail(400, '考试结束时间必须晚于开始时间');
     if (current.status !== 'draft' && [body.examStartAt, body.examEndAt, body.practiceLockAt].some(v => v !== undefined)) return fail(409, '考试发布后不能修改关键时间，请新建考试安排');
+    // 公平性参数(交卷宽限/迟到入场)直接影响在考学员的交卷截止与入场边界,
+    // 考试发布后同样冻结, 否则 exam_open 期间改参数会对不同时间入场的学员造成不对等。
+    if (current.status !== 'draft' && [body.submitGraceSeconds, body.lateEntryMinutes].some(v => v !== undefined)) return fail(409, '考试发布后不能修改交卷宽限与迟到入场参数，请新建考试安排');
 
     const fields: string[] = []; const values: unknown[] = [];
     const add = (column: string, value: unknown) => { values.push(value); fields.push(`${column}=$${values.length}`); };

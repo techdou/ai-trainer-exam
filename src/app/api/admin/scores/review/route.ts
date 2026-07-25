@@ -47,9 +47,9 @@ export async function GET(req: NextRequest) {
 
     const responses = await dbQuery<{
       id: string; item_id: string; item_type: string; response: unknown; score: number; max_score: number;
-      grader_version: string | null; grading_detail: unknown; graded_at: string | null; item_snapshot: unknown;
+      grader_version: string | null; grading_detail: unknown; graded_at: string | null; item_snapshot: unknown; answer_key_snapshot: unknown;
     }>(`SELECT r.id,r.item_id,r.item_type,r.response,r.score,r.max_score,r.grader_version,r.grading_detail,r.graded_at,
-               pi.item_snapshot
+               pi.item_snapshot,pi.answer_key_snapshot
           FROM exam_responses r LEFT JOIN exam_paper_items pi ON pi.id=r.item_id
          WHERE r.attempt_id=$1 ORDER BY pi.sort_order NULLS LAST,r.created_at`, score.attempt_id);
 
@@ -65,7 +65,9 @@ export async function GET(req: NextRequest) {
       },
       responses: responses.map(r => ({ id: r.id, itemId: r.item_id, itemType: r.item_type, response: r.response,
         score: Number(r.score), maxScore: Number(r.max_score), graderVersion: r.grader_version,
-        gradingDetail: r.grading_detail, gradedAt: r.graded_at, itemSnapshot: r.item_snapshot })),
+        gradingDetail: r.grading_detail, gradedAt: r.graded_at, itemSnapshot: r.item_snapshot,
+        // 复核页需要展示正确答案; 题干/题型在 itemSnapshot 里, 答案在 answer_key_snapshot 里。
+        answerKey: r.answer_key_snapshot })),
     });
   } catch (error) { return catchError(error); }
 }
@@ -77,6 +79,10 @@ export async function PATCH(req: NextRequest) {
     const current = await loadScore(body.scoreId);
     if (!current) return fail(404, '成绩记录不存在');
     await assertAccess(user, current);
+    // 状态守卫: 已发布/作废的成绩不能再走复核(通过或调整), 否则发布后可被无限改回 reviewed 反复调整。
+    if (!['auto_graded','reviewed','pending'].includes(current.status)) {
+      return fail(409, `当前成绩状态为 ${current.status}，不能复核。已发布的成绩需先撤回发布。`);
+    }
 
     if (body.action === 'approve') {
       if (!body.note) return fail(400, '复核通过也必须填写复核说明');

@@ -1,6 +1,8 @@
 import { dbQuery } from '@/server/db';
 
-const DEFAULTS: Record<string, string> = {
+// 系统设置唯一默认值来源。管理端 settings API 与运行时消费方都必须从这里取,
+// 历史上两处各自硬编码(300 vs 60 等)导致页面显示与实际生效不一致。
+export const SETTINGS_DEFAULTS: Record<string, string> = {
   exam_submit_grace_seconds: '60',
   exam_late_entry_minutes: '15',
   exam_pass_score: '60',
@@ -12,6 +14,8 @@ const DEFAULTS: Record<string, string> = {
   password_min_length: '8',
   session_timeout_minutes: '120',
 };
+
+const DEFAULTS = SETTINGS_DEFAULTS;
 
 let cache: Record<string, string> = {};
 let loadedAt = 0;

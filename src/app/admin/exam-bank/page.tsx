@@ -36,7 +36,10 @@ const TYPE_LABELS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: '草稿', color: 'bg-muted text-muted-foreground' },
+  imported_unreviewed: { label: '待审核', color: 'bg-warning/10 text-warning' },
   pending_review: { label: '待审核', color: 'bg-warning/10 text-warning' },
+  reviewed: { label: '审核通过', color: 'bg-primary/10 text-primary' },
+  needs_revision: { label: '需修改', color: 'bg-warning/20 text-warning' },
   published: { label: '已发布', color: 'bg-success/10 text-success' },
   retired: { label: '已下架', color: 'bg-destructive/10 text-destructive' },
 };

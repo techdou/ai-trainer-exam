@@ -62,6 +62,8 @@ export const POST = handler(async (request: Request) => {
   return ok({
     inserted: insertResult.inserted,
     skipped: insertResult.skipped,
+    // 前端统计卡片需要解析总数; 历史上不返回导致卡片恒空白。
+    totalParsed: result.questions.length,
     parserIssues: result.issues,
     errors: insertResult.errors.slice(0, 100),
     stats: result.stats,

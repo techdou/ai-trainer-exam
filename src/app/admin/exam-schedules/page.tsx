@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { CalendarClock, Plus, Send, Unlock } from 'lucide-react';
+import { EXAM_STATUS_LABELS, type ExamStatus } from '@/lib/constants';
 
 interface ExamSchedule {
   id: string;
@@ -21,6 +22,7 @@ interface ExamSchedule {
   status: string;
   resultsReleased: boolean;
   attemptCount: number;
+  submittedCount?: number;
   createdAt: string;
 }
 
@@ -105,9 +107,10 @@ export default function ExamSchedulesPage() {
     } catch { return iso; }
   };
 
-  const statusLabel: Record<string, string> = {
-    draft:'草稿',published:'已发布',in_progress:'进行中',ended:'已结束',closed:'已关闭',results_pending:'待发布成绩',results_released:'成绩已发布',archived:'已归档',cancelled:'已取消',
-  };
+  // 状态标签统一用 constants 的真实状态机映射。历史上这里硬编码了 in_progress/ended/closed
+  // 等状态机里根本不存在的值, 导致徽章显示英文原文、释放成绩按钮永不出现。
+  const statusLabel = (status: string): string =>
+    EXAM_STATUS_LABELS[status as ExamStatus] ?? status;
 
   if (loading) return <div className="text-center py-12 text-lg text-gray-500">加载中...</div>;
 
@@ -194,24 +197,24 @@ export default function ExamSchedulesPage() {
                   <div className="text-base text-gray-500">
                     {s.cohortName} · {s.paperTitle || '未关联试卷'} · {formatDateTime(s.examStartAt)} ~ {formatDateTime(s.examEndAt)}
                   </div>
-                  <div className="text-sm text-gray-400">已交卷 {s.attemptCount} 人</div>
+                  <div className="text-sm text-gray-400">已交卷 {s.submittedCount ?? 0} / 参考 {s.attemptCount} 人</div>
                 </div>
               </div>
               <div className="flex items-center gap-3">
                 <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  s.status === 'published' ? 'bg-success/10 text-success' :
+                  s.status === 'published' || s.status === 'waiting' ? 'bg-success/10 text-success' :
                   s.status === 'draft' ? 'bg-warning/10 text-warning' :
-                  s.status === 'in_progress' ? 'bg-primary/10 text-primary' :
+                  s.status === 'exam_open' ? 'bg-primary/10 text-primary' :
                   'bg-muted text-muted-foreground'
                 }`}>
-                  {statusLabel[s.status] || s.status}
+                  {statusLabel(s.status)}
                 </span>
                 {s.status === 'draft' && (
                   <Button size="sm" onClick={() => handleAction(s.id, 'publish')} className="text-sm">
                     <Send className="w-4 h-4 mr-1" /> 发布
                   </Button>
                 )}
-                {!s.resultsReleased && (s.status === 'ended' || s.status === 'closed' || s.status === 'published') && (
+                {!s.resultsReleased && ['exam_closed','grading','results_pending'].includes(s.status) && (
                   <Button size="sm" variant="outline" onClick={() => handleAction(s.id, 'release_results')} className="text-sm">
                     <Unlock className="w-4 h-4 mr-1" /> 释放成绩
                   </Button>

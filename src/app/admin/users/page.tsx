@@ -47,10 +47,15 @@ export default function AdminUsersPage() {
     loadUsers();
   }, [loadUsers]);
 
+  // 角色词表以服务端真实角色为准(历史上写了不存在的 'admin', 且缺题库/监考/审计角色, 筛选后永远空表)。
   const roleLabels: Record<string, string> = {
     super_admin: '超级管理员',
-    admin: '管理员',
+    school_admin: '学校管理员',
     teacher: '教师',
+    question_editor: '题库编辑',
+    question_reviewer: '题库审核',
+    invigilator: '监考员',
+    auditor: '审计员',
     student: '学员',
   };
 
@@ -67,7 +72,11 @@ export default function AdminUsersPage() {
             <option value="">全部角色</option>
             <option value="student">学员</option>
             <option value="teacher">教师</option>
-            <option value="admin">管理员</option>
+            <option value="question_editor">题库编辑</option>
+            <option value="question_reviewer">题库审核</option>
+            <option value="invigilator">监考员</option>
+            <option value="auditor">审计员</option>
+            <option value="school_admin">学校管理员</option>
             <option value="super_admin">超级管理员</option>
           </select>
         </div>

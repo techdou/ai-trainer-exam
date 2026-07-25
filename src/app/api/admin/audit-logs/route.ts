@@ -15,7 +15,9 @@ import {ok, fail, catchError} from '@/lib/api';
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRole(request as unknown as Request, ['super_admin']);
+    // 菜单(src/app/admin/layout.tsx)把审计日志开放给 super_admin+auditor, 这里必须对齐,
+    // 否则 auditor 看到菜单却永远 403 空白页。auditor 是独立审计角色, 允许跨机构只读。
+    await requireRole(request as unknown as Request, ['super_admin', 'auditor']);
 
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'));

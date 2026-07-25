@@ -53,9 +53,9 @@ interface ScoreDetail {
     itemType: string;
     response: unknown;
     score: number;
-    stem: string | null;
+    // 题干/题型嵌在 itemSnapshot 里(历史上前端读顶层 resp.stem 恒 undefined, 复核员看不到题目)。
+    itemSnapshot: { stem?: string; questionType?: string } | null;
     answerKey: unknown;
-    questionType: string | null;
   }>;
 }
 
@@ -98,10 +98,16 @@ export default function ResultsPage() {
   };
 
   const approveScore = async (scoreId: string) => {
+    // API 要求复核说明(审计要求), 历史上前端不传 note 导致"确认并发布"永远 400。
+    const note = window.prompt('请填写复核说明（将写入审计日志）');
+    if (!note || note.trim().length < 3) {
+      if (note !== null) toast.error('复核说明至少 3 个字');
+      return;
+    }
     setAdjusting(true);
     apiFetch(`/api/admin/scores/review`, {
       method: 'PATCH',
-      body: { scoreId, action: 'approve' },
+      body: { scoreId, action: 'approve', note: note.trim() },
     }).then(r => {
       if (r.ok) {
         toast.success('成绩已发布');
@@ -193,14 +199,14 @@ export default function ResultsPage() {
                 <div key={resp.id} className="border rounded-lg p-3">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-medium">
-                      第{idx + 1}题 ({resp.questionType ?? resp.itemType})
+                      第{idx + 1}题 ({resp.itemSnapshot?.questionType ?? resp.itemType})
                     </span>
                     <span className={`text-sm font-bold ${resp.score > 0 ? 'text-success' : 'text-destructive'}`}>
                       {resp.score}分
                     </span>
                   </div>
-                  {resp.stem && (
-                    <p className="text-sm text-gray-600 mb-1 line-clamp-2">{resp.stem}</p>
+                  {resp.itemSnapshot?.stem && (
+                    <p className="text-sm text-gray-600 mb-1">{resp.itemSnapshot.stem}</p>
                   )}
                   <div className="text-xs text-gray-400">
                     学员答案: {JSON.stringify(resp.response)}

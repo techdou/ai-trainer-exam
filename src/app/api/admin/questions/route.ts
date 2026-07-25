@@ -21,9 +21,11 @@ export async function GET(request: NextRequest) {
     const user = await requireRole(request, ['school_admin','super_admin','question_editor','question_reviewer','teacher','auditor']);
     const p = new URL(request.url).searchParams;
     const bankType = p.get('bank_type') === 'exam' ? 'exam' : 'practice';
+    // 前端历史上发过 review_status 参数, 后端只认 status, 导致过滤被静默忽略(审核页拉到全量题目)。两个名字都接受。
+    const status = p.get('status') || p.get('review_status');
     const result = await listQuestions({
       bankType,
-      questionType: p.get('question_type'), status: p.get('status'), keyword: p.get('keyword') || p.get('search'),
+      questionType: p.get('question_type'), status, keyword: p.get('keyword') || p.get('search'),
       page: Math.max(1, Number(p.get('page') || 1)), pageSize: Math.min(100, Math.max(1, Number(p.get('limit') || p.get('page_size') || 20))),
       organizationId: user.roles.includes('super_admin') ? undefined : user.organizationId,
     });

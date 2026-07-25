@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireRole } from '@/server/auth';
 import { dbQuery } from '@/server/db';
-import { ok, fail } from '@/lib/api';
+import { ok, catchError } from '@/lib/api';
 
 /** GET /api/admin/results - 查询成绩 */
 export async function GET(req: NextRequest) {
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
     const total = parseInt(countRow[0]?.count ?? '0', 10);
 
     const results = await dbQuery<ScoreRow>(
-      `SELECT sc.id, sc.user_id, p.display_name as user_name,
+      `SELECT sc.id, sc.user_id, p.email as user_email, p.display_name as user_name,
               sc.schedule_id, s.title as schedule_title, sc.attempt_id,
               sc.theory_score, sc.cleaning_score, sc.image_annotation_score,
               sc.text_annotation_score, sc.audio_score, sc.statistics_score,
@@ -86,6 +86,7 @@ export async function GET(req: NextRequest) {
       items: results.map(r => ({
         id: r.id,
         userId: r.user_id,
+        userEmail: r.user_email,
         userName: r.user_name,
         scheduleId: r.schedule_id,
         scheduleTitle: r.schedule_title,
@@ -108,8 +109,8 @@ export async function GET(req: NextRequest) {
       pageSize,
     });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : '未知错误';
-    console.error('[admin/results] GET error:', msg);
-    return fail(500, '服务器开小差了，请稍后再试');
+    // 统一走 catchError: ApiError(401/403) 透传状态码, 其余才 500。
+    // 之前一律 fail(500), 越权/未登录被误报为服务器错误, 且 apiFetch 的 401 自动刷新永不触发。
+    return catchError(e);
   }
 }
