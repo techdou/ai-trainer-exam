@@ -188,6 +188,136 @@ if (firstScoreId) {
   console.log('SKIP 无成绩记录, 跳过复核详情用例');
 }
 
+// ============ 5. 用户管理写操作(建号→登录→改角色→重置→停用→启用→清理) ============
+const testEmail = `verify-${Date.now()}@exam.local`;
+// 越权: 学员不能建号
+await run({
+  name: '学员建号-拒绝', role: 'student', method: 'POST', path: '/api/admin/users',
+  body: { email: testEmail, displayName: '回归验证', roles: ['student'] }, expect: 403,
+});
+// 越权: school_admin 不能分配 school_admin 角色(防提权)
+await run({
+  name: 'school建同级-拒绝', role: 'school', method: 'POST', path: '/api/admin/users',
+  body: { email: testEmail, displayName: '回归验证', roles: ['school_admin'] }, expect: 403,
+});
+// 正常建号
+const created = await run({
+  name: 'school建学员', role: 'school', method: 'POST', path: '/api/admin/users',
+  body: { email: testEmail, displayName: '回归验证账号', roles: ['student'] }, expect: 201, check: (j) => {
+    if (!j.success) return 'success=false';
+    const d = j.data as { userId?: string; initialPassword?: string };
+    return d.userId && d.initialPassword ? null : '响应缺 userId/initialPassword';
+  },
+});
+const newUserId = created.json.success ? (created.json.data as { userId: string }).userId : null;
+const initialPw = created.json.success ? (created.json.data as { initialPassword: string }).initialPassword : null;
+
+if (newUserId && initialPw) {
+  // 初始密码能登录(证明 Auth 侧账号真实创建)
+  const loginRes = await fetch(`${BASE}/api/auth/session`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: testEmail, password: initialPw }),
+  });
+  const loginJson = await loginRes.json();
+  if (loginRes.status === 200 && loginJson.success) { passed++; console.log('OK   [新号初始密码登录]'); }
+  else { failed++; failures.push(`[新号初始密码登录] -> ${loginRes.status} ${JSON.stringify(loginJson).slice(0, 150)}`); console.log('FAIL [新号初始密码登录]'); }
+
+  // 改角色
+  await run({
+    name: '改角色', role: 'school', method: 'PATCH', path: `/api/admin/users/${newUserId}`,
+    body: { action: 'set_roles', roles: ['student', 'invigilator'] }, expect: 200,
+  });
+  // 越权: 改成超纲角色被拒
+  await run({
+    name: '改角色超纲-拒绝', role: 'school', method: 'PATCH', path: `/api/admin/users/${newUserId}`,
+    body: { action: 'set_roles', roles: ['auditor'] }, expect: 403,
+  });
+  // 重置密码
+  await run({
+    name: '重置密码', role: 'school', method: 'PATCH', path: `/api/admin/users/${newUserId}`,
+    body: { action: 'reset_password' }, expect: 200, check: (j) =>
+      (j.data as { newPassword?: string })?.newPassword ? null : '响应缺 newPassword',
+  });
+  // 停用/启用
+  await run({ name: '停用', role: 'school', method: 'PATCH', path: `/api/admin/users/${newUserId}`, body: { action: 'deactivate' }, expect: 200 });
+  await run({ name: '启用', role: 'school', method: 'PATCH', path: `/api/admin/users/${newUserId}`, body: { action: 'activate' }, expect: 200 });
+  // 用户列表带 status 字段
+  await run({
+    name: '列表含status', role: 'school', path: '/api/admin/users?limit=5', expect: 200, check: (j) => {
+      const items = (j.data as { items?: { status?: string }[] })?.items;
+      if (!items?.length) return '列表为空';
+      return items[0].status !== undefined ? null : '缺 status 字段';
+    },
+  });
+} else {
+  console.log('SKIP 建号失败, 跳过用户管理链路用例');
+}
+
+// 自己不能停用自己
+const schoolSession = await fetch(`${BASE}/api/auth/session`, { headers: { Authorization: `Bearer ${await login('school')}` } }).then(r => r.json());
+const schoolId = schoolSession?.data?.user?.id ?? schoolSession?.data?.id;
+if (schoolId) {
+  await run({
+    name: '停用自己-拒绝', role: 'school', method: 'PATCH', path: `/api/admin/users/${schoolId}`,
+    body: { action: 'deactivate' }, expect: 409,
+  });
+}
+
+// ============ 6. 教师 progress 新口径 ============
+await run({
+  name: 'progress含考试得分率', role: 'teacher', path: '/api/teacher/progress', expect: 200, check: (j) => {
+    if (!j.success) return 'success=false';
+    const items = (j.data as { items?: { practiceScoreRate?: unknown; examScoreRate?: unknown }[] })?.items;
+    if (!items?.length) return null;
+    const first = items[0];
+    return ('practiceScoreRate' in first && 'examScoreRate' in first) ? null : '缺 practiceScoreRate/examScoreRate 字段';
+  },
+});
+
+// ============ 7. 报表导出 ============
+for (const [type, format, mime] of [
+  ['scores', 'csv', 'text/csv'],
+  ['scores', 'xlsx', 'spreadsheetml'],
+  ['progress', 'csv', 'text/csv'],
+  ['progress', 'xlsx', 'spreadsheetml'],
+] as const) {
+  const token = await login('school');
+  const res = await fetch(`${BASE}/api/admin/reports/export?type=${type}&format=${format}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const ct = res.headers.get('Content-Type') ?? '';
+  const tag = `[导出${type}.${format}] -> ${res.status} ${ct.split(';')[0]}`;
+  if (res.status === 200 && ct.includes(mime)) { passed++; console.log(`OK   ${tag}`); }
+  else { failed++; failures.push(`${tag} 期望 200 + ${mime}`); console.log(`FAIL ${tag}`); }
+}
+await run({ name: '教师导出-拒绝', role: 'teacher', path: '/api/admin/reports/export?type=scores&format=csv', expect: 403 });
+await run({ name: '导出参数错误', role: 'school', path: '/api/admin/reports/export?type=bogus&format=csv', expect: 400 });
+
+// ============ 8. 清理共享库测试数据 ============
+if (newUserId) {
+  try {
+    const { readFileSync } = await import('node:fs');
+    for (const line of readFileSync('.env.local', 'utf-8').split('\n')) {
+      const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
+      if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^['"]|['"]$/g, '');
+    }
+    const { createClient } = await import('@supabase/supabase-js');
+    const pg = (await import('pg')).default;
+    const admin = createClient(process.env.COZE_SUPABASE_URL!, process.env.COZE_SUPABASE_SERVICE_ROLE_KEY!, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    }).auth.admin;
+    await admin.deleteUser(newUserId);
+    const db = new pg.Client({ connectionString: process.env.PGDATABASE_URL });
+    await db.connect();
+    await db.query('DELETE FROM user_roles WHERE user_id = $1', [newUserId]);
+    await db.query('DELETE FROM profiles WHERE id = $1', [newUserId]);
+    await db.end();
+    console.log(`OK   [清理] 测试账号 ${testEmail} 已从 Auth+DB 删除`);
+  } catch (e) {
+    console.log(`WARN [清理] 测试账号删除失败, 需手工清理 ${newUserId}: ${(e as Error).message}`);
+  }
+}
+
 // ============ 汇总 ============
 console.log(`\n===== 验证矩阵结果: ${passed} 通过 / ${failed} 失败 =====`);
 if (failures.length) {

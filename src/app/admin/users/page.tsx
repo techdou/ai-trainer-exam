@@ -4,17 +4,32 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { apiFetch } from '@/lib/session-client';
+import { apiFetch, getStoredUser } from '@/lib/session-client';
+import { ROLE_LABELS, ROLES, type Role } from '@/lib/constants';
+import { UserPlus, KeyRound, UserX, UserCheck, ShieldCheck, Copy } from 'lucide-react';
 
 interface UserItem {
   id: string;
   email: string;
   displayName: string;
-  role: string | null;
+  roles: string[];
+  status: string;
+  organizationId: string | null;
   organizationName: string | null;
   createdAt: string;
 }
+
+interface OrgOption { id: string; name: string }
+
+/** school_admin 可分配的角色(与 API 端 SCHOOL_ADMIN_ASSIGNABLE_ROLES 一致)。 */
+const SCHOOL_ASSIGNABLE: Role[] = ['student', 'teacher', 'invigilator', 'question_editor', 'question_reviewer'];
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserItem[]>([]);
@@ -23,6 +38,26 @@ export default function AdminUsersPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const limit = 20;
+
+  const me = getStoredUser();
+  const isSuper = me?.roles.includes('super_admin') ?? false;
+  const assignableRoles: Role[] = isSuper ? [...ROLES] : SCHOOL_ASSIGNABLE;
+
+  // 新建用户弹窗
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createEmail, setCreateEmail] = useState('');
+  const [createName, setCreateName] = useState('');
+  const [createRoles, setCreateRoles] = useState<Role[]>(['student']);
+  const [createOrg, setCreateOrg] = useState('');
+  const [orgs, setOrgs] = useState<OrgOption[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+
+  // 一次性密码展示弹窗(新建/重置共用)
+  const [passwordInfo, setPasswordInfo] = useState<{ email: string; password: string } | null>(null);
+
+  // 改角色弹窗
+  const [roleTarget, setRoleTarget] = useState<UserItem | null>(null);
+  const [roleSelection, setRoleSelection] = useState<Role[]>([]);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -47,16 +82,89 @@ export default function AdminUsersPage() {
     loadUsers();
   }, [loadUsers]);
 
-  // 角色词表以服务端真实角色为准(历史上写了不存在的 'admin', 且缺题库/监考/审计角色, 筛选后永远空表)。
-  const roleLabels: Record<string, string> = {
-    super_admin: '超级管理员',
-    school_admin: '学校管理员',
-    teacher: '教师',
-    question_editor: '题库编辑',
-    question_reviewer: '题库审核',
-    invigilator: '监考员',
-    auditor: '审计员',
-    student: '学员',
+  // super_admin 打开新建弹窗时才拉机构列表, 避免无谓请求。
+  useEffect(() => {
+    if (!createOpen || !isSuper || orgs.length > 0) return;
+    void apiFetch<OrgOption[]>('/api/admin/organizations').then(r => {
+      if (r.ok && r.data) setOrgs(r.data);
+    });
+  }, [createOpen, isSuper, orgs.length]);
+
+  const toggleRole = (list: Role[], role: Role): Role[] =>
+    list.includes(role) ? list.filter(r => r !== role) : [...list, role];
+
+  const handleCreate = async () => {
+    if (!createEmail.trim() || !createName.trim() || createRoles.length === 0) {
+      toast.error('请填写邮箱、姓名并至少选择一个角色');
+      return;
+    }
+    setSubmitting(true);
+    const res = await apiFetch<{ userId: string; initialPassword: string }>('/api/admin/users', {
+      method: 'POST',
+      body: {
+        email: createEmail.trim(), displayName: createName.trim(), roles: createRoles,
+        ...(isSuper && createOrg ? { organizationId: createOrg } : {}),
+      },
+    });
+    setSubmitting(false);
+    if (res.ok && res.data) {
+      setCreateOpen(false);
+      setCreateEmail(''); setCreateName(''); setCreateRoles(['student']); setCreateOrg('');
+      setPasswordInfo({ email: createEmail.trim(), password: res.data.initialPassword });
+      loadUsers();
+    } else {
+      toast.error('创建失败', { description: res.error });
+    }
+  };
+
+  const handleResetPassword = async (u: UserItem) => {
+    const res = await apiFetch<{ newPassword: string }>(`/api/admin/users/${u.id}`, {
+      method: 'PATCH', body: { action: 'reset_password' },
+    });
+    if (res.ok && res.data) {
+      setPasswordInfo({ email: u.email, password: res.data.newPassword });
+    } else {
+      toast.error('重置密码失败', { description: res.error });
+    }
+  };
+
+  const handleToggleStatus = async (u: UserItem) => {
+    const action = u.status === 'active' ? 'deactivate' : 'activate';
+    const res = await apiFetch(`/api/admin/users/${u.id}`, { method: 'PATCH', body: { action } });
+    if (res.ok) {
+      toast.success(action === 'deactivate' ? `已停用 ${u.displayName}` : `已启用 ${u.displayName}`);
+      loadUsers();
+    } else {
+      toast.error('操作失败', { description: res.error });
+    }
+  };
+
+  const handleSetRoles = async () => {
+    if (!roleTarget) return;
+    if (roleSelection.length === 0) {
+      toast.error('至少保留一个角色');
+      return;
+    }
+    const res = await apiFetch(`/api/admin/users/${roleTarget.id}`, {
+      method: 'PATCH', body: { action: 'set_roles', roles: roleSelection },
+    });
+    if (res.ok) {
+      toast.success('角色已更新');
+      setRoleTarget(null);
+      loadUsers();
+    } else {
+      toast.error('修改角色失败', { description: res.error });
+    }
+  };
+
+  const copyPassword = async () => {
+    if (!passwordInfo) return;
+    try {
+      await navigator.clipboard.writeText(passwordInfo.password);
+      toast.success('已复制到剪贴板');
+    } catch {
+      toast.error('复制失败，请手动抄录');
+    }
   };
 
   return (
@@ -70,15 +178,11 @@ export default function AdminUsersPage() {
             className="border rounded-md px-3 py-2 text-sm bg-background"
           >
             <option value="">全部角色</option>
-            <option value="student">学员</option>
-            <option value="teacher">教师</option>
-            <option value="question_editor">题库编辑</option>
-            <option value="question_reviewer">题库审核</option>
-            <option value="invigilator">监考员</option>
-            <option value="auditor">审计员</option>
-            <option value="school_admin">学校管理员</option>
-            <option value="super_admin">超级管理员</option>
+            {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
           </select>
+          <Button onClick={() => setCreateOpen(true)}>
+            <UserPlus className="w-4 h-4 mr-1" /> 新建用户
+          </Button>
         </div>
       </div>
 
@@ -89,30 +193,54 @@ export default function AdminUsersPage() {
               <th className="text-left p-3 font-medium">姓名</th>
               <th className="text-left p-3 font-medium">邮箱</th>
               <th className="text-left p-3 font-medium">角色</th>
+              <th className="text-left p-3 font-medium">状态</th>
               <th className="text-left p-3 font-medium">所属机构</th>
               <th className="text-left p-3 font-medium">注册时间</th>
+              <th className="text-left p-3 font-medium">操作</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">加载中...</td></tr>
+              <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">加载中...</td></tr>
             ) : users.length === 0 ? (
-              <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">暂无用户</td></tr>
+              <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">暂无用户</td></tr>
             ) : (
               users.map((u) => (
                 <tr key={u.id} className="border-b last:border-0 hover:bg-muted/30">
                   <td className="p-3">{u.displayName || '-'}</td>
                   <td className="p-3 text-muted-foreground">{u.email}</td>
                   <td className="p-3">
-                    {u.role && (
-                      <Badge variant={u.role === 'student' ? 'secondary' : 'default'}>
-                        {roleLabels[u.role] || u.role}
-                      </Badge>
-                    )}
+                    <div className="flex flex-wrap gap-1">
+                      {u.roles.map(r => (
+                        <Badge key={r} variant={r === 'student' ? 'secondary' : 'default'}>
+                          {ROLE_LABELS[r as Role] || r}
+                        </Badge>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="p-3">
+                    <Badge variant={u.status === 'active' ? 'outline' : 'destructive'}>
+                      {u.status === 'active' ? '正常' : '已停用'}
+                    </Badge>
                   </td>
                   <td className="p-3 text-muted-foreground">{u.organizationName || '-'}</td>
                   <td className="p-3 text-muted-foreground text-xs">
                     {new Date(u.createdAt).toLocaleDateString('zh-CN')}
+                  </td>
+                  <td className="p-3">
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="sm" title="重置密码" onClick={() => handleResetPassword(u)}>
+                        <KeyRound className="w-4 h-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" title="修改角色"
+                        onClick={() => { setRoleTarget(u); setRoleSelection(u.roles.filter((r): r is Role => (ROLES as readonly string[]).includes(r))); }}>
+                        <ShieldCheck className="w-4 h-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" title={u.status === 'active' ? '停用' : '启用'}
+                        onClick={() => handleToggleStatus(u)}>
+                        {u.status === 'active' ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -132,6 +260,104 @@ export default function AdminUsersPage() {
           </Button>
         </div>
       )}
+
+      {/* 新建用户 */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>新建用户</DialogTitle>
+            <DialogDescription>创建后系统生成初始密码，仅显示一次，请转交给用户并提醒首次登录修改。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="create-email">邮箱</Label>
+              <Input id="create-email" type="email" placeholder="user@example.com"
+                value={createEmail} onChange={e => setCreateEmail(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="create-name">姓名</Label>
+              <Input id="create-name" placeholder="张三"
+                value={createName} onChange={e => setCreateName(e.target.value)} />
+            </div>
+            {isSuper && (
+              <div className="space-y-2">
+                <Label htmlFor="create-org">所属机构</Label>
+                <select id="create-org" value={createOrg} onChange={e => setCreateOrg(e.target.value)}
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-background">
+                  <option value="">（不绑定机构）</option>
+                  {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </select>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>角色（可多选）</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {assignableRoles.map(r => (
+                  <label key={r} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <Checkbox
+                      checked={createRoles.includes(r)}
+                      onCheckedChange={() => setCreateRoles(toggleRole(createRoles, r))}
+                    />
+                    {ROLE_LABELS[r]}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
+            <Button onClick={handleCreate} disabled={submitting}>{submitting ? '创建中…' : '创建'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 一次性密码展示 */}
+      <Dialog open={passwordInfo !== null} onOpenChange={(open) => { if (!open) setPasswordInfo(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>初始密码（仅显示一次）</DialogTitle>
+            <DialogDescription>
+              账号 {passwordInfo?.email} 的密码已重置。请立即抄录并转交用户，关闭后将无法再次查看。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-center gap-3 py-4">
+            <code className="text-2xl font-mono font-bold tracking-widest bg-muted px-4 py-2 rounded">
+              {passwordInfo?.password}
+            </code>
+            <Button variant="outline" size="icon" onClick={copyPassword} title="复制">
+              <Copy className="w-4 h-4" />
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setPasswordInfo(null)}>我已妥善保存</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 修改角色 */}
+      <Dialog open={roleTarget !== null} onOpenChange={(open) => { if (!open) setRoleTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>修改角色 — {roleTarget?.displayName}</DialogTitle>
+            <DialogDescription>{roleTarget?.email}</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-2 py-2">
+            {assignableRoles.map(r => (
+              <label key={r} className="flex items-center gap-2 text-sm cursor-pointer">
+                <Checkbox
+                  checked={roleSelection.includes(r)}
+                  onCheckedChange={() => setRoleSelection(toggleRole(roleSelection, r))}
+                />
+                {ROLE_LABELS[r]}
+              </label>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRoleTarget(null)}>取消</Button>
+            <Button onClick={handleSetRoles}>保存</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

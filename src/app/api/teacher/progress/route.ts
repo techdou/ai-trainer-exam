@@ -11,7 +11,8 @@ interface ProgressRow {
   assignment_count: string;
   attempted_count: string;
   passed_count: string;
-  average_score: string | null;
+  practice_score_rate: string | null;
+  exam_score_rate: string | null;
   last_activity_at: string | null;
 }
 
@@ -27,20 +28,40 @@ export async function GET(request: NextRequest) {
       args.push(user.organizationId);
       scope = `c.organization_id = $${args.length}`;
     }
+    // 口径说明(修复历史三个 bug):
+    // 1. 同一题多次作答只计最近一次(DISTINCT ON), 重做不再重复进入平均值;
+    // 2. 覆盖率分母用"去重后的布置题目数", 同一题被多个作业复用不会导致覆盖率 >100%;
+    // 3. 练习得分率与考试得分率分开返回, 不再混叫"平均分"。
     const rows = await dbQuery<ProgressRow>(
-      `SELECT p.id, p.display_name, p.student_no, c.name AS cohort_name,
-              COUNT(DISTINCT a.id)::text AS assignment_count,
-              COUNT(DISTINCT pa.item_id)::text AS attempted_count,
-              COUNT(DISTINCT pa.item_id) FILTER (WHERE pa.passed)::text AS passed_count,
-              AVG(CASE WHEN pa.max_score > 0 THEN pa.score / pa.max_score * 100 END)::text AS average_score,
-              MAX(pa.updated_at)::text AS last_activity_at
+      `WITH assign_items AS (
+         SELECT DISTINCT cohort_id, item_type, item_id FROM practice_assignments
+       ),
+       latest AS (
+         SELECT DISTINCT ON (user_id, item_type, item_id)
+                user_id, item_type, item_id, score, max_score, passed, updated_at
+           FROM practice_attempts
+          ORDER BY user_id, item_type, item_id, submitted_at DESC NULLS LAST, updated_at DESC
+       ),
+       exam_avg AS (
+         SELECT user_id,
+                AVG(CASE WHEN max_score > 0 THEN total_score / max_score * 100 END) AS rate
+           FROM exam_scores GROUP BY user_id
+       )
+       SELECT p.id, p.display_name, p.student_no, c.name AS cohort_name,
+              COUNT(ai.item_id)::text AS assignment_count,
+              COUNT(l.item_id)::text AS attempted_count,
+              COUNT(l.item_id) FILTER (WHERE l.passed)::text AS passed_count,
+              AVG(CASE WHEN l.max_score > 0 THEN l.score / l.max_score * 100 END)::text AS practice_score_rate,
+              ea.rate::text AS exam_score_rate,
+              MAX(l.updated_at)::text AS last_activity_at
          FROM profiles p
          JOIN enrollments e ON e.user_id = p.id AND e.status = 'active'
          JOIN cohorts c ON c.id = e.cohort_id AND c.deleted_at IS NULL
-         LEFT JOIN practice_assignments a ON a.cohort_id = c.id
-         LEFT JOIN practice_attempts pa ON pa.user_id = p.id AND pa.item_id = a.item_id AND pa.item_type = a.item_type
+         LEFT JOIN assign_items ai ON ai.cohort_id = c.id
+         LEFT JOIN latest l ON l.user_id = p.id AND l.item_type = ai.item_type AND l.item_id = ai.item_id
+         LEFT JOIN exam_avg ea ON ea.user_id = p.id
         WHERE p.status = 'active' AND ${scope}
-        GROUP BY p.id, c.id
+        GROUP BY p.id, c.id, c.name, ea.rate
         ORDER BY c.name, p.display_name`,
       ...args,
     );
@@ -52,7 +73,8 @@ export async function GET(request: NextRequest) {
       assignmentCount: Number(row.assignment_count),
       attemptedCount: Number(row.attempted_count),
       passedCount: Number(row.passed_count),
-      averageScore: row.average_score === null ? null : Math.round(Number(row.average_score)),
+      practiceScoreRate: row.practice_score_rate === null ? null : Math.round(Number(row.practice_score_rate)),
+      examScoreRate: row.exam_score_rate === null ? null : Math.round(Number(row.exam_score_rate)),
       lastActivityAt: row.last_activity_at,
     })), total: rows.length });
   } catch (error) {

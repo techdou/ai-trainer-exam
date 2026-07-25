@@ -23,6 +23,7 @@ export async function createUserWithRoles(input: CreateUserInput): Promise<{ use
     email: input.email,
     password: input.password,
     email_confirm: true,
+    user_metadata: { display_name: input.displayName },
   });
   if (error) {
     if (error.message.toLowerCase().includes('already')) {
@@ -32,9 +33,10 @@ export async function createUserWithRoles(input: CreateUserInput): Promise<{ use
   }
   const userId = data.user.id;
 
+  // must_change_password=true: 管理员代设的初始密码, 首次登录必须修改(对齐 seed-core 行为)。
   await dbQuery(
-    `INSERT INTO profiles (id, organization_id, display_name, email)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO profiles (id, organization_id, display_name, email, must_change_password, status)
+     VALUES ($1, $2, $3, $4, true, 'active')
      ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name, organization_id = EXCLUDED.organization_id, email = EXCLUDED.email, updated_at = now()`,
     userId, input.organizationId, input.displayName, input.email,
   );
@@ -88,6 +90,20 @@ export async function deactivateUser(userId: string) {
   const client = getSupabaseClient();
   await client.auth.admin.updateUserById(userId, { ban_duration: '876000h' });
   await dbQuery("UPDATE profiles SET status = 'disabled', updated_at = now() WHERE id = $1", userId);
+}
+
+/** 重新启用被停用的账号（解除封禁 + 恢复 status）。 */
+export async function activateUser(userId: string) {
+  loadEnv();
+  const client = getSupabaseClient();
+  const { error } = await client.auth.admin.updateUserById(userId, { ban_duration: 'none' });
+  if (error) throw new Error(`启用账号失败：${error.message}`);
+  await dbQuery("UPDATE profiles SET status = 'active', updated_at = now() WHERE id = $1", userId);
+}
+
+/** 重置密码后强制下次登录修改。 */
+export async function markMustChangePassword(userId: string) {
+  await dbQuery('UPDATE profiles SET must_change_password = true, updated_at = now() WHERE id = $1', userId);
 }
 
 export async function findUserByEmail(email: string) {
