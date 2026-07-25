@@ -45,9 +45,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (target.id === user.id && body.action !== 'reset_password') return fail(409, '不能对自己执行该操作');
     // 守卫: 非 super_admin 不能操作 super_admin 账号。
     if (!isSuper && target.roles.includes('super_admin')) return fail(403, '无权操作超级管理员账号');
-    // 守卫: school_admin 只能操作本机构用户。
+    // 守卫: school_admin 只能操作本机构用户; 目标未挂机构(organization_id 为 null)时一律拒绝,
+    // 避免"无机构账号"(如初始超管种子)被学校管理员误操作。
     if (!isSuper) {
-      if (!user.organizationId || target.organization_id !== user.organizationId) return fail(403, '不能操作其他机构的用户');
+      if (!user.organizationId || !target.organization_id || target.organization_id !== user.organizationId) {
+        return fail(403, '不能操作其他机构的用户');
+      }
     }
 
     switch (body.action) {
@@ -55,13 +58,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         // 新密码只在本次响应返回一次, 不落审计详情; 重置后强制下次登录改密。
         const newPassword = genInitialPassword();
         await resetUserPassword(target.id, newPassword);
-        await markMustChangePassword(target.id);
+        try {
+          await markMustChangePassword(target.id);
+        } catch (e) {
+          throw new Error(`密码已重置成功, 但强制改密标记失败, 请再次执行重置操作(${(e as Error).message})`);
+        }
         await insertAudit({
           actorId: user.id, actorRole: user.roles[0], action: 'user.reset_password',
           entityType: 'user', entityId: target.id, details: `重置 ${target.email} 的密码`,
           organizationId: target.organization_id,
         });
-        return ok({ userId: target.id, newPassword });
+        // no-store: 响应体含一次性明文密码, 禁止任何中间层/浏览器缓存。
+        return ok({ userId: target.id, newPassword }, { headers: { 'Cache-Control': 'no-store' } });
       }
       case 'deactivate': {
         if (target.status === 'disabled') return ok({ userId: target.id, status: 'disabled', changed: false });
@@ -89,7 +97,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           const bad = body.roles.filter(r => !(SCHOOL_ADMIN_ASSIGNABLE_ROLES as readonly string[]).includes(r));
           if (bad.length > 0) return fail(403, `学校管理员不能分配这些角色：${bad.join('、')}`);
         }
-        await setUserRoles(target.id, body.roles as Role[], target.organization_id);
+        // requireNonSuperAdmin: 事务内重查目标当前角色, 防止基于陈旧快照的越权在并发窗口内命中。
+        await setUserRoles(target.id, body.roles as Role[], target.organization_id, { requireNonSuperAdmin: !isSuper });
         await insertAudit({
           actorId: user.id, actorRole: user.roles[0], action: 'user.set_roles',
           entityType: 'user', entityId: target.id,

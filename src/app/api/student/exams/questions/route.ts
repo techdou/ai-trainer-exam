@@ -33,16 +33,23 @@ export const GET = handler(async (request: Request) => {
     serverNow: now.toISOString(),
     serverDeadline: attempt.server_deadline,
     durationMinutes: schedule.duration_minutes,
-    items: items.map(item => ({
-      id: item.id,
-      sourceItemId: item.item_snapshot?.sourceItemId ?? null,
-      itemType: item.item_type,
-      sortOrder: item.sort_order,
-      score: Number(item.score),
-      section: item.section,
-      content: item.item_snapshot,
-      assetChecksum: item.asset_checksum,
-    })),
+    items: items.map(item => {
+      // 考试进行中不得下发 explanation/knowledgePoint: 解析通常直接揭示答案,
+      // 前端虽不渲染, 但响应体在 Network 面板明文可见。成绩发布后才可展示解析。
+      const content = { ...(item.item_snapshot as Record<string, unknown>) };
+      delete content.explanation;
+      delete content.knowledgePoint;
+      return {
+        id: item.id,
+        sourceItemId: item.item_snapshot?.sourceItemId ?? null,
+        itemType: item.item_type,
+        sortOrder: item.sort_order,
+        score: Number(item.score),
+        section: item.section,
+        content,
+        assetChecksum: item.asset_checksum,
+      };
+    }),
     savedResponses: Object.fromEntries(saved.map(row => [row.item_id, row.response])),
   });
 });

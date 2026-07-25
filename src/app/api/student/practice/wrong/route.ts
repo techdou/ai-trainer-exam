@@ -25,9 +25,12 @@ export async function GET(request: NextRequest) {
       whereClause += ` AND w.resolved = false`;
     }
 
+    // 题目已软删的错题不再展示: INNER JOIN + deleted_at 过滤, count 与 items 同口径。
+    const joinClause = 'JOIN practice_question_items q ON q.id = w.item_id AND q.deleted_at IS NULL';
+
     // Count total
     const countResult = await dbQuery<{ count: string }>(
-      `SELECT COUNT(*)::text as count FROM practice_wrong_items w ${whereClause}`,
+      `SELECT COUNT(*)::text as count FROM practice_wrong_items w ${joinClause} ${whereClause}`,
       ...params,
     );
     const total = parseInt(countResult[0]?.count || '0', 10);
@@ -51,7 +54,7 @@ export async function GET(request: NextRequest) {
               CASE WHEN w.resolved THEN q.explanation ELSE NULL END AS explanation,
               q.knowledge_point
        FROM practice_wrong_items w
-       LEFT JOIN practice_question_items q ON q.id = w.item_id
+       ${joinClause}
        ${whereClause}
        ORDER BY w.last_wrong_at DESC
        LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,

@@ -68,8 +68,11 @@ async function buildProgress(scopedOrg: string | null): Promise<ExportData> {
         ORDER BY user_id, item_type, item_id, submitted_at DESC NULLS LAST, updated_at DESC
      ),
      exam_avg AS (
-       SELECT user_id, AVG(CASE WHEN max_score > 0 THEN total_score / max_score * 100 END) AS rate
-         FROM exam_scores GROUP BY user_id
+       SELECT sc.user_id, AVG(CASE WHEN sc.max_score > 0 THEN sc.total_score / sc.max_score * 100 END) AS rate
+         FROM exam_scores sc
+         JOIN exam_schedules es ON es.id = sc.schedule_id
+        WHERE ($1::varchar IS NULL OR es.organization_id = $1)
+        GROUP BY sc.user_id
      )
      SELECT p.display_name, p.student_no, c.name AS cohort_name,
             COUNT(ai.item_id)::text AS assignment_count,
@@ -108,8 +111,17 @@ async function buildProgress(scopedOrg: string | null): Promise<ExportData> {
   };
 }
 
+/**
+ * 公式注入防护: 以 = + - @ Tab CR 开头的单元格, Excel/WPS 打开时会按公式执行
+ * (=HYPERLINK 外发数据、DDE 命令执行等)。姓名/学号/班级均为用户可控字符串, 必须清洗。
+ * XLSX 同样需要: exceljs 会把以 = 开头的字符串自动识别为公式单元格。
+ */
+function sanitizeFormula(s: string): string {
+  return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+}
+
 function csvCell(value: string | number | null): string {
-  const s = value === null ? '' : String(value);
+  const s = value === null ? '' : sanitizeFormula(String(value));
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -124,7 +136,9 @@ async function toXlsx(data: ExportData): Promise<Buffer> {
   const sheet = workbook.addWorksheet(data.sheetName);
   sheet.columns = data.headers.map(h => ({ header: h, width: Math.max(12, h.length * 2 + 6) }));
   sheet.getRow(1).font = { bold: true };
-  for (const row of data.rows) sheet.addRow(row.map(v => v ?? ''));
+  for (const row of data.rows) {
+    sheet.addRow(row.map(v => (typeof v === 'string' ? sanitizeFormula(v) : v ?? '')));
+  }
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
@@ -139,6 +153,12 @@ export async function GET(request: NextRequest) {
 
     const scopedOrg = user.roles.includes('school_admin') && !user.roles.includes('super_admin') ? user.organizationId : null;
     const data = type === 'scores' ? await buildScores(scopedOrg) : await buildProgress(scopedOrg);
+
+    // 同步导出全量进内存, 设软上限防止数据增长后 OOM; 超限时引导走筛选/异步导出。
+    const MAX_EXPORT_ROWS = 50000;
+    if (data.rows.length > MAX_EXPORT_ROWS) {
+      return fail(413, `导出数据量(${data.rows.length} 行)超过上限 ${MAX_EXPORT_ROWS} 行, 请联系管理员分批导出`);
+    }
 
     await insertAudit({
       actorId: user.id, actorRole: user.roles[0], action: 'report.export',

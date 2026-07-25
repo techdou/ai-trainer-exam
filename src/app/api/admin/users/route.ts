@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
       details: `创建用户 ${body.email}(${body.displayName}), 角色: ${body.roles.join(',')}`,
       organizationId,
     });
-    return ok({ userId, initialPassword }, { status: 201 });
+    // no-store: 响应体含一次性初始密码, 禁止任何中间层/浏览器缓存。
+    return ok({ userId, initialPassword }, { status: 201, headers: { 'Cache-Control': 'no-store' } });
   } catch (error) { return catchError(error); }
 }

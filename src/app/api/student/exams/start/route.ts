@@ -23,6 +23,19 @@ export const POST = handler(async (request: Request) => {
       if (now > deadline + schedule.submit_grace_seconds * 1000) return fail(409, '考试已结束，请联系考务人员处理');
       return ok({ attemptId: existing.id, resumed: true, serverDeadline: existing.server_deadline });
     }
+    if (existing.status === 'not_started') {
+      // 异常残留的未激活记录: 校验开考条件后原地激活, 而不是误报"已经提交"。
+      assertScheduleCanStart(schedule, now);
+      const deadline = attemptDeadline(schedule, now);
+      await dbTx(async client => {
+        await client.query(
+          `UPDATE exam_attempts SET status='in_progress', started_at=NOW(), server_deadline=$1, last_heartbeat_at=NOW(), updated_at=NOW()
+            WHERE id=$2 AND status='not_started'`,
+          [deadline, existing.id],
+        );
+      });
+      return ok({ attemptId: existing.id, resumed: false, serverDeadline: deadline.toISOString() });
+    }
     return fail(409, '该考试已经提交，不能再次开始');
   }
 

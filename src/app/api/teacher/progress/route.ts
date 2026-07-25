@@ -21,12 +21,17 @@ export async function GET(request: NextRequest) {
     const user = await requireRole(request, ['teacher', 'school_admin', 'super_admin']);
     const args: unknown[] = [];
     let scope = 'TRUE';
+    // examScope 作用于 exam_avg CTE(别名 es): 考试得分率只统计当前用户权限范围内的考试,
+    // 避免学员在其他机构/其他教师班级的历史成绩混入(数据越权)。
+    let examScope = 'TRUE';
     if (user.roles.includes('teacher') && !user.roles.includes('super_admin')) {
       args.push(user.id);
       scope = `EXISTS (SELECT 1 FROM teacher_cohort_grants g WHERE g.cohort_id = c.id AND g.teacher_id = $${args.length})`;
+      examScope = `EXISTS (SELECT 1 FROM teacher_cohort_grants g WHERE g.cohort_id = es.cohort_id AND g.teacher_id = $${args.length})`;
     } else if (!user.roles.includes('super_admin')) {
       args.push(user.organizationId);
       scope = `c.organization_id = $${args.length}`;
+      examScope = `es.organization_id = $${args.length}`;
     }
     // 口径说明(修复历史三个 bug):
     // 1. 同一题多次作答只计最近一次(DISTINCT ON), 重做不再重复进入平均值;
@@ -43,9 +48,12 @@ export async function GET(request: NextRequest) {
           ORDER BY user_id, item_type, item_id, submitted_at DESC NULLS LAST, updated_at DESC
        ),
        exam_avg AS (
-         SELECT user_id,
-                AVG(CASE WHEN max_score > 0 THEN total_score / max_score * 100 END) AS rate
-           FROM exam_scores GROUP BY user_id
+         SELECT sc.user_id,
+                AVG(CASE WHEN sc.max_score > 0 THEN sc.total_score / sc.max_score * 100 END) AS rate
+           FROM exam_scores sc
+           JOIN exam_schedules es ON es.id = sc.schedule_id
+          WHERE ${examScope}
+          GROUP BY sc.user_id
        )
        SELECT p.id, p.display_name, p.student_no, c.name AS cohort_name,
               COUNT(ai.item_id)::text AS assignment_count,

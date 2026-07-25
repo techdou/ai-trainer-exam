@@ -71,6 +71,8 @@ export const POST = handler(async (request: Request) => {
     }>(`SELECT id,item_type,score,section,item_snapshot,answer_key_snapshot,grading_config_snapshot,grader_id,grader_version
         FROM exam_paper_items WHERE paper_id=$1 ORDER BY sort_order`,[schedule.paper_id])).rows;
     if (!paperItems.length) throw new ApiError(409, '试卷为空');
+    // grader_id 缺失(历史数据未回填)时评分器会判"未知评分器"静默给 0 分, 必须显式拦截让考务修复。
+    if (paperItems.some(item => !item.grader_id)) throw new ApiError(409, '试卷存在未配置评分器的题目，请联系考务人员处理');
     const validIds = new Set(paperItems.map(item => item.id));
     for (const response of supplied) if (!validIds.has(response.itemId)) throw new ApiError(400, '提交中包含不属于本试卷的题目');
 
