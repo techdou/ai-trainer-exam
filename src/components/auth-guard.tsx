@@ -39,6 +39,11 @@ export function AuthGuard({ children, roles, fallback }: AuthGuardProps) {
         }
         const json = await res.json();
         const serverUser = json.data as ClientUser;
+        // 强制改密: 未改密用户不得进入任何业务页(改密页本身不挂 AuthGuard, 不会死循环)。
+        if (serverUser.mustChangePassword) {
+          router.replace('/change-password');
+          return;
+        }
         if (roles && roles.length > 0) {
           const ok =
             serverUser.roles.some((r) => roles.includes(r)) || serverUser.roles.includes('super_admin');

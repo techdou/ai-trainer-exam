@@ -118,42 +118,59 @@ export default function AdminUsersPage() {
   };
 
   const handleResetPassword = async (u: UserItem) => {
-    const res = await apiFetch<{ newPassword: string }>(`/api/admin/users/${u.id}`, {
-      method: 'PATCH', body: { action: 'reset_password' },
-    });
-    if (res.ok && res.data) {
-      setPasswordInfo({ email: u.email, password: res.data.newPassword });
-    } else {
-      toast.error('重置密码失败', { description: res.error });
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const res = await apiFetch<{ newPassword: string }>(`/api/admin/users/${u.id}`, {
+        method: 'PATCH', body: { action: 'reset_password' },
+      });
+      if (res.ok && res.data) {
+        setPasswordInfo({ email: u.email, password: res.data.newPassword });
+      } else {
+        toast.error('重置密码失败', { description: res.error });
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleToggleStatus = async (u: UserItem) => {
+    if (submitting) return;
     const action = u.status === 'active' ? 'deactivate' : 'activate';
-    const res = await apiFetch(`/api/admin/users/${u.id}`, { method: 'PATCH', body: { action } });
-    if (res.ok) {
-      toast.success(action === 'deactivate' ? `已停用 ${u.displayName}` : `已启用 ${u.displayName}`);
-      loadUsers();
-    } else {
-      toast.error('操作失败', { description: res.error });
+    setSubmitting(true);
+    try {
+      const res = await apiFetch(`/api/admin/users/${u.id}`, { method: 'PATCH', body: { action } });
+      if (res.ok) {
+        toast.success(action === 'deactivate' ? `已停用 ${u.displayName}` : `已启用 ${u.displayName}`);
+        loadUsers();
+      } else {
+        toast.error('操作失败', { description: res.error });
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleSetRoles = async () => {
-    if (!roleTarget) return;
+    if (!roleTarget || submitting) return;
     if (roleSelection.length === 0) {
       toast.error('至少保留一个角色');
       return;
     }
-    const res = await apiFetch(`/api/admin/users/${roleTarget.id}`, {
-      method: 'PATCH', body: { action: 'set_roles', roles: roleSelection },
-    });
-    if (res.ok) {
-      toast.success('角色已更新');
-      setRoleTarget(null);
-      loadUsers();
-    } else {
-      toast.error('修改角色失败', { description: res.error });
+    setSubmitting(true);
+    try {
+      const res = await apiFetch(`/api/admin/users/${roleTarget.id}`, {
+        method: 'PATCH', body: { action: 'set_roles', roles: roleSelection },
+      });
+      if (res.ok) {
+        toast.success('角色已更新');
+        setRoleTarget(null);
+        loadUsers();
+      } else {
+        toast.error('修改角色失败', { description: res.error });
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 

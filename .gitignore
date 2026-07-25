@@ -1,5 +1,22 @@
+# 依赖与构建产物
 node_modules/
 .next/
-.env*
 dist/
 build/
+*.tsbuildinfo
+
+# 环境与密钥(示例文件除外)
+.env*
+!.env.example
+
+# 编辑器与 IDE 配置
+.idea/
+.vscode/
+
+# 操作系统垃圾
+.DS_Store
+Thumbs.db
+
+# 日志与临时输出
+*.log
+tmp/

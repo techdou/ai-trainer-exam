@@ -42,20 +42,28 @@ export default function CohortsPage() {
 
   useEffect(() => { fetchData(); }, []);
 
+  const [saving, setSaving] = useState(false);
+
   const handleCreate = async () => {
     if (!newName.trim()) { toast.error('班级名称不能为空'); return; }
-    const r = await apiFetch<{ id: string }>('/api/admin/cohorts', {
-      method: 'POST',
-      body: { name: newName, organizationId: selectedOrgId || undefined },
-    });
-    if (r.ok) {
-      toast.success('创建成功');
-      setShowCreate(false);
-      setNewName('');
-      setSelectedOrgId('');
-      fetchData();
-    } else {
-      toast.error('创建失败', { description: r.error });
+    if (saving) return;
+    setSaving(true);
+    try {
+      const r = await apiFetch<{ id: string }>('/api/admin/cohorts', {
+        method: 'POST',
+        body: { name: newName, organizationId: selectedOrgId || undefined },
+      });
+      if (r.ok) {
+        toast.success('创建成功');
+        setShowCreate(false);
+        setNewName('');
+        setSelectedOrgId('');
+        fetchData();
+      } else {
+        toast.error('创建失败', { description: r.error });
+      }
+    } finally {
+      setSaving(false);
     }
   };
 

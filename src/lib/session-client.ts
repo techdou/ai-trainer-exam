@@ -92,7 +92,7 @@ async function accessToken(): Promise<string | null> {
 
 export async function apiFetch<T = unknown>(
   path: string,
-  options: { method?: string; body?: unknown; signal?: AbortSignal; retryAuth?: boolean } = {},
+  options: { method?: string; body?: unknown; signal?: AbortSignal; retryAuth?: boolean; keepalive?: boolean } = {},
 ): Promise<ApiResult<T>> {
   const token = await accessToken();
   const headers: Record<string, string> = { Accept: 'application/json' };
@@ -107,6 +107,8 @@ export async function apiFetch<T = unknown>(
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: options.signal,
       cache: 'no-store',
+      // keepalive: 页面卸载中发出的请求允许超出页面生命周期完成(用于关页前最后一次自动保存)。
+      keepalive: options.keepalive,
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') return { ok: false, status: 0, error: '请求已取消' };
@@ -117,6 +119,11 @@ export async function apiFetch<T = unknown>(
     const refreshed = await refreshSession();
     if (refreshed) return apiFetch<T>(path, { ...options, retryAuth: false });
     clearSession();
+  }
+
+  // 428: 服务端强制改密门控 —— 任何业务请求被拦截时, 统一跳改密页(改密页自身请求除外)。
+  if (response.status === 428 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/change-password')) {
+    window.location.assign('/change-password');
   }
 
   const json = await response.json().catch(() => null) as { success?: boolean; data?: T; error?: string } | null;

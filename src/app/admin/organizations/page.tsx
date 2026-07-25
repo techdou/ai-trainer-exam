@@ -35,22 +35,30 @@ export default function OrganizationsPage() {
 
   useEffect(() => { fetchOrgs(); }, []);
 
+  const [saving, setSaving] = useState(false);
+
   const handleCreate = async () => {
     if (!newName.trim()) { toast.error('学校名称不能为空'); return; }
     if (!newCode.trim()) { toast.error('学校编码不能为空'); return; }
-    const r = await apiFetch<{ id: string }>('/api/admin/organizations', {
-      method: 'POST',
-      body: { name: newName, code: newCode, contact: newContact },
-    });
-    if (r.ok) {
-      toast.success('创建成功');
-      setShowCreate(false);
-      setNewName('');
-      setNewCode('');
-      setNewContact('');
-      fetchOrgs();
-    } else {
-      toast.error('创建失败', { description: r.error });
+    if (saving) return;
+    setSaving(true);
+    try {
+      const r = await apiFetch<{ id: string }>('/api/admin/organizations', {
+        method: 'POST',
+        body: { name: newName, code: newCode, contact: newContact },
+      });
+      if (r.ok) {
+        toast.success('创建成功');
+        setShowCreate(false);
+        setNewName('');
+        setNewCode('');
+        setNewContact('');
+        fetchOrgs();
+      } else {
+        toast.error('创建失败', { description: r.error });
+      }
+    } finally {
+      setSaving(false);
     }
   };
 

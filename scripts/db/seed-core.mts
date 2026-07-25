@@ -12,8 +12,9 @@ import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { createClient } from '@supabase/supabase-js';
 import { getDbUrl, loadEnv } from 'coze-coding-dev-sdk';
+import { loadEnvLocal } from './_env.mjs';
 
-loadEnv();
+loadEnv(); loadEnvLocal();
 const generatedPassword = () => `Ai!${randomBytes(9).toString('base64url')}`;
 const isProd = (process.env.COZE_PROJECT_ENV ?? process.env.NODE_ENV) === 'PROD' || process.env.NODE_ENV === 'production';
 const adminPassword = process.env.SEED_ADMIN_PASSWORD || (!isProd ? generatedPassword() : '');

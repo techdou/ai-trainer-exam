@@ -3,14 +3,9 @@
  * 运行前先执行 seed-core.mts。正式考试素材仅作为开发夹具，投入考试前必须人工审核。
  */
 import pg from 'pg';
-import { readFileSync } from 'node:fs';
 import { getDbUrl, loadEnv } from 'coze-coding-dev-sdk';
-loadEnv();
-// loadEnv 只读 .env; 数据库连接串在 .env.local, 手动补齐(与 verify-*.mts 同款)。
-for (const line of readFileSync('.env.local', 'utf-8').split('\n')) {
-  const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-  if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
-}
+import { loadEnvLocal } from './_env.mjs';
+loadEnv(); loadEnvLocal();
 const db = new pg.Client({ connectionString: await getDbUrl() }); await db.connect();
 const q = async <T,>(sql:string, values:unknown[]=[]):Promise<T[]> => (await db.query(sql,values)).rows as T[];
 const org=(await q<{id:string}>(`SELECT id FROM organizations WHERE status='active' ORDER BY created_at LIMIT 1`))[0];

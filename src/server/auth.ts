@@ -92,9 +92,12 @@ export async function refreshSession(refreshToken: string): Promise<CreatedSessi
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
-export async function requireUser(request: Request): Promise<SessionUser> {
+export async function requireUser(request: Request, opts?: { allowPasswordChange?: boolean }): Promise<SessionUser> {
   const user = await getSessionUser(request);
   if (!user) throw new ApiError(401, '请先登录');
+  // 强制改密门控: 使用初始密码/被重置密码的账号必须先改密, 否则拒绝一切业务 API。
+  // 428 Precondition Required; 仅改密接口本身(allowPasswordChange)放行。
+  if (user.mustChangePassword && !opts?.allowPasswordChange) throw new ApiError(428, '请先修改初始密码');
   return user;
 }
 export async function requireRole(request: Request, roles: Role[]): Promise<SessionUser> {

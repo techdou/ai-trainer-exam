@@ -43,6 +43,7 @@ export default function ExamTakePage() {
   const [submitting,setSubmitting]=useState(false);
   const [receipt,setReceipt]=useState<string|null>(null);
   const [serverOffset,setServerOffset]=useState(0);
+  const [loadError,setLoadError]=useState('');
   // null = 倒计时尚未初始化; 仅当初始化后归零才触发自动交卷,避免试卷刚加载时误交白卷。
   const [timeLeft,setTimeLeft]=useState<number|null>(null);
   const dirtyRef=useRef(new Set<string>());
@@ -59,12 +60,13 @@ export default function ExamTakePage() {
   useEffect(()=>{receiptRef.current=receipt},[receipt]);
 
   const load=useCallback(async()=>{
-    setLoading(true);
+    setLoading(true);setLoadError('');
     const start=await apiFetch<{attemptId:string;serverDeadline:string}>('/api/student/exams/start',{method:'POST',body:{scheduleId}});
-    if(!start.ok||!start.data){toast.error(start.error??'无法开始考试');setLoading(false);return;}
+    if(!start.ok||!start.data){setLoadError(start.error??'无法开始考试');setLoading(false);return;}
     const result=await apiFetch<ExamPayload>(`/api/student/exams/questions?scheduleId=${encodeURIComponent(scheduleId)}`);
-    if(!result.ok||!result.data){toast.error(result.error??'试卷加载失败');setLoading(false);return;}
-    if(result.data.attemptId!==start.data.attemptId){toast.error('考试状态异常,请返回列表重试');setLoading(false);return;}
+    // start 幂等(重复进入返回同一 attempt), 试卷加载失败可直接重试, 不会重复开考。
+    if(!result.ok||!result.data){setLoadError(result.error??'试卷加载失败,请点击重试');setLoading(false);return;}
+    if(result.data.attemptId!==start.data.attemptId){setLoadError('考试状态异常,请返回列表重试');setLoading(false);return;}
     setPayload(result.data);
     setResponses(result.data.savedResponses??{});
     setServerOffset(new Date(result.data.serverNow).getTime()-Date.now());
@@ -74,13 +76,13 @@ export default function ExamTakePage() {
   },[scheduleId]);
   useEffect(()=>{void load()},[load]);
 
-  const flush=useCallback(async()=>{
+  const flush=useCallback(async(keepalive=false)=>{
     const p=payloadRef.current;
     if(!p||dirtyRef.current.size===0||receiptRef.current)return true;
     const ids=[...dirtyRef.current];
     const body=ids.map(itemId=>({itemId,response:responsesRef.current[itemId]??{},workspaceSnapshot:responsesRef.current[itemId]??{}}));
     setSaving(true);
-    const result=await apiFetch<{saved:number}>('/api/student/exams/save',{method:'POST',body:{scheduleId,attemptId:p.attemptId,responses:body}});
+    const result=await apiFetch<{saved:number}>('/api/student/exams/save',{method:'POST',body:{scheduleId,attemptId:p.attemptId,responses:body},keepalive});
     setSaving(false);
     if(result.ok){ids.forEach(id=>dirtyRef.current.delete(id));return true;}
     toast.error('自动保存失败',{description:result.error});return false;
@@ -99,11 +101,11 @@ export default function ExamTakePage() {
     const timer=setInterval(()=>void flush(),15_000);
     return()=>clearInterval(timer);
   },[payload,receipt,flush]);
-  // 离开页面/切后台时尽力保存,避免丢失最近作答
+  // 离开页面/切后台时尽力保存,避免丢失最近作答(keepalive 允许请求在页面卸载后继续完成)
   useEffect(()=>{
     if(!payload||receipt)return;
-    const onUnload=()=>{void flush()};
-    const onVisibility=()=>{if(document.visibilityState==='hidden')void flush()};
+    const onUnload=()=>{void flush(true)};
+    const onVisibility=()=>{if(document.visibilityState==='hidden')void flush(true)};
     window.addEventListener('beforeunload',onUnload);
     document.addEventListener('visibilitychange',onVisibility);
     return()=>{window.removeEventListener('beforeunload',onUnload);document.removeEventListener('visibilitychange',onVisibility)};
@@ -140,6 +142,8 @@ export default function ExamTakePage() {
   const format=(seconds:number)=>`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
 
   if(loading)return <div className="flex min-h-[60vh] items-center justify-center text-lg text-muted-foreground">正在安全加载试卷…</div>;
+  // 开考是幂等的, 试卷加载失败可直接重试(不会重复创建考试记录)。
+  if(loadError)return <div className="mx-auto max-w-lg py-16 text-center"><p className="mb-4 text-lg">{loadError}</p><div className="flex justify-center gap-3"><Button onClick={()=>void load()}>重新加载</Button><Button variant="outline" onClick={()=>router.push('/student/exams')}>返回考试列表</Button></div></div>;
   if(!payload)return <div className="mx-auto max-w-lg py-16 text-center"><p className="mb-4 text-lg">无法进入考试，请返回考试列表查看开放时间。</p><Button onClick={()=>router.push('/student/exams')}>返回考试列表</Button></div>;
   if(receipt)return <div className="mx-auto max-w-xl py-16 text-center"><div className="mb-4 text-6xl text-success" aria-hidden>✓</div><h1 className="mb-3 text-2xl font-bold">交卷成功</h1><p className="mb-2 text-muted-foreground">成绩将在学校审核并发布后显示。</p><p className="mb-8 break-all text-xs text-muted-foreground">交卷回执：{receipt}</p><Button size="lg" onClick={()=>router.replace('/student/exams')}>返回考试列表</Button></div>;
 

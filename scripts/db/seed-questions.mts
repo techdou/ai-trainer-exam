@@ -7,9 +7,10 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import pg from 'pg';
 import { getDbUrl, loadEnv } from 'coze-coding-dev-sdk';
+import { loadEnvLocal } from './_env.mjs';
 import { parseDocx } from '../../src/server/docx-importer';
 
-loadEnv();
+loadEnv(); loadEnvLocal();
 const file = process.argv[2];
 if (!file) throw new Error('请提供 DOCX 路径：pnpm tsx scripts/db/seed-questions.mts <questions.docx>');
 const buffer = readFileSync(resolve(file));

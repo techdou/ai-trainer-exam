@@ -60,44 +60,58 @@ export default function ExamSchedulesPage() {
 
   useEffect(() => { fetchData(); }, []);
 
+  const [saving, setSaving] = useState(false);
+
   const handleCreate = async () => {
     if (!form.title || !form.cohortId || !form.paperId || !form.examStartAt || !form.examEndAt) {
       toast.error('请填写所有必填项'); return;
     }
-    const r = await apiFetch<{ id: string }>('/api/admin/exam-schedules', {
-      method: 'POST',
-      body: {
-        title: form.title,
-        cohortId: form.cohortId,
-        paperId: form.paperId,
-        examStartAt: new Date(form.examStartAt).toISOString(),
-        examEndAt: new Date(form.examEndAt).toISOString(),
-        lateEntryMinutes: parseInt(form.lateEntryMinutes, 10) || 15,
-        submitGraceSeconds: parseInt(form.submitGraceSeconds, 10) || 60,
-        practiceOpenAt: form.practiceOpenAt ? new Date(form.practiceOpenAt).toISOString() : null,
-        practiceLockAt: form.practiceLockAt ? new Date(form.practiceLockAt).toISOString() : null,
-        resultsReleaseAt: form.resultsReleaseAt ? new Date(form.resultsReleaseAt).toISOString() : null,
-      },
-    });
-    if (r.ok) {
-      toast.success('创建成功');
-      setShowCreate(false);
-      setForm({ title: '', cohortId: '', paperId: '', examStartAt: '', examEndAt: '', lateEntryMinutes: '15', submitGraceSeconds: '60', practiceOpenAt: '', practiceLockAt: '', resultsReleaseAt: '' });
-      fetchData();
-    } else {
-      toast.error('创建失败', { description: r.error });
+    if (saving) return;
+    setSaving(true);
+    try {
+      const r = await apiFetch<{ id: string }>('/api/admin/exam-schedules', {
+        method: 'POST',
+        body: {
+          title: form.title,
+          cohortId: form.cohortId,
+          paperId: form.paperId,
+          examStartAt: new Date(form.examStartAt).toISOString(),
+          examEndAt: new Date(form.examEndAt).toISOString(),
+          lateEntryMinutes: parseInt(form.lateEntryMinutes, 10) || 15,
+          submitGraceSeconds: parseInt(form.submitGraceSeconds, 10) || 60,
+          practiceOpenAt: form.practiceOpenAt ? new Date(form.practiceOpenAt).toISOString() : null,
+          practiceLockAt: form.practiceLockAt ? new Date(form.practiceLockAt).toISOString() : null,
+          resultsReleaseAt: form.resultsReleaseAt ? new Date(form.resultsReleaseAt).toISOString() : null,
+        },
+      });
+      if (r.ok) {
+        toast.success('创建成功');
+        setShowCreate(false);
+        setForm({ title: '', cohortId: '', paperId: '', examStartAt: '', examEndAt: '', lateEntryMinutes: '15', submitGraceSeconds: '60', practiceOpenAt: '', practiceLockAt: '', resultsReleaseAt: '' });
+        fetchData();
+      } else {
+        toast.error('创建失败', { description: r.error });
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleAction = async (scheduleId: string, action: 'publish' | 'release_results') => {
-    const endpoint = action === 'publish' ? '/api/admin/exam-schedules' : '/api/admin/scores/publish';
-    const body = action === 'publish' ? { scheduleId, status: 'published' } : { scheduleId };
-    const r = await apiFetch(endpoint, { method: action === 'publish' ? 'PATCH' : 'POST', body });
-    if (r.ok) {
-      toast.success(action === 'publish' ? '已发布' : '成绩已释放');
-      fetchData();
-    } else {
-      toast.error('操作失败', { description: r.error });
+    if (saving) return;
+    setSaving(true);
+    try {
+      const endpoint = action === 'publish' ? '/api/admin/exam-schedules' : '/api/admin/scores/publish';
+      const body = action === 'publish' ? { scheduleId, status: 'published' } : { scheduleId };
+      const r = await apiFetch(endpoint, { method: action === 'publish' ? 'PATCH' : 'POST', body });
+      if (r.ok) {
+        toast.success(action === 'publish' ? '已发布' : '成绩已释放');
+        fetchData();
+      } else {
+        toast.error('操作失败', { description: r.error });
+      }
+    } finally {
+      setSaving(false);
     }
   };
 

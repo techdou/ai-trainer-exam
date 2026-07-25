@@ -130,6 +130,15 @@ export default function ExamsPage() {
                   进入考试
                 </button>
               )}
+              {/* 已开考未交卷: 刷新/断线后必须能回到考试(start 接口对 in_progress 幂等恢复) */}
+              {exam.attempt?.status === 'in_progress' && (
+                <button
+                  onClick={() => router.push(`/student/exams/${exam.id}`)}
+                  className="mt-4 px-6 py-3 rounded-lg bg-primary text-white font-bold text-lg hover:opacity-90 transition-opacity"
+                >
+                  继续考试
+                </button>
+              )}
               {exam.attempt && ['submitted', 'grading', 'graded', 'released'].includes(exam.attempt.status) && (
                 <button
                   onClick={() => router.push(`/student/results?examId=${exam.id}`)}

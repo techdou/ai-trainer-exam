@@ -1,12 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { saveSession, homeForRoles, type ClientSession } from '@/lib/session-client';
 import { BookOpenCheck, Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const justChanged = searchParams.get('changed') === '1';
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -35,6 +37,11 @@ export default function LoginPage() {
       }
       const session = json.data as ClientSession;
       saveSession(session);
+      // 使用初始密码/被重置密码登录: 先强制改密, 改完才能进入业务页。
+      if (session.user.mustChangePassword) {
+        router.replace('/change-password');
+        return;
+      }
       router.replace(homeForRoles(session.user.roles));
     } catch {
       setError('网络连接失败，请检查网络后重试');
@@ -83,6 +90,12 @@ export default function LoginPage() {
               placeholder="请输入密码"
             />
           </div>
+
+          {justChanged && (
+            <div role="status" className="rounded-lg bg-success/10 border border-success/30 px-4 py-3 text-base text-success">
+              ✓ 密码修改成功，请用新密码重新登录
+            </div>
+          )}
 
           {error && (
             <div role="alert" className="rounded-lg bg-destructive/10 border border-destructive/30 px-4 py-3 text-base text-destructive">

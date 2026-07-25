@@ -221,6 +221,42 @@ if (newUserId && initialPw) {
   const loginJson = await loginRes.json();
   if (loginRes.status === 200 && loginJson.success) { passed++; console.log('OK   [新号初始密码登录]'); }
   else { failed++; failures.push(`[新号初始密码登录] -> ${loginRes.status} ${JSON.stringify(loginJson).slice(0, 150)}`); console.log('FAIL [新号初始密码登录]'); }
+  const newToken = loginJson.data?.accessToken as string | undefined;
+
+  // 强制改密门控: 初始密码账号调业务 API 必须被 428 拦截
+  if (newToken) {
+    const gated = await fetch(`${BASE}/api/student/home`, { headers: { Authorization: `Bearer ${newToken}` } });
+    if (gated.status === 428) { passed++; console.log('OK   [初始密码业务请求-428门控]'); }
+    else { failed++; failures.push(`[初始密码业务请求-428门控] -> ${gated.status} (期望 428)`); console.log(`FAIL [初始密码业务请求-428门控] -> ${gated.status}`); }
+
+    // 改密接口放行(唯一白名单), 改密后同 token 门控解除
+    const changedPw = `Newpw${Date.now() % 100000}x`;
+    const cp = await fetch(`${BASE}/api/auth/change-password`, {
+      method: 'POST', headers: { Authorization: `Bearer ${newToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword: initialPw, newPassword: changedPw }),
+    });
+    if (cp.status === 200) { passed++; console.log('OK   [改密接口-白名单放行]'); }
+    else { failed++; failures.push(`[改密接口-白名单放行] -> ${cp.status} ${(await cp.text()).slice(0, 120)}`); console.log(`FAIL [改密接口-白名单放行] -> ${cp.status}`); }
+
+    // Supabase 改密后旧 token 立即失效(安全设计): 旧 token 应 401, 新密码可登录
+    const after = await fetch(`${BASE}/api/student/home`, { headers: { Authorization: `Bearer ${newToken}` } });
+    if (after.status === 401) { passed++; console.log('OK   [改密后旧token失效]'); }
+    else { failed++; failures.push(`[改密后旧token失效] -> ${after.status} (期望 401)`); console.log(`FAIL [改密后旧token失效] -> ${after.status}`); }
+
+    // 旧密码作废, 新密码可登录
+    const oldLogin = await fetch(`${BASE}/api/auth/session`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: testEmail, password: initialPw }),
+    });
+    if (!oldLogin.ok) { passed++; console.log('OK   [旧初始密码已作废]'); }
+    else { failed++; failures.push(`[旧初始密码已作废] -> ${oldLogin.status} (期望非 200)`); console.log(`FAIL [旧初始密码已作废] -> ${oldLogin.status}`); }
+    const newLogin = await fetch(`${BASE}/api/auth/session`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: testEmail, password: changedPw }),
+    });
+    if (newLogin.ok) { passed++; console.log('OK   [新密码可登录]'); }
+    else { failed++; failures.push(`[新密码可登录] -> ${newLogin.status}`); console.log(`FAIL [新密码可登录] -> ${newLogin.status}`); }
+  }
 
   // 改角色
   await run({
