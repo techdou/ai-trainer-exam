@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { apiFetch } from '@/lib/session-client';
+import { toast } from 'sonner';
 
 interface PracticeQuestion {
   id: string;
@@ -70,7 +71,12 @@ export default function TheoryPracticePage() {
           correct: prev.correct + (r.data!.correct ? 1 : 0),
           total: prev.total + 1,
         }));
+      } else {
+        const msg = r.error || '提交失败，请稍后重试';
+        toast.error(msg);
       }
+    } catch {
+      toast.error('网络连接失败，请稍后重试');
     } finally {
       setChecking(false);
     }
