@@ -326,7 +326,7 @@ function parseSingleChoice(
     options,
     answerKey: answerKey ?? '',
     rawText: fullText,
-    warnings,
+    warnings: answerKey ? warnings : [...warnings, '答案缺失，请人工补充'],
   };
 }
 
