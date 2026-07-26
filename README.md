@@ -166,7 +166,7 @@ pnpm dev                     # → http://localhost:5000
 │   ├── db/                         # 迁移/种子/回归验证脚本
 │   ├── build.sh / dev.sh / start.sh # 构建/开发/启动脚本
 │   └── quality-gate.mjs            # 质量门禁
-├── public/                         # 静态资源（演示素材 SVG/AI 图/TTS 音频）
+├── public/                         # 静态资源（AI 生图 WebP / TTS 音频 / 演示素材）
 ├── docs/                           # 项目文档（架构/部署/安全/评分/手册/测试）
 ├── data/raw/                       # 题库源文件（DOCX）
 ├── .github/workflows/              # CI 质量门禁
