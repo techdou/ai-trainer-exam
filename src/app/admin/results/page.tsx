@@ -53,17 +53,17 @@ interface ScoreDetail {
     itemType: string;
     response: unknown;
     score: number;
-    stem: string | null;
+    // 题干/题型嵌在 itemSnapshot 里(历史上前端读顶层 resp.stem 恒 undefined, 复核员看不到题目)。
+    itemSnapshot: { stem?: string; questionType?: string } | null;
     answerKey: unknown;
-    questionType: string | null;
   }>;
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  auto_scored: { label: '待复核', color: 'bg-amber-50 text-amber-700' },
-  reviewed: { label: '已复核', color: 'bg-blue-50 text-blue-700' },
-  published: { label: '已发布', color: 'bg-green-50 text-green-700' },
-  pending: { label: '待评分', color: 'bg-gray-100 text-gray-600' },
+  auto_graded: { label: '待复核', color: 'bg-warning/10 text-warning' },
+  reviewed: { label: '已复核', color: 'bg-primary/10 text-primary' },
+  published: { label: '已发布', color: 'bg-success/10 text-success' },
+  pending: { label: '待评分', color: 'bg-muted text-muted-foreground' },
 };
 
 export default function ResultsPage() {
@@ -75,8 +75,8 @@ export default function ResultsPage() {
 
   const loadResults = useCallback(() => {
     setLoading(true);
-    apiFetch<ExamResult[]>('/api/admin/results').then(r => {
-      if (r.ok && r.data) setResults(r.data);
+    apiFetch<{ items: ExamResult[]; total: number }>('/api/admin/results?pageSize=200').then(r => {
+      if (r.ok && r.data) setResults(r.data.items);
       setLoading(false);
     });
   }, []);
@@ -98,10 +98,16 @@ export default function ResultsPage() {
   };
 
   const approveScore = async (scoreId: string) => {
+    // API 要求复核说明(审计要求), 历史上前端不传 note 导致"确认并发布"永远 400。
+    const note = window.prompt('请填写复核说明（将写入审计日志）');
+    if (!note || note.trim().length < 3) {
+      if (note !== null) toast.error('复核说明至少 3 个字');
+      return;
+    }
     setAdjusting(true);
     apiFetch(`/api/admin/scores/review`, {
       method: 'PATCH',
-      body: { scoreId, action: 'approve' },
+      body: { scoreId, action: 'approve', note: note.trim() },
     }).then(r => {
       if (r.ok) {
         toast.success('成绩已发布');
@@ -139,7 +145,7 @@ export default function ResultsPage() {
                 <span className="text-lg text-gray-400">/{selectedScore.score.scores.max}</span>
               </div>
               <div className={`mt-2 inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${
-                selectedScore.score.passed ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                selectedScore.score.passed ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'
               }`}>
                 {selectedScore.score.passed ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
                 {selectedScore.score.passed ? '通过' : '未通过'}
@@ -177,7 +183,7 @@ export default function ResultsPage() {
                 </Button>
               )}
               {selectedScore.score.status === 'published' && (
-                <div className="text-sm text-green-600 flex items-center gap-1">
+                <div className="text-sm text-success flex items-center gap-1">
                   <CheckCircle2 className="w-4 h-4" /> 成绩已发布
                 </div>
               )}
@@ -193,20 +199,20 @@ export default function ResultsPage() {
                 <div key={resp.id} className="border rounded-lg p-3">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-medium">
-                      第{idx + 1}题 ({resp.questionType ?? resp.itemType})
+                      第{idx + 1}题 ({resp.itemSnapshot?.questionType ?? resp.itemType})
                     </span>
-                    <span className={`text-sm font-bold ${resp.score > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    <span className={`text-sm font-bold ${resp.score > 0 ? 'text-success' : 'text-destructive'}`}>
                       {resp.score}分
                     </span>
                   </div>
-                  {resp.stem && (
-                    <p className="text-sm text-gray-600 mb-1 line-clamp-2">{resp.stem}</p>
+                  {resp.itemSnapshot?.stem && (
+                    <p className="text-sm text-gray-600 mb-1">{resp.itemSnapshot.stem}</p>
                   )}
                   <div className="text-xs text-gray-400">
                     学员答案: {JSON.stringify(resp.response)}
                   </div>
                   {resp.answerKey ? (
-                    <div className="text-xs text-green-600 mt-1">
+                    <div className="text-xs text-success mt-1">
                       正确答案: {JSON.stringify(resp.answerKey)}
                     </div>
                   ) : null}
@@ -242,7 +248,7 @@ export default function ResultsPage() {
               </thead>
               <tbody>
                 {results.map(r => {
-                  const statusInfo = STATUS_LABELS[r.status] ?? { label: r.status, color: 'bg-gray-100 text-gray-600' };
+                  const statusInfo = STATUS_LABELS[r.status] ?? { label: r.status, color: 'bg-muted text-muted-foreground' };
                   return (
                     <tr key={r.id} className="border-b last:border-b-0 hover:bg-gray-50">
                       <td className="px-4 py-3">
@@ -254,7 +260,7 @@ export default function ResultsPage() {
                       <td className="px-4 py-3 text-center font-bold">{r.totalScore}/{r.maxScore}</td>
                       <td className="px-4 py-3 text-center">
                         <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${
-                          r.passed ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                          r.passed ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'
                         }`}>
                           <Award className="w-3.5 h-3.5" />
                           {r.passed ? '通过' : '未通过'}

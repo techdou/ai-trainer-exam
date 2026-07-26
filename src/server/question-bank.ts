@@ -49,6 +49,7 @@ export interface QuestionSearchParams {
   keyword?: string;
   difficulty?: number;
   practiceOnly?: boolean;
+  organizationId?: string | null;
   page?: number;
   pageSize?: number;
 }
@@ -106,6 +107,10 @@ export async function searchQuestions(params: QuestionSearchParams): Promise<Que
     conditions.push(`bank_type = $${argIdx++}`);
     args.push(params.bankType);
   }
+  if (params.organizationId !== undefined) {
+    conditions.push(`organization_id = $${argIdx++}`);
+    args.push(params.organizationId);
+  }
   if (params.questionType) {
     conditions.push(`question_type = $${argIdx++}`);
     args.push(params.questionType);
@@ -133,15 +138,17 @@ export async function searchQuestions(params: QuestionSearchParams): Promise<Que
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  // question_items VIEW 的 DDL 不在仓库迁移内,无法保证其过滤软删;在查询层显式兜底。
+  const softDeleteGuard = where ? `${where} AND deleted_at IS NULL` : 'WHERE deleted_at IS NULL';
 
   const countRes = await dbOne<{ count: string }>(
-    `SELECT count(*)::text as count FROM question_items ${where}`,
+    `SELECT count(*)::text as count FROM question_items ${softDeleteGuard}`,
     ...args,
   );
   const total = parseInt(countRes?.count ?? '0', 10);
 
   const items = await dbQuery<QuestionRow>(
-    `SELECT * FROM question_items ${where} ORDER BY created_at DESC LIMIT $${argIdx++} OFFSET $${argIdx++}`,
+    `SELECT * FROM question_items ${softDeleteGuard} ORDER BY created_at DESC LIMIT $${argIdx++} OFFSET $${argIdx++}`,
     ...args,
     pageSize,
     offset,
@@ -154,7 +161,7 @@ export async function searchQuestions(params: QuestionSearchParams): Promise<Que
  * 根据 ID 获取题目（通过 VIEW）
  */
 export async function getQuestionById(id: string): Promise<QuestionRow | null> {
-  return dbOne<QuestionRow>('SELECT * FROM question_items WHERE id = $1', id);
+  return dbOne<QuestionRow>('SELECT * FROM question_items WHERE id = $1 AND deleted_at IS NULL', id);
 }
 
 // ============================================================
@@ -282,7 +289,7 @@ export async function updateQuestion(
 
   // 审计日志
   await dbExec(
-    `INSERT INTO audit_logs (id, actor_id, action, entity_type, entity_id, details)
+    `INSERT INTO audit_logs (id, actor_id, action, entity_type, entity_id, detail)
      VALUES (gen_random_uuid(), $1, 'update_question', $2, $3, $4)`,
     actorId,
     table,
@@ -339,7 +346,7 @@ export async function reviewQuestion(
 
   // 审计日志
   await dbExec(
-    `INSERT INTO audit_logs (id, actor_id, action, entity_type, entity_id, details)
+    `INSERT INTO audit_logs (id, actor_id, action, entity_type, entity_id, detail)
      VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)`,
     reviewerId,
     `review_${action}`,
@@ -410,7 +417,7 @@ export async function copyToExamBank(
 
   if (row) {
     await dbExec(
-      `INSERT INTO audit_logs (id, actor_id, action, entity_type, entity_id, details)
+      `INSERT INTO audit_logs (id, actor_id, action, entity_type, entity_id, detail)
        VALUES (gen_random_uuid(), $1, 'copy_to_exam', 'exam_question_items', $2, $3)`,
       reviewerId,
       row.id,
@@ -435,6 +442,7 @@ export async function listQuestions(params: {
   keyword?: string | null;
   page?: number;
   pageSize?: number;
+  organizationId?: string | null;
 }): Promise<QuestionListResult> {
   return searchQuestions({
     bankType: params.bankType,
@@ -443,6 +451,7 @@ export async function listQuestions(params: {
     keyword: params.keyword ?? undefined,
     page: params.page,
     pageSize: params.pageSize,
+    organizationId: params.organizationId,
   });
 }
 
@@ -493,17 +502,19 @@ export async function retireQuestion(questionId: string): Promise<void> {
 /**
  * 学员端获取练习题（仅已发布，不返回答案）
  */
-export async function listPracticeQuestionsForStudent(opts: { module?: string; limit?: number; offset?: number }): Promise<StudentQuestionRow[]> {
+export async function listPracticeQuestionsForStudent(opts: { module?: string; limit?: number; offset?: number; organizationId?: string | null }): Promise<StudentQuestionRow[]> {
   const limit = Math.min(opts.limit ?? 20, 100);
   const offset = opts.offset ?? 0;
   return dbQuery<StudentQuestionRow>(
     `SELECT id, question_type, stem, options, difficulty, knowledge_point
      FROM practice_question_items
      WHERE review_status = 'published'
+       AND (organization_id = $3 OR organization_id IS NULL)
      ORDER BY created_at ASC
      LIMIT $1 OFFSET $2`,
     limit,
     offset,
+    opts.organizationId ?? null,
   );
 }
 
@@ -547,26 +558,29 @@ export async function createQuestion(data: {
   questionType: 'single_choice' | 'true_false';
   stem: string;
   options: Record<string, string>;
-  answerKey: string;
+  answerKey: string | boolean;
   explanation?: string;
   knowledgePoint?: string;
   difficulty?: number;
   legalReviewRequired?: boolean;
   createdBy: string;
+  organizationId: string | null;
 }): Promise<string> {
   const table = data.bankType === 'exam' ? 'exam_question_items' : 'practice_question_items';
   const row = await dbOne<{ id: string }>(
     `INSERT INTO ${table}
-     (id, question_type, stem, options, answer_key, explanation, knowledge_point, difficulty, source, review_status)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'manual', 'draft')
+     (id, organization_id, question_type, stem, options, answer_key, explanation, knowledge_point, difficulty, source, review_status, created_by)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, 'manual', 'draft', $9)
      RETURNING id`,
+    data.organizationId,
     data.questionType,
     data.stem,
     JSON.stringify(data.options),
-    data.answerKey,
+    JSON.stringify(data.answerKey),
     data.explanation ?? null,
     data.knowledgePoint ?? null,
     data.difficulty ?? 2,
+    data.createdBy,
   );
   return row?.id ?? '';
 }

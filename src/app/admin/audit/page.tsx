@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { apiFetch } from '@/lib/session-client';
 import { ScrollText, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface AuditLog {
   id: string;
@@ -29,23 +30,37 @@ interface Pagination {
 const actionLabelMap: Record<string, string> = {
   login: '登录',
   logout: '登出',
-  create: '创建',
-  update: '更新',
-  delete: '删除',
   import: '导入',
-  submit: '提交',
-  grade: '评分',
-  publish: '发布',
+  question_import: '导入题目',
+  question_edit: '编辑题目',
+  question_retire: '下架题目',
+  question_approve: '审核通过题目',
+  question_reject: '驳回题目',
+  question_publish: '发布题目',
+  exam_schedule_update: '更新考试安排',
+  practice_answer: '练习作答',
+  settings_update: '更新系统设置',
+  organization_create: '创建组织',
+  training_project_create: '创建培训项目',
+  training_project_update: '更新培训项目',
+  practice_assignment_create: '创建练习作业',
   start_exam: '开始考试',
   submit_exam: '交卷',
-  create_question: '创建题目',
-  update_question: '更新题目',
-  delete_question: '删除题目',
-  create_schedule: '创建考试安排',
-  update_schedule: '更新考试安排',
-  create_paper: '创建试卷',
   adjust_score: '调整分数',
   publish_results: '发布成绩',
+};
+
+// 审计 action 命名两套并存(question_retire / settings.update), 且新动作不断加入。
+// 精确匹配不到时按"对象+动词"拆解兜底, 避免日志页直接裸奔英文标识符。
+const actionVerbMap: Record<string, string> = {
+  create: '创建', update: '更新', delete: '删除', retire: '下架', import: '导入',
+  submit: '提交', grade: '评分', publish: '发布', approve: '审核通过', reject: '驳回',
+  edit: '编辑', start: '开始', answer: '作答', login: '登录', logout: '登出', adjust: '调整',
+};
+const actionObjectMap: Record<string, string> = {
+  question: '题目', exam: '考试', schedule: '考试安排', paper: '试卷', score: '成绩',
+  settings: '系统设置', organization: '组织', practice: '练习', training: '培训项目',
+  project: '培训项目', user: '用户', assignment: '作业',
 };
 
 const entityLabelMap: Record<string, string> = {
@@ -53,15 +68,24 @@ const entityLabelMap: Record<string, string> = {
   question: '题目',
   exam: '考试',
   schedule: '考试安排',
+  exam_schedule: '考试安排',
   paper: '试卷',
   score: '成绩',
   organization: '组织',
   cohort: '班级',
   system: '系统',
+  training_project: '培训项目',
+  practice_assignment: '练习作业',
 };
 
 function getActionLabel(action: string): string {
-  return actionLabelMap[action] || action;
+  const key = action.replace(/\./g, '_');
+  if (actionLabelMap[key]) return actionLabelMap[key];
+  const parts = key.split('_');
+  const object = parts.map(p => actionObjectMap[p]).find(Boolean);
+  const verb = [...parts].reverse().map(p => actionVerbMap[p]).find(Boolean);
+  if (object && verb) return `${verb}${object}`;
+  return verb || action;
 }
 
 function getEntityLabel(entityType: string | null): string {
@@ -70,12 +94,12 @@ function getEntityLabel(entityType: string | null): string {
 }
 
 function getActionColor(action: string): string {
-  if (action.includes('create') || action.includes('import')) return 'bg-green-50 text-green-700';
-  if (action.includes('update') || action.includes('adjust')) return 'bg-blue-50 text-blue-700';
-  if (action.includes('delete')) return 'bg-red-50 text-red-700';
-  if (action.includes('submit') || action.includes('grade') || action.includes('publish')) return 'bg-purple-50 text-purple-700';
-  if (action.includes('login') || action.includes('logout')) return 'bg-gray-50 text-gray-700';
-  return 'bg-gray-50 text-gray-700';
+  if (action.includes('create') || action.includes('import')) return 'bg-success/10 text-success';
+  if (action.includes('update') || action.includes('adjust')) return 'bg-primary/10 text-primary';
+  if (action.includes('delete')) return 'bg-destructive/10 text-destructive';
+  if (action.includes('submit') || action.includes('grade') || action.includes('publish')) return 'bg-warning/10 text-warning';
+  if (action.includes('login') || action.includes('logout')) return 'bg-muted text-muted-foreground';
+  return 'bg-muted text-muted-foreground';
 }
 
 export default function AuditPage() {
@@ -97,9 +121,12 @@ export default function AuditPage() {
         const d = res.data as { logs: AuditLog[]; pagination: Pagination };
         setLogs(d.logs);
         setPagination(d.pagination);
+      } else {
+        // 历史上这里静默失败, 403/500 都显示成"暂无审计日志", 排查时完全无感知。
+        toast.error(res.error || '加载审计日志失败');
       }
     } catch {
-      // ignore
+      toast.error('网络错误，加载审计日志失败');
     } finally {
       setLoading(false);
     }

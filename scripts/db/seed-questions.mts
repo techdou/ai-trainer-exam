@@ -1,125 +1,49 @@
 /**
- * Seed theory questions from DOCX into practice_question_items table.
- * Usage: npx tsx scripts/db/seed-questions.mts
+ * 从 DOCX 导入理论题到练习库。
+ * 用法：pnpm tsx scripts/db/seed-questions.mts /absolute/path/questions.docx
+ * 导入结果全部为 imported_unreviewed，不会直接进入正式考试。
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import mammoth from 'mammoth';
-const { parseDocx } = await import('/workspace/projects/src/server/docx-importer.ts');
-import { getDbUrl, loadEnv } from 'coze-coding-dev-sdk';
 import pg from 'pg';
+import { getDbUrl, loadEnv } from 'coze-coding-dev-sdk';
+import { loadEnvLocal } from './_env.mjs';
+import { parseDocx } from '../../src/server/docx-importer';
 
-loadEnv();
+loadEnv(); loadEnvLocal();
+const file = process.argv[2];
+if (!file) throw new Error('请提供 DOCX 路径：pnpm tsx scripts/db/seed-questions.mts <questions.docx>');
+const buffer = readFileSync(resolve(file));
+if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) throw new Error('文件不是有效 DOCX');
+const parsed = await parseDocx(buffer);
+if (!parsed.questions.length) throw new Error('未解析到题目');
 
-const ORG_ID = '00000000-0000-0000-0000-000000000001';
-const COHORT_ID = '00000000-0000-0000-0000-000000000002';
-
-async function main() {
-  const docxPath = resolve(import.meta.dirname, '../../data/raw/theory-questions.docx');
-  const buffer = readFileSync(docxPath);
-
-  // Parse questions
-  const result = await parseDocx(buffer);
-
-  console.log('=== DOCX Import Result ===');
-  console.log(`Total parsed: ${result.questions.length}`);
-  const qt = (q: { questionType?: string; question_type?: string }) => q.questionType || q.question_type || 'unknown';
-  console.log(`Single choice: ${result.questions.filter(q => qt(q) === 'single_choice').length}`);
-  console.log(`True/false: ${result.questions.filter(q => qt(q) === 'true_false').length}`);
-  const issues = result.issues ?? result.qualityIssues ?? [];
-  console.log(`Quality issues: ${issues.length}`);
-
-  // Connect to DB
-  const url = await getDbUrl();
-  const client = new pg.Client({ connectionString: url });
-  await client.connect();
-
-  let inserted = 0;
-  let deduped = 0;
-  const seenStems = new Set<string>();
-
-  for (const q of result.questions) {
-    // Deduplicate by stem normalized
-    const stemKey = q.stem.trim().replace(/\s+/g, '').toLowerCase().slice(0, 100);
-    if (seenStems.has(stemKey)) {
-      deduped++;
-      continue;
-    }
-    seenStems.add(stemKey);
-
-    const qType = (q.questionType || q.question_type) as string;
-    const qStem = (q.stem || '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').trim();
-    // Normalize options to {A: text, B: text, ...} object for JSONB
-    // q.options is string[] from ParsedQuestion (e.g. ['选项A文本', '选项B文本', ...])
-    const rawOpts = q.options ?? [];
-    const optionLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
-    let optsRecord: Record<string, string>;
-    if (Array.isArray(rawOpts)) {
-      optsRecord = {};
-      for (let i = 0; i < rawOpts.length && i < optionLetters.length; i++) {
-        const text = (rawOpts[i] || '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').trim();
-        if (text) optsRecord[optionLetters[i]] = text;
-      }
-    } else if (typeof rawOpts === 'object' && rawOpts !== null) {
-      optsRecord = {};
-      for (const [k, v] of Object.entries(rawOpts as Record<string, string>)) {
-        optsRecord[k] = (v || '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').trim();
-      }
-    } else {
-      optsRecord = {};
-    }
-    const qAnswerRaw = (q.answerKey || q.answer_key || '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').trim();
-    // answer_key is JSONB — store as object for single_choice, boolean for true_false
-    const answerKeyJson = qType === 'true_false'
-      ? JSON.stringify(qAnswerRaw === 'A' || qAnswerRaw === 'true' || qAnswerRaw === '正确' || qAnswerRaw === '对')
-      : JSON.stringify(qAnswerRaw);
-    const qKp = (q.knowledgePoint || q.knowledge_point || '综合').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').trim();
-    const diffMap: Record<string, number> = { easy: 1, low: 1, medium: 2, normal: 2, hard: 3, high: 3 };
-    const diffStr = String(q.difficulty || 'medium').trim().toLowerCase();
-    const qDiff = diffMap[diffStr] ?? (isNaN(Number(diffStr)) ? 2 : Number(diffStr));
-
-    const questionId = crypto.randomUUID();
-    const optionsJson = JSON.stringify(optsRecord);
-    const explanation = (q.explanation || `本题考查${qKp}知识点。`).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').trim();
-
-    await client.query(
-      `INSERT INTO practice_question_items
-       (id, organization_id, question_type, stem, options, answer_key,
-        explanation, knowledge_point, difficulty, source, review_status, practice_only, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'docx_import', 'published', false, now(), now())
-       ON CONFLICT DO NOTHING`,
-      [
-        questionId,
-        ORG_ID,
-        qType,
-        qStem,
-        optionsJson,
-        answerKeyJson,
-        explanation,
-        qKp,
-        qDiff,
-      ]
-    );
+const client = new pg.Client({ connectionString: await getDbUrl() });
+await client.connect();
+try {
+  const orgResult = await client.query<{ id:string }>("SELECT id FROM organizations WHERE status='active' ORDER BY created_at LIMIT 1");
+  const organizationId = orgResult.rows[0]?.id;
+  if (!organizationId) throw new Error('没有可用机构，请先运行 seed-core.mts');
+  let inserted = 0, skipped = 0;
+  await client.query('BEGIN');
+  for (const question of parsed.questions) {
+    const options: Record<string,string> = {};
+    question.options.forEach((text,index)=>{ if(text?.trim()) options[String.fromCharCode(65+index)] = text.trim(); });
+    const answer = question.questionType === 'true_false'
+      ? ['A','TRUE','正确','对'].includes(String(question.answerKey).trim().toUpperCase())
+      : String(question.answerKey).trim().toUpperCase();
+    const existing = await client.query('SELECT 1 FROM practice_question_items WHERE organization_id=$1 AND regexp_replace(lower(stem),\'\\s+\',\'\',\'g\')=regexp_replace(lower($2),\'\\s+\',\'\',\'g\') LIMIT 1',[organizationId,question.stem]);
+    if (existing.rowCount) { skipped++; continue; }
+    await client.query(`INSERT INTO practice_question_items
+      (organization_id,question_type,stem,options,answer_key,explanation,knowledge_point,difficulty,source,review_status,published_version,practice_only,legal_review_required,created_at,updated_at)
+      VALUES($1,$2,$3,$4,$5,NULL,NULL,1,$6,'imported_unreviewed',0,true,$7,NOW(),NOW())`,[
+      organizationId,question.questionType,question.stem,options,answer,resolve(file),
+      /劳动法|劳动合同法|网络安全法|数据安全法|个人信息保护法|反不正当竞争法/.test(question.stem),
+    ]);
     inserted++;
   }
-
-  console.log(`\nInserted: ${inserted} (deduped: ${deduped})`);
-
-  // Verify count
-  const countRes = await client.query(
-    `SELECT review_status, count(*) as n FROM practice_question_items WHERE organization_id = $1 GROUP BY review_status`,
-    [ORG_ID]
-  );
-  console.log('DB question counts by status:');
-  countRes.rows.forEach((r: { review_status: string; n: string }) =>
-    console.log(`  ${r.review_status}: ${r.n}`)
-  );
-
-  await client.end();
-  console.log('Done.');
-}
-
-main().catch(e => {
-  console.error('Fatal:', e);
-  process.exit(1);
-});
+  await client.query('COMMIT');
+  console.log(JSON.stringify({ parsed:parsed.questions.length,inserted,skipped,issues:parsed.issues.length },null,2));
+} catch (error) {
+  await client.query('ROLLBACK'); throw error;
+} finally { await client.end(); }

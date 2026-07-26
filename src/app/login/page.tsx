@@ -1,12 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { saveSession, homeForRoles, type ClientUser } from '@/lib/session-client';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { saveSession, homeForRoles, type ClientSession } from '@/lib/session-client';
 import { BookOpenCheck, Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const justChanged = searchParams.get('changed') === '1';
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -33,9 +35,14 @@ export default function LoginPage() {
         setError(json.error || '账号或密码不正确，请检查后重试。如果忘记密码，请联系老师。');
         return;
       }
-      const user = json.data.user as ClientUser;
-      saveSession(json.data.accessToken, user);
-      router.replace(homeForRoles(user.roles));
+      const session = json.data as ClientSession;
+      saveSession(session);
+      // 使用初始密码/被重置密码登录: 先强制改密, 改完才能进入业务页。
+      if (session.user.mustChangePassword) {
+        router.replace('/change-password');
+        return;
+      }
+      router.replace(homeForRoles(session.user.roles));
     } catch {
       setError('网络连接失败，请检查网络后重试');
     } finally {
@@ -84,6 +91,12 @@ export default function LoginPage() {
             />
           </div>
 
+          {justChanged && (
+            <div role="status" className="rounded-lg bg-success/10 border border-success/30 px-4 py-3 text-base text-success">
+              ✓ 密码修改成功，请用新密码重新登录
+            </div>
+          )}
+
           {error && (
             <div role="alert" className="rounded-lg bg-destructive/10 border border-destructive/30 px-4 py-3 text-base text-destructive">
               {error}
@@ -93,10 +106,10 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full h-14 rounded-lg bg-primary text-primary-foreground text-lg font-semibold hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-60 flex items-center justify-center gap-2"
+            className="w-full h-14 rounded-lg bg-primary text-primary-foreground text-lg font-semibold tracking-wider hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-60 flex items-center justify-center gap-2"
           >
             {loading && <Loader2 className="w-5 h-5 animate-spin" aria-hidden />}
-            {loading ? '正在登录…' : '登 录'}
+            {loading ? '正在登录…' : '登录'}
           </button>
 
           <p className="text-sm text-muted-foreground text-center">

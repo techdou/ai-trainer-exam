@@ -44,7 +44,7 @@ export default function SettingsPage() {
     try {
       const res = await apiFetch('/api/admin/settings', {
         method: 'PATCH',
-        body: JSON.stringify({ key, value }),
+        body: { key, value },
       });
       if (res.ok) {
         toast.success('保存成功', { description: `${key} 已更新` });

@@ -47,7 +47,7 @@ export default function TheoryPracticePage() {
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     loadQuestions();
@@ -59,10 +59,10 @@ export default function TheoryPracticePage() {
     try {
       const r = await apiFetch<CheckResult>('/api/student/practice/check', {
         method: 'POST',
-        body: JSON.stringify({
+        body: {
           questionId: questions[currentIdx].id,
           userAnswer: selectedAnswer,
-        }),
+        },
       });
       if (r.ok && r.data) {
         setResult(r.data);
@@ -157,24 +157,26 @@ export default function TheoryPracticePage() {
                 className={[
                   'flex w-full items-start gap-3 rounded-lg border-2 p-4 text-left transition-colors',
                   result && isCorrectAnswer
-                    ? 'border-green-500 bg-green-50 dark:bg-green-950/20'
+                    ? 'border-success bg-success/10'
                     : isWrongSelection
-                      ? 'border-red-500 bg-red-50 dark:bg-red-950/20'
+                      ? 'border-destructive bg-destructive/10'
                       : isSelected
                         ? 'border-primary bg-primary/5'
                         : 'border-border hover:border-primary/50',
                   !result ? 'cursor-pointer' : 'cursor-default',
                 ].join(' ')}
               >
-                <span className="flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-full border-2 font-medium text-sm">
+                <span className={`flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-full border-2 font-medium text-sm ${
+                  isSelected && !result ? 'border-primary bg-primary text-primary-foreground' : 'border-border'
+                }`}>
                   {key}
                 </span>
                 <span className="pt-1 text-base">{optionText}</span>
                 {result && isCorrectAnswer && (
-                  <span className="ml-auto pt-1 text-green-600 font-medium text-sm">✓ 正确答案</span>
+                  <span className="ml-auto pt-1 text-success font-medium text-sm">✓ 正确答案</span>
                 )}
                 {isWrongSelection && (
-                  <span className="ml-auto pt-1 text-red-600 font-medium text-sm">✗ 你的选择</span>
+                  <span className="ml-auto pt-1 text-destructive font-medium text-sm">✗ 你的选择</span>
                 )}
               </button>
             );
@@ -184,12 +186,12 @@ export default function TheoryPracticePage() {
 
       {/* Feedback */}
       {result && (
-        <Card className={`p-4 mb-4 ${result.correct ? 'border-green-500/50' : 'border-red-500/50'}`}>
+        <Card className={`p-4 mb-4 ${result.correct ? 'border-success/50' : 'border-destructive/50'}`}>
           <div className="flex items-center gap-2 mb-2">
             {result.correct ? (
-              <span className="text-lg font-medium text-green-600">✓ 做对了！</span>
+              <span className="text-lg font-medium text-success">✓ 做对了！</span>
             ) : (
-              <span className="text-lg font-medium text-red-600">✗ 答错了，没关系，多练几次就记住了</span>
+              <span className="text-lg font-medium text-destructive">✗ 答错了，没关系，多练几次就记住了</span>
             )}
           </div>
           {result.explanation && (

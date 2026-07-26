@@ -1,52 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/session-client';
-import { Card, CardContent } from '@/components/ui/card';
-import { FolderKanban } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { FolderKanban, Plus } from 'lucide-react';
+import { toast } from 'sonner';
 
-interface Org {
-  id: string;
-  name: string;
-  code: string;
-  status: string;
-  cohortCount: number;
-  studentCount: number;
-}
-
-export default function ProjectsPage() {
-  const [orgs, setOrgs] = useState<Org[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    apiFetch<Org[]>('/api/admin/organizations').then(r => {
-      if (r.ok && r.data) setOrgs(r.data);
-      setLoading(false);
-    });
-  }, []);
-
-  if (loading) return <div className="text-center py-12 text-lg text-gray-500">加载中...</div>;
-
-  return (
-    <div>
-      <h1 className="text-2xl font-bold mb-6">培训项目</h1>
-      <p className="text-base text-gray-500 mb-6">培训项目关联学校与课程内容，每个学校可以开设多个培训项目。</p>
-      <div className="space-y-3">
-        {orgs.map(org => (
-          <Card key={org.id}>
-            <CardContent className="py-4 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <FolderKanban className="w-5 h-5 text-primary" />
-              </div>
-              <div className="flex-1">
-                <div className="text-lg font-medium">人工智能训练师（五级）</div>
-                <div className="text-base text-gray-500">{org.name} · {org.cohortCount} 个班级 · {org.studentCount} 名学员</div>
-              </div>
-              <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-50 text-green-700">进行中</span>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
+interface Organization { id:string;name:string }
+interface Project { id:string;organizationId:string;organizationName:string;name:string;description:string|null;fundingSource:string|null;status:string;startAt:string|null;endAt:string|null;cohortCount:number;studentCount:number }
+const statusLabel:Record<string,string>={draft:'筹备中',active:'进行中',completed:'已完成',archived:'已归档'};
+export default function ProjectsPage(){
+ const [items,setItems]=useState<Project[]>([]);const [orgs,setOrgs]=useState<Organization[]>([]);const [loading,setLoading]=useState(true);const [saving,setSaving]=useState(false);
+ const [form,setForm]=useState({organizationId:'',name:'',description:'',fundingSource:'国家财政支持',startAt:'',endAt:''});
+ const load=useCallback(async()=>{setLoading(true);const [p,o]=await Promise.all([apiFetch<{items:Project[]}>('/api/admin/projects'),apiFetch<Organization[]>('/api/admin/organizations')]);if(p.ok&&p.data)setItems(p.data.items);else toast.error(p.error??'项目加载失败');if(o.ok&&o.data){setOrgs(o.data);setForm(v=>({...v,organizationId:v.organizationId||o.data?.[0]?.id||''}))}setLoading(false)},[]);useEffect(()=>{void load()},[load]);
+ async function createProject(){if(!form.name.trim()){toast.error('请输入项目名称');return}setSaving(true);const result=await apiFetch<{id:string}>('/api/admin/projects',{method:'POST',body:{organizationId:form.organizationId||undefined,name:form.name,description:form.description||undefined,fundingSource:form.fundingSource||undefined,startAt:form.startAt?new Date(form.startAt).toISOString():null,endAt:form.endAt?new Date(form.endAt).toISOString():null}});setSaving(false);if(!result.ok){toast.error(result.error??'创建失败');return}toast.success('培训项目已创建');setForm(v=>({...v,name:'',description:'',startAt:'',endAt:''}));await load()}
+ return <div className="space-y-6"><div><h1 className="text-2xl font-bold">培训项目</h1><p className="mt-1 text-muted-foreground">管理财政支持或学校自筹的培训项目、周期和班级规模。</p></div><Card><CardHeader><CardTitle className="flex items-center gap-2"><Plus className="h-5 w-5"/>创建培训项目</CardTitle></CardHeader><CardContent className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label>所属机构</Label><Select value={form.organizationId} onValueChange={organizationId=>setForm(v=>({...v,organizationId}))}><SelectTrigger><SelectValue placeholder="选择机构"/></SelectTrigger><SelectContent>{orgs.map(org=><SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>项目名称</Label><Input value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))} placeholder="人工智能训练师五级培训项目"/></div><div className="space-y-2"><Label>资金来源</Label><Input value={form.fundingSource} onChange={e=>setForm(v=>({...v,fundingSource:e.target.value}))}/></div><div className="grid grid-cols-2 gap-3"><div className="space-y-2"><Label>开始时间</Label><Input type="datetime-local" value={form.startAt} onChange={e=>setForm(v=>({...v,startAt:e.target.value}))}/></div><div className="space-y-2"><Label>结束时间</Label><Input type="datetime-local" value={form.endAt} onChange={e=>setForm(v=>({...v,endAt:e.target.value}))}/></div></div><div className="space-y-2 md:col-span-2"><Label>项目说明</Label><Textarea value={form.description} onChange={e=>setForm(v=>({...v,description:e.target.value}))} placeholder="服务对象、政策依据、培训目标等"/></div><div className="md:col-span-2"><Button onClick={createProject} disabled={saving}>{saving?'创建中…':'创建项目'}</Button></div></CardContent></Card>{loading?<div className="py-12 text-center">加载中…</div>:items.length===0?<Card><CardContent className="py-12 text-center text-muted-foreground">尚未创建培训项目</CardContent></Card>:<div className="space-y-3">{items.map(item=><Card key={item.id}><CardContent className="flex flex-wrap items-center gap-4 py-5"><div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10"><FolderKanban className="h-5 w-5 text-primary"/></div><div className="min-w-[240px] flex-1"><div className="text-lg font-medium">{item.name}</div><div className="text-sm text-muted-foreground">{item.organizationName} · {item.fundingSource??'未填写资金来源'}</div>{item.description&&<p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{item.description}</p>}</div><div className="grid grid-cols-2 gap-5 text-center"><div><div className="text-xl font-bold">{item.cohortCount}</div><div className="text-xs text-muted-foreground">班级</div></div><div><div className="text-xl font-bold">{item.studentCount}</div><div className="text-xs text-muted-foreground">学员</div></div></div><Badge>{statusLabel[item.status]??item.status}</Badge></CardContent></Card>)}</div>}</div>
 }

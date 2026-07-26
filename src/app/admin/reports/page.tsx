@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { apiFetch } from '@/lib/session-client';
+import { Button } from '@/components/ui/button';
+import { apiFetch, getToken } from '@/lib/session-client';
+import { toast } from 'sonner';
 import {
   BarChart3,
   Users,
@@ -10,7 +12,33 @@ import {
   TrendingUp,
   FileCheck,
   BookOpen,
+  Download,
 } from 'lucide-react';
+
+/**
+ * 报表导出为二进制流, apiFetch 只处理 JSON, 这里单独走 fetch+Blob。
+ * 从 Content-Disposition 里解析服务端给的文件名。
+ */
+async function downloadReport(type: 'scores' | 'progress', format: 'csv' | 'xlsx'): Promise<void> {
+  const token = getToken();
+  const res = await fetch(`/api/admin/reports/export?type=${type}&format=${format}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error(err?.error || `导出失败(${res.status})`);
+  }
+  const disposition = res.headers.get('Content-Disposition') ?? '';
+  const match = disposition.match(/filename\*=UTF-8''([^;]+)/);
+  const filename = match ? decodeURIComponent(match[1]) : `报表.${format}`;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 interface ScoreDistribution {
   range: string;
@@ -101,6 +129,20 @@ function StatCard({
 export default function ReportsPage() {
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState<string | null>(null);
+
+  const handleExport = async (type: 'scores' | 'progress', format: 'csv' | 'xlsx') => {
+    const key = `${type}-${format}`;
+    setExporting(key);
+    try {
+      await downloadReport(type, format);
+      toast.success('导出成功，文件已开始下载');
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setExporting(null);
+    }
+  };
 
   useEffect(() => {
     async function load() {
@@ -140,6 +182,38 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">数据报表与分析</h1>
+
+      {/* 报表导出 */}
+      <Card>
+        <CardContent className="py-4 px-6 flex items-center gap-6 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Download className="w-4 h-4 text-gray-400" />
+            <span className="font-medium">报表导出</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">成绩明细</span>
+            <Button variant="outline" size="sm" disabled={exporting !== null}
+              onClick={() => handleExport('scores', 'csv')}>
+              {exporting === 'scores-csv' ? '导出中…' : 'CSV'}
+            </Button>
+            <Button variant="outline" size="sm" disabled={exporting !== null}
+              onClick={() => handleExport('scores', 'xlsx')}>
+              {exporting === 'scores-xlsx' ? '导出中…' : 'Excel'}
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">学员练习进度</span>
+            <Button variant="outline" size="sm" disabled={exporting !== null}
+              onClick={() => handleExport('progress', 'csv')}>
+              {exporting === 'progress-csv' ? '导出中…' : 'CSV'}
+            </Button>
+            <Button variant="outline" size="sm" disabled={exporting !== null}
+              onClick={() => handleExport('progress', 'xlsx')}>
+              {exporting === 'progress-xlsx' ? '导出中…' : 'Excel'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* 概览统计卡片 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

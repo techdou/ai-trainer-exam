@@ -1,274 +1,149 @@
-import { NextRequest } from 'next/server';
-import { requireRole } from '@/server/auth';
-import { dbQuery, dbExec } from '@/server/db';
-import { getSettingNumber } from '@/server/settings';
-import { ok, fail, catchError } from '@/lib/api';
+import { createHash, randomUUID } from 'node:crypto';
+import { z } from 'zod';
+import { ApiError, requireRole } from '@/server/auth';
+import { dbTx } from '@/server/db';
+import { handler, ok, fail, parseBody } from '@/lib/api';
+import { gradeByType, normalizeTrueFalseAnswer } from '@/server/grading';
+import { getScheduleForStudent } from '@/server/exam-security';
 
-/**
- * POST /api/student/exams/submit
- *
- * 请求体:
- * {
- *   scheduleId: string;
- *   attemptId?: string;   // 可选，start 接口返回的
- *   answers: { questionId: string; answer: string }[];
- * }
- */
-export async function POST(request: NextRequest) {
-  try {
-    const user = await requireRole(request, ['student']);
+const schema = z.object({
+  scheduleId: z.string().min(1),
+  attemptId: z.string().min(1),
+  idempotencyKey: z.string().min(8).max(128).optional(),
+  responses: z.array(z.object({ itemId: z.string().min(1), response: z.unknown(), workspaceSnapshot: z.unknown().optional() })).max(300).default([]),
+  // 兼容旧客户端，迁移期后可移除。
+  answers: z.array(z.object({ questionId: z.string().min(1), answer: z.string() })).max(300).optional(),
+});
 
-    const body = await request.json() as {
-      scheduleId?: string;
-      attemptId?: string;
-      answers?: { questionId: string; answer: string }[];
-    };
-
-    const { scheduleId, attemptId, answers } = body;
-    if (!scheduleId || !answers || !Array.isArray(answers)) {
-      return fail(400, '缺少参数：scheduleId 和 answers');
-    }
-
-    // 1. 验证考试安排存在且在开放时间内
-    const schedules = await dbQuery<{
-      id: string;
-      exam_start_at: string;
-      exam_end_at: string;
-      submit_grace_seconds: number;
-      status: string;
-    }>(
-      `SELECT id, exam_start_at, exam_end_at, submit_grace_seconds, status
-       FROM exam_schedules WHERE id = $1 AND deleted_at IS NULL`,
-      scheduleId,
-    );
-
-    if (schedules.length === 0) {
-      return fail(404, '考试安排不存在');
-    }
-
-    const schedule = schedules[0];
-    const now = Date.now();
-    const endAt = new Date(schedule.exam_end_at).getTime() + (schedule.submit_grace_seconds ?? 0) * 1000;
-    if (now > endAt) {
-      return fail(400, '考试已结束，无法交卷');
-    }
-
-    // 2. 查找用户的 attempt 记录
-    let existingAttempt: { id: string; status: string } | undefined;
-
-    if (attemptId) {
-      // 客户端传了 attemptId，直接查找
-      const rows = await dbQuery<{ id: string; status: string }>(
-        `SELECT id, status FROM exam_attempts WHERE id = $1 AND user_id = $2 AND schedule_id = $3`,
-        attemptId, user.id, scheduleId,
-      );
-      existingAttempt = rows[0];
-    } else {
-      // 没传 attemptId，找最近的一条
-      const rows = await dbQuery<{ id: string; status: string }>(
-        `SELECT id, status FROM exam_attempts
-         WHERE user_id = $1 AND schedule_id = $2
-         ORDER BY created_at DESC LIMIT 1`,
-        user.id, scheduleId,
-      );
-      existingAttempt = rows[0];
-    }
-
-    if (!existingAttempt) {
-      return fail(404, '未找到考试记录，请先开始考试');
-    }
-
-    if (existingAttempt.status === 'submitted' || existingAttempt.status === 'graded') {
-      return fail(400, '已交卷，不可重复提交');
-    }
-
-    const finalAttemptId = existingAttempt.id;
-
-    // 3. 更新 attempt 状态为 submitted
-    await dbExec(
-      `UPDATE exam_attempts SET status = 'submitted', submitted_at = NOW() WHERE id = $1`,
-      finalAttemptId,
-    );
-
-    // 4. 保存每道题的作答到 exam_responses 并评分
-    let theoryCorrect = 0;
-    let theoryTotal = 0;
-
-    for (const ans of answers) {
-      // 获取题目信息和正确答案
-      let qRow: { answer_key: unknown; question_type: string } | undefined;
-      const examRows = await dbQuery<{ answer_key: unknown; question_type: string }>(
-        `SELECT answer_key, question_type FROM exam_question_items WHERE id = $1`,
-        ans.questionId,
-      );
-      if (examRows.length > 0) {
-        qRow = examRows[0];
-      } else {
-        const pRows = await dbQuery<{ answer_key: unknown; question_type: string }>(
-          `SELECT answer_key, question_type FROM practice_question_items WHERE id = $1`,
-          ans.questionId,
-        );
-        qRow = pRows[0];
-      }
-
-      // 判题
-      let isCorrect = false;
-      let correctAnswer = '';
-      let itemType = 'question';
-
-      if (qRow) {
-        const ak = qRow.answer_key;
-
-        // answer_key 可能是纯文本 "C"、boolean true/false、或 JSON {"letter":"C"}
-        if (typeof ak === 'boolean') {
-          correctAnswer = ak ? 'A' : 'B';
-          isCorrect = ans.answer === correctAnswer;
-        } else if (typeof ak === 'string') {
-          // 纯文本如 "C" 或 "A"
-          correctAnswer = ak;
-          isCorrect = ans.answer === correctAnswer;
-        } else if (ak && typeof ak === 'object') {
-          // JSON 对象 {"letter":"C"}
-          if ('letter' in (ak as Record<string, unknown>)) {
-            correctAnswer = String((ak as { letter: unknown }).letter);
-            isCorrect = ans.answer === correctAnswer;
-          } else {
-            correctAnswer = JSON.stringify(ak);
-            isCorrect = ans.answer === correctAnswer;
-          }
-        }
-
-        // 统计理论题（单选 + 判断）
-        if (qRow.question_type === 'single_choice' || qRow.question_type === 'true_false') {
-          theoryTotal++;
-          if (isCorrect) theoryCorrect++;
-        }
-
-        // 确定 item_type
-        itemType = (qRow.question_type === 'single_choice' || qRow.question_type === 'true_false')
-          ? 'question'
-          : 'task';
-      }
-
-      await dbExec(
-        `INSERT INTO exam_responses (attempt_id, item_id, item_type, response, workspace_snapshot)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (attempt_id, item_id) DO UPDATE SET response = EXCLUDED.response, workspace_snapshot = EXCLUDED.workspace_snapshot`,
-        finalAttemptId,
-        ans.questionId,
-        itemType,
-        JSON.stringify({ userAnswer: ans.answer, isCorrect, correctAnswer }),
-        JSON.stringify({}),
-      );
-    }
-
-    // 5. 计算分数并保存到 exam_scores
-    // 每道题分数从 exam_paper_items 获取
-    const paperItems = await dbQuery<{ item_id: string; score: number }>(
-      `SELECT epi.item_id, epi.score
-       FROM exam_paper_items epi
-       JOIN exam_schedules es ON es.paper_id = epi.paper_id
-       WHERE es.id = $1`,
-      scheduleId,
-    );
-
-    let totalScore = 0;
-    let maxScore = 0;
-    let theoryScore = 0;
-
-    // 重新获取所有 responses 以计算分数
-    const responses = await dbQuery<{ item_id: string; response: { isCorrect: boolean } }>(
-      `SELECT item_id, response FROM exam_responses WHERE attempt_id = $1`,
-      finalAttemptId,
-    );
-
-    const respMap = new Map(responses.map(r => [r.item_id, r.response]));
-
-    // 获取每道题的类型，用于分类计分
-    const itemTypes = new Map<string, string>();
-    for (const pi of paperItems) {
-      const typeRows = await dbQuery<{ question_type: string }>(
-        `SELECT question_type FROM exam_question_items WHERE id = $1
-         UNION SELECT question_type FROM practice_question_items WHERE id = $1`,
-        pi.item_id,
-      );
-      itemTypes.set(pi.item_id, typeRows[0]?.question_type ?? 'unknown');
-    }
-
-    for (const pi of paperItems) {
-      const itemScore = Number(pi.score);
-      maxScore += itemScore;
-      const resp = respMap.get(pi.item_id);
-      if (resp && resp.isCorrect) {
-        totalScore += itemScore;
-        const qt = itemTypes.get(pi.item_id);
-        if (qt === 'single_choice' || qt === 'true_false') {
-          theoryScore += itemScore;
-        }
-      }
-    }
-
-    const passScore = await getSettingNumber('exam_pass_score');
-    const passed = totalScore >= passScore;
-
-    const autoScoreDetail = JSON.stringify({
-      theory: { correct: theoryCorrect, total: theoryTotal },
-      totalScore,
-      maxScore,
-      theoryScore,
-      gradedAt: new Date().toISOString(),
-    });
-
-    // 检查是否已有 score 记录
-    const existingScores = await dbQuery<{ id: string }>(
-      `SELECT id FROM exam_scores WHERE attempt_id = $1`,
-      finalAttemptId,
-    );
-
-    if (existingScores.length > 0) {
-      await dbExec(
-        `UPDATE exam_scores SET
-          theory_score = $1, total_score = $2, max_score = $3, passed = $4,
-          auto_score_detail = $5, status = 'auto_graded'
-         WHERE attempt_id = $6`,
-        theoryScore,
-        totalScore,
-        maxScore,
-        passed,
-        autoScoreDetail,
-        finalAttemptId,
-      );
-    } else {
-      await dbExec(
-        `INSERT INTO exam_scores
-          (attempt_id, schedule_id, user_id, theory_score, cleaning_score,
-           image_annotation_score, text_annotation_score, audio_score, statistics_score,
-           total_score, max_score, passed, auto_score_detail, status)
-         VALUES ($1, $2, $3, $4, 0, 0, 0, 0, 0, $5, $6, $7, $8, 'auto_graded')`,
-        finalAttemptId, scheduleId, user.id,
-        theoryScore,
-        totalScore,
-        maxScore,
-        passed,
-        autoScoreDetail,
-      );
-    }
-
-    // 6. 更新 attempt 状态为 graded
-    await dbExec(
-      `UPDATE exam_attempts SET status = 'graded' WHERE id = $1`,
-      finalAttemptId,
-    );
-
-    return ok({
-      attemptId: finalAttemptId,
-      total: answers.length,
-      correct: theoryCorrect,
-      score: totalScore,
-      maxScore,
-      passed,
-    });
-  } catch (e: unknown) {
-    return catchError(e);
-  }
+function stable(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
+  if (value && typeof value === 'object') return `{${Object.entries(value as Record<string, unknown>).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>`${JSON.stringify(k)}:${stable(v)}`).join(',')}}`;
+  return JSON.stringify(value);
 }
+function hash(value: unknown): string { return createHash('sha256').update(stable(value)).digest('hex'); }
+function normalizeQuestionResponse(graderId: string, response: unknown): unknown {
+  const raw = typeof response === 'string' ? response : (response as { answer?: unknown; selectedOption?: unknown } | null)?.answer ?? (response as { selectedOption?: unknown } | null)?.selectedOption;
+  if (graderId === 'true_false') return { answer: normalizeTrueFalseAnswer(raw) };
+  if (graderId === 'single_choice') return { selectedOption: String(raw ?? '').trim().toUpperCase() };
+  // 未知题型不归一,原样交给评分器判 invalid,绝不默认按单选处理。
+  return response ?? {};
+}
+function sectionColumn(section: string): 'theory'|'cleaning'|'image_annotation'|'text_annotation'|'audio'|'statistics' {
+  if (section === 'theory') return 'theory';
+  if (section === 'image_annotation') return 'image_annotation';
+  if (section === 'text_annotation') return 'text_annotation';
+  if (section === 'audio') return 'audio';
+  if (section === 'statistics') return 'statistics';
+  return 'cleaning';
+}
+
+export const POST = handler(async (request: Request) => {
+  const user = await requireRole(request, ['student']);
+  const body = await parseBody(request, schema);
+  const schedule = await getScheduleForStudent(body.scheduleId, user.id);
+  if (!schedule) return fail(404, '考试不存在或您未被安排参加');
+
+  const legacy = (body.answers ?? []).map(a => ({ itemId: a.questionId, response: a.answer, workspaceSnapshot: {} }));
+  const supplied = [...body.responses, ...legacy];
+  const submissionHash = hash({ attemptId: body.attemptId, responses: supplied });
+  const idempotencyKey = body.idempotencyKey ?? submissionHash;
+
+  const result = await dbTx(async client => {
+    const attemptResult = await client.query<{
+      id:string;status:string;server_deadline:Date|null;submission_hash:string|null;submit_receipt:string|null;
+    }>(`SELECT id,status,server_deadline,submission_hash,submit_receipt FROM exam_attempts
+        WHERE id=$1 AND schedule_id=$2 AND user_id=$3 FOR UPDATE`,[body.attemptId,body.scheduleId,user.id]);
+    const attempt = attemptResult.rows[0];
+    if (!attempt) throw new ApiError(404, '考试记录不存在');
+    if (['submitted','grading','graded','released'].includes(attempt.status)) {
+      if (attempt.submission_hash === submissionHash && attempt.submit_receipt) return { receipt: attempt.submit_receipt, duplicate: true };
+      throw new ApiError(409, '考试已经提交，不能重复交卷');
+    }
+    if (attempt.status !== 'in_progress') throw new ApiError(409, '考试状态不允许交卷');
+    // 宽限校验使用事务内数据库时间,与“考试计时以数据库时间为唯一权威”的约定一致。
+    const now = (await client.query<{ now: Date }>('SELECT now() AS now')).rows[0].now.getTime();
+    const deadline = attempt.server_deadline ? new Date(attempt.server_deadline).getTime() : new Date(schedule.exam_end_at).getTime();
+    if (now > deadline + schedule.submit_grace_seconds * 1000) throw new ApiError(409, '已超过交卷宽限时间');
+
+    const paperItems = (await client.query<{
+      id:string;item_type:string;score:number;section:string;item_snapshot:Record<string,unknown>;
+      answer_key_snapshot:unknown;grading_config_snapshot:unknown;grader_id:string;grader_version:string;
+    }>(`SELECT id,item_type,score,section,item_snapshot,answer_key_snapshot,grading_config_snapshot,grader_id,grader_version
+        FROM exam_paper_items WHERE paper_id=$1 ORDER BY sort_order`,[schedule.paper_id])).rows;
+    if (!paperItems.length) throw new ApiError(409, '试卷为空');
+    // grader_id 缺失(历史数据未回填)时评分器会判"未知评分器"静默给 0 分, 必须显式拦截让考务修复。
+    if (paperItems.some(item => !item.grader_id)) throw new ApiError(409, '试卷存在未配置评分器的题目，请联系考务人员处理');
+    const validIds = new Set(paperItems.map(item => item.id));
+    for (const response of supplied) if (!validIds.has(response.itemId)) throw new ApiError(400, '提交中包含不属于本试卷的题目');
+
+    for (const response of supplied) {
+      const item = paperItems.find(x => x.id === response.itemId)!;
+      await client.query(
+        `INSERT INTO exam_responses (attempt_id,item_id,item_type,response,workspace_snapshot,saved_at,created_at,updated_at)
+         VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,NOW(),NOW(),NOW())
+         ON CONFLICT (attempt_id,item_id) DO UPDATE SET response=EXCLUDED.response,workspace_snapshot=EXCLUDED.workspace_snapshot,saved_at=NOW(),updated_at=NOW()`,
+        // 必须 JSON.stringify: node-pg 只自动序列化对象,字符串(如选项 'C')会原样发给 jsonb 列报 22P02。
+        [attempt.id,item.id,item.item_type,JSON.stringify(response.response ?? {}),JSON.stringify(response.workspaceSnapshot ?? {})],
+      );
+    }
+
+    const saved = (await client.query<{ item_id:string;response:unknown;workspace_snapshot:unknown }>('SELECT item_id,response,workspace_snapshot FROM exam_responses WHERE attempt_id=$1',[attempt.id])).rows;
+    const responseMap = new Map<string, { item_id:string; response:unknown; workspace_snapshot:unknown }>(saved.map(row => [row.item_id, row]));
+    const sectionScores = { theory:0, cleaning:0, image_annotation:0, text_annotation:0, audio:0, statistics:0 };
+    let totalScore = 0;
+    const details: Array<Record<string,unknown>> = [];
+
+    await client.query(`UPDATE exam_attempts SET status='grading',updated_at=NOW() WHERE id=$1`,[attempt.id]);
+    for (const item of paperItems) {
+      const savedResponse = responseMap.get(item.id);
+      const normalized = item.item_type === 'question'
+        ? normalizeQuestionResponse(item.grader_id, savedResponse?.response)
+        : (savedResponse?.response ?? {});
+      const graded = gradeByType(item.grader_id, normalized, item.answer_key_snapshot);
+      const max = Number(item.score);
+      const score = Math.round(graded.score * max * 100) / 100;
+      totalScore += score;
+      sectionScores[sectionColumn(item.section)] += score;
+      details.push({ itemId:item.id,itemType:item.item_type,section:item.section,score,maxScore:max,correct:graded.correct,graderVersion:graded.graderVersion,details:graded.details ?? {} });
+      await client.query(
+        `INSERT INTO exam_responses
+          (attempt_id,item_id,item_type,response,workspace_snapshot,saved_at,score,max_score,grader_version,grading_detail,graded_at,created_at,updated_at)
+         VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,NOW(),$6,$7,$8,$9::jsonb,NOW(),NOW(),NOW())
+         ON CONFLICT (attempt_id,item_id) DO UPDATE SET
+          score=EXCLUDED.score,max_score=EXCLUDED.max_score,grader_version=EXCLUDED.grader_version,
+          grading_detail=EXCLUDED.grading_detail,graded_at=NOW(),updated_at=NOW()`,
+        // response/workspace_snapshot 从 jsonb 读出后可能是字符串(如 'C'),同样要重新序列化。
+        [attempt.id,item.id,item.item_type,JSON.stringify(savedResponse?.response ?? {}),JSON.stringify(savedResponse?.workspace_snapshot ?? {}),score,max,graded.graderVersion,JSON.stringify({ correct:graded.correct,feedback:graded.feedback,details:graded.details ?? {} })],
+      );
+    }
+
+    const maxScore = paperItems.reduce((sum,item)=>sum+Number(item.score),0);
+    totalScore = Math.round(totalScore*100)/100;
+    const passed = totalScore >= Number(schedule.pass_score);
+    const engineVersions = [...new Set(details.map(d=>String(d.graderVersion)))].sort().join(',');
+    const receipt = randomUUID();
+    await client.query(
+      `INSERT INTO exam_scores
+        (attempt_id,schedule_id,user_id,theory_score,cleaning_score,image_annotation_score,text_annotation_score,audio_score,statistics_score,total_score,max_score,passed,engine_version,paper_version,auto_score_detail,original_total,status,created_at,updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$10,'auto_graded',NOW(),NOW())
+       ON CONFLICT (attempt_id) DO UPDATE SET
+        theory_score=EXCLUDED.theory_score,cleaning_score=EXCLUDED.cleaning_score,image_annotation_score=EXCLUDED.image_annotation_score,
+        text_annotation_score=EXCLUDED.text_annotation_score,audio_score=EXCLUDED.audio_score,statistics_score=EXCLUDED.statistics_score,
+        total_score=EXCLUDED.total_score,max_score=EXCLUDED.max_score,passed=EXCLUDED.passed,engine_version=EXCLUDED.engine_version,
+        paper_version=EXCLUDED.paper_version,auto_score_detail=EXCLUDED.auto_score_detail,original_total=EXCLUDED.original_total,status='auto_graded',updated_at=NOW()`,
+      [attempt.id,body.scheduleId,user.id,sectionScores.theory,sectionScores.cleaning,sectionScores.image_annotation,sectionScores.text_annotation,sectionScores.audio,sectionScores.statistics,totalScore,maxScore,passed,engineVersions,schedule.paper_version,{ items:details,submissionHash }],
+    );
+    await client.query(
+      `UPDATE exam_attempts SET status='graded',submitted_at=NOW(),submission_hash=$2,submit_receipt=$3,idempotency_key=$4,updated_at=NOW() WHERE id=$1`,
+      [attempt.id,submissionHash,receipt,idempotencyKey],
+    );
+    await client.query(
+      `INSERT INTO audit_logs (actor_id,actor_role,organization_id,action,entity_type,entity_id,detail,created_at)
+       VALUES ($1,'student',$2,'exam_submit','exam_attempt',$3,$4,NOW())`,
+      [user.id,schedule.organization_id,attempt.id,{ receipt,submissionHash,itemCount:paperItems.length }],
+    );
+    return { receipt, duplicate:false };
+  });
+
+  return ok({ attemptId:body.attemptId,receipt:result.receipt,duplicate:result.duplicate,submitted:true,resultAvailable:false,message:'交卷成功。成绩将在学校发布后显示。' });
+});

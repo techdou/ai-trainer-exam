@@ -1,6 +1,6 @@
 {
-  "name": "projects",
-  "version": "0.1.0",
+  "name": "ai-trainer-exam",
+  "version": "1.0.0-rc.2",
   "private": true,
   "scripts": {
     "build": "bash ./scripts/build.sh",
@@ -13,7 +13,12 @@
     "lint:style": "stylelint \"src/**/*.css\"",
     "start": "bash ./scripts/start.sh",
     "ts-check": "tsc -p tsconfig.json",
-    "validate": "pnpm dlx concurrently --group --names lint-tsc,lint-build,lint-style \"pnpm ts-check\" \"pnpm lint:build\" \"pnpm lint:style\""
+    "validate": "pnpm quality:offline && pnpm ts-check && pnpm lint:build && pnpm lint:style && pnpm test && pnpm build",
+    "quality:offline": "node scripts/quality-gate.mjs",
+    "db:migrate": "tsx scripts/db/migrate.mts",
+    "db:seed-core": "tsx scripts/db/seed-core.mts",
+    "db:seed-tasks": "tsx scripts/db/seed-tasks.mts",
+    "db:seed-questions": "tsx scripts/db/seed-questions.mts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.958.0",

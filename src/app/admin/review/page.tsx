@@ -32,8 +32,18 @@ export default function ReviewPage() {
   const [loading, setLoading] = useState(true);
 
   const fetchPending = async () => {
-    const r = await apiFetch<{ items: Question[] }>(`/api/admin/questions?bank_type=practice&review_status=pending_review&limit=50`);
-    if (r.ok && r.data) setQuestions(r.data.items);
+    // 导入的题目状态是 imported_unreviewed(服务端从不写 pending_review, 历史上按它过滤队列永远为空);
+    // 练习/考试两库分开查再合并, 否则考试题永远不会进入审核队列。
+    const [practice, exam] = await Promise.all([
+      apiFetch<{ items: Question[] }>(`/api/admin/questions?bank_type=practice&review_status=imported_unreviewed&limit=50`),
+      apiFetch<{ items: Question[] }>(`/api/admin/questions?bank_type=exam&review_status=imported_unreviewed&limit=50`),
+    ]);
+    const items = [
+      ...(practice.ok && practice.data ? practice.data.items : []),
+      ...(exam.ok && exam.data ? exam.data.items : []),
+    ];
+    setQuestions(items);
+    if (!practice.ok && !exam.ok) toast.error('加载待审核题目失败');
     setLoading(false);
   };
 
@@ -42,7 +52,7 @@ export default function ReviewPage() {
   const handleReview = async (id: string, bankType: string, action: 'approve' | 'reject') => {
     const r = await apiFetch(`/api/admin/questions/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ action, bankType }),
+      body: { action, bankType },
     });
     if (r.ok) {
       toast.success(action === 'approve' ? '已通过审核' : '已驳回');

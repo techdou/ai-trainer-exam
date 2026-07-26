@@ -243,6 +243,7 @@ export const practiceAssetVersions = pgTable(
   "practice_asset_versions",
   {
     id: id(),
+    organization_id: orgId().references(() => organizations.id),
     asset_kind: varchar("asset_kind", { length: 20 }).notNull(),
     object_key: varchar("object_key", { length: 500 }).notNull(),
     checksum: varchar("checksum", { length: 64 }).notNull(),
@@ -398,6 +399,7 @@ export const examAssetVersions = pgTable(
   "exam_asset_versions",
   {
     id: id(),
+    organization_id: orgId().references(() => organizations.id),
     asset_kind: varchar("asset_kind", { length: 20 }).notNull(),
     object_key: varchar("object_key", { length: 500 }).notNull(),
     checksum: varchar("checksum", { length: 64 }).notNull(),
@@ -452,6 +454,12 @@ export const examPaperItems = pgTable(
     sort_order: integer("sort_order").notNull().default(0),
     score: numeric("score", { precision: 8, scale: 2 }).notNull(),
     section: varchar("section", { length: 48 }).notNull().default("theory"),
+    item_snapshot: jsonb("item_snapshot").notNull().default({}),
+    answer_key_snapshot: jsonb("answer_key_snapshot").notNull().default({}),
+    grading_config_snapshot: jsonb("grading_config_snapshot").notNull().default({}),
+    grader_id: varchar("grader_id", { length: 64 }),
+    grader_version: varchar("grader_version", { length: 64 }),
+    asset_checksum: varchar("asset_checksum", { length: 64 }),
     created_at: createdAt(),
   },
   (t) => [
@@ -510,6 +518,9 @@ export const examAttempts = pgTable(
     idempotency_key: varchar("idempotency_key", { length: 64 }),
     last_heartbeat_at: timestamp("last_heartbeat_at", { withTimezone: true }),
     ip: varchar("ip", { length: 64 }),
+    submission_hash: varchar("submission_hash", { length: 64 }),
+    submit_receipt: varchar("submit_receipt", { length: 64 }),
+    client_version: varchar("client_version", { length: 64 }),
     created_at: createdAt(),
     updated_at: updatedAt(),
   },
@@ -535,6 +546,11 @@ export const examResponses = pgTable(
     saved_at: timestamp("saved_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
+    score: numeric("score", { precision: 8, scale: 2 }).notNull().default("0"),
+    max_score: numeric("max_score", { precision: 8, scale: 2 }).notNull().default("0"),
+    grader_version: varchar("grader_version", { length: 64 }),
+    grading_detail: jsonb("grading_detail").notNull().default({}),
+    graded_at: timestamp("graded_at", { withTimezone: true }),
     created_at: createdAt(),
     updated_at: updatedAt(),
   },
@@ -669,6 +685,7 @@ export const mediaGenerationJobs = pgTable(
   "media_generation_jobs",
   {
     id: id(),
+    organization_id: orgId().references(() => organizations.id),
     media_kind: varchar("media_kind", { length: 20 }).notNull(),
     provider: varchar("provider", { length: 32 }).notNull(),
     status: varchar("status", { length: 20 }).notNull().default("pending"),
@@ -688,6 +705,7 @@ export const assetManifests = pgTable(
   "asset_manifests",
   {
     id: id(),
+    organization_id: orgId().references(() => organizations.id),
     media_kind: varchar("media_kind", { length: 20 }).notNull(),
     object_key: varchar("object_key", { length: 500 }).notNull(),
     checksum: varchar("checksum", { length: 64 }).notNull(),
@@ -789,6 +807,7 @@ export const exportJobs = pgTable(
   "export_jobs",
   {
     id: id(),
+    organization_id: orgId().references(() => organizations.id),
     export_type: varchar("export_type", { length: 64 }).notNull(),
     params: jsonb("params").notNull().default({}),
     status: varchar("status", { length: 20 }).notNull().default("pending"),

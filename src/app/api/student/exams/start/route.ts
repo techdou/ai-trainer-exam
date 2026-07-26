@@ -1,102 +1,58 @@
-import { NextRequest } from 'next/server';
+import { z } from 'zod';
 import { requireRole } from '@/server/auth';
-import { dbQuery, dbExec } from '@/server/db';
-import {ok, fail, catchError} from '@/lib/api';
+import { dbNow, dbOne, dbTx } from '@/server/db';
+import { handler, ok, parseBody, fail } from '@/lib/api';
+import { assertScheduleCanStart, attemptDeadline, getScheduleForStudent } from '@/server/exam-security';
 
-/**
- * POST /api/student/exams/start
- *
- * 学员开始考试，创建 exam_attempt
- * 请求体: { scheduleId: string }
- */
-export async function POST(request: NextRequest) {
-  try {
-    const user = await requireRole(request, ['student']);
+const schema = z.object({ scheduleId: z.string().min(1).max(100) });
 
-    const body = await request.json() as { scheduleId?: string };
-    const { scheduleId } = body;
-    if (!scheduleId) {
-      return fail(400, '缺少 scheduleId');
+export const POST = handler(async (request: Request) => {
+  const user = await requireRole(request, ['student']);
+  const { scheduleId } = await parseBody(request, schema);
+  const schedule = await getScheduleForStudent(scheduleId, user.id);
+  if (!schedule) return fail(404, '考试不存在或您未被安排参加');
+
+  const now = (await dbNow()).getTime();
+  const existing = await dbOne<{ id: string; status: string; server_deadline: Date | null }>(
+    `SELECT id,status,server_deadline FROM exam_attempts WHERE schedule_id=$1 AND user_id=$2`,
+    scheduleId, user.id,
+  );
+  if (existing) {
+    if (existing.status === 'in_progress') {
+      const deadline = existing.server_deadline ? new Date(existing.server_deadline).getTime() : new Date(schedule.exam_end_at).getTime();
+      if (now > deadline + schedule.submit_grace_seconds * 1000) return fail(409, '考试已结束，请联系考务人员处理');
+      return ok({ attemptId: existing.id, resumed: true, serverDeadline: existing.server_deadline });
     }
-
-    // 1. 验证考试时间和权限
-    const schedules = await dbQuery<{
-      id: string;
-      exam_start_at: string;
-      exam_end_at: string;
-      late_entry_minutes: number;
-      submit_grace_seconds: number;
-      status: string;
-    }>(
-      `SELECT id, exam_start_at, exam_end_at, late_entry_minutes, submit_grace_seconds, status
-       FROM exam_schedules WHERE id = $1 AND deleted_at IS NULL`,
-      scheduleId,
-    );
-
-    if (schedules.length === 0) {
-      return fail(404, '考试安排不存在');
+    if (existing.status === 'not_started') {
+      // 异常残留的未激活记录: 校验开考条件后原地激活, 而不是误报"已经提交"。
+      assertScheduleCanStart(schedule, now);
+      const deadline = attemptDeadline(schedule, now);
+      await dbTx(async client => {
+        await client.query(
+          `UPDATE exam_attempts SET status='in_progress', started_at=NOW(), server_deadline=$1, last_heartbeat_at=NOW(), updated_at=NOW()
+            WHERE id=$2 AND status='not_started'`,
+          [deadline, existing.id],
+        );
+      });
+      return ok({ attemptId: existing.id, resumed: false, serverDeadline: deadline.toISOString() });
     }
-
-    const schedule = schedules[0];
-    const now = Date.now();
-    const startAt = new Date(schedule.exam_start_at).getTime();
-    const lateEntryAt = startAt + (schedule.late_entry_minutes ?? 15) * 60 * 1000;
-    const endAt = new Date(schedule.exam_end_at).getTime();
-
-    if (now < startAt) {
-      return fail(400, '考试尚未开始');
-    }
-    if (now > lateEntryAt) {
-      return fail(400, '已超过迟到入场时间');
-    }
-
-    // 2. 检查学员是否在该考试的班级中
-    const enrollments = await dbQuery<{ cohort_id: string }>(
-      `SELECT e.cohort_id FROM enrollments e
-       INNER JOIN exam_schedules s ON s.cohort_id = e.cohort_id
-       WHERE e.user_id = $1 AND s.id = $2`,
-      user.id, scheduleId,
-    );
-
-    if (enrollments.length === 0) {
-      return fail(403, '您没有参加该考试的权限');
-    }
-
-    // 3. 检查是否已有未完成的 attempt
-    const existingAttempts = await dbQuery<{ id: string; status: string }>(
-      `SELECT id, status FROM exam_attempts
-       WHERE user_id = $1 AND schedule_id = $2
-       ORDER BY created_at DESC LIMIT 1`,
-      user.id, scheduleId,
-    );
-
-    if (existingAttempts.length > 0) {
-      const existing = existingAttempts[0];
-      if (existing.status === 'in_progress' || existing.status === 'not_started') {
-        // 已有进行中的 attempt，直接返回
-        return ok({ attemptId: existing.id, resumed: true });
-      }
-      if (existing.status === 'submitted' || existing.status === 'graded') {
-        return fail(400, '您已提交过该考试');
-      }
-    }
-
-    // 4. 创建新 attempt
-    const serverDeadline = new Date(endAt + (schedule.submit_grace_seconds ?? 60) * 1000);
-    const attemptRows = await dbQuery<{ id: string }>(
-      `INSERT INTO exam_attempts (user_id, schedule_id, status, started_at, server_deadline)
-       VALUES ($1, $2, 'in_progress', NOW(), $3)
-       RETURNING id`,
-      user.id, scheduleId, serverDeadline.toISOString(),
-    );
-
-    const attemptId = attemptRows[0]?.id;
-    if (!attemptId) {
-      return fail(500, '创建考试记录失败');
-    }
-
-    return ok({ attemptId, resumed: false });
-  } catch (e: unknown) {
-    return catchError(e);
+    return fail(409, '该考试已经提交，不能再次开始');
   }
-}
+
+  assertScheduleCanStart(schedule, now);
+  const deadline = attemptDeadline(schedule, now);
+  const attemptId = await dbTx(async client => {
+    const result = await client.query<{ id: string }>(
+      `INSERT INTO exam_attempts
+        (schedule_id,user_id,status,started_at,server_deadline,last_heartbeat_at,ip,created_at,updated_at)
+       VALUES ($1,$2,'in_progress',NOW(),$3,NOW(),$4,NOW(),NOW())
+       ON CONFLICT (schedule_id,user_id) DO NOTHING RETURNING id`,
+      [scheduleId, user.id, deadline, request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null],
+    );
+    if (result.rows[0]) return result.rows[0].id;
+    const row = await client.query<{ id: string; status: string }>('SELECT id,status FROM exam_attempts WHERE schedule_id=$1 AND user_id=$2 FOR UPDATE', [scheduleId,user.id]);
+    if (!row.rows[0] || row.rows[0].status !== 'in_progress') throw new Error('考试记录状态异常');
+    return row.rows[0].id;
+  });
+  return ok({ attemptId, resumed: false, serverDeadline: deadline.toISOString() });
+});

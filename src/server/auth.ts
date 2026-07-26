@@ -1,9 +1,4 @@
-/**
- * 服务端认证与 RBAC。
- * - 会话验证：客户端在 Authorization: Bearer <access_token> 中携带 Supabase JWT，
- *   服务端用 anon client 调 auth.getUser(token) 验证（每次请求都验证，不信任前端声明）。
- * - 角色与组织：从 user_roles / profiles 表读取，缓存于请求内。
- */
+/** 服务端 Supabase 会话验证与多租户 RBAC。 */
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseCredentials, loadEnv } from '@/storage/database/supabase-client';
 import { dbOne, dbQuery } from '@/server/db';
@@ -16,127 +11,104 @@ export interface SessionUser {
   roles: Role[];
   organizationId: string | null;
   cohortIds: string[];
+  mustChangePassword: boolean;
 }
 
 let anonClient: SupabaseClient | null = null;
-
 function getAnonClient(): SupabaseClient {
   if (!anonClient) {
     loadEnv();
     const { url, anonKey } = getSupabaseCredentials();
-    anonClient = createClient(url, anonKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
+    anonClient = createClient(url, anonKey, { auth: { autoRefreshToken: false, persistSession: false } });
   }
   return anonClient;
 }
 
-/** 从请求头提取并验证会话；无效返回 null */
-export async function getSessionUser(request: Request): Promise<SessionUser | null> {
-  const authHeader = request.headers.get('authorization') ?? '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!token) return null;
-
-  const client = getAnonClient();
-  const { data, error } = await client.auth.getUser(token);
-  if (error || !data.user) return null;
-
-  const userId = data.user.id;
-  const profile = await dbOne<{ display_name: string; organization_id: string | null }>(
-    'SELECT display_name, organization_id FROM profiles WHERE id = $1',
+async function loadBusinessUser(userId: string, email: string): Promise<SessionUser | null> {
+  const profile = await dbOne<{ display_name: string; organization_id: string | null; status: string; must_change_password: boolean }>(
+    'SELECT display_name, organization_id, status, must_change_password FROM profiles WHERE id = $1',
     userId,
   );
-  const roleRows = await dbQuery<{ role: Role }>(
-    'SELECT role FROM user_roles WHERE user_id = $1',
-    userId,
-  );
+  if (!profile || profile.status !== 'active') return null;
+  const roleRows = await dbQuery<{ role: Role }>('SELECT role FROM user_roles WHERE user_id = $1', userId);
+  if (!roleRows.length) return null;
   const cohortRows = await dbQuery<{ cohort_id: string }>(
-    'SELECT cohort_id FROM enrollments WHERE user_id = $1',
+    `SELECT cohort_id FROM enrollments WHERE user_id = $1 AND status = 'active'`,
     userId,
   );
-
   return {
     id: userId,
-    email: data.user.email ?? '',
-    displayName: profile?.display_name ?? data.user.email ?? '用户',
-    roles: roleRows.map((r) => r.role),
-    organizationId: profile?.organization_id ?? null,
-    cohortIds: cohortRows.map((r) => r.cohort_id),
+    email,
+    displayName: profile.display_name || email || '用户',
+    roles: roleRows.map(row => row.role),
+    organizationId: profile.organization_id,
+    cohortIds: cohortRows.map(row => row.cohort_id),
+    mustChangePassword: profile.must_change_password,
   };
 }
 
-/** 邮箱+密码登录，返回 access_token 和用户信息 */
-export async function createSession(email: string, password: string): Promise<{
+export async function getSessionUser(request: Request): Promise<SessionUser | null> {
+  const header = request.headers.get('authorization') ?? '';
+  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  if (!token) return null;
+  const { data, error } = await getAnonClient().auth.getUser(token);
+  if (error || !data.user) return null;
+  return loadBusinessUser(data.user.id, data.user.email ?? '');
+}
+
+export interface CreatedSession {
   accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
   user: SessionUser;
-} | null> {
-  loadEnv();
-  const { url, anonKey } = getSupabaseCredentials();
-  const client = createClient(url, anonKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+}
 
-  const { data, error } = await client.auth.signInWithPassword({ email, password });
-  if (error || !data.session) return null;
-
-  const userId = data.user.id;
-  const profile = await dbOne<{ display_name: string; organization_id: string | null }>(
-    'SELECT display_name, organization_id FROM profiles WHERE id = $1',
-    userId,
-  );
-  const roleRows = await dbQuery<{ role: Role }>(
-    'SELECT role FROM user_roles WHERE user_id = $1',
-    userId,
-  );
-  const cohortRows = await dbQuery<{ cohort_id: string }>(
-    'SELECT cohort_id FROM enrollments WHERE user_id = $1',
-    userId,
-  );
-
+function toCreatedSession(session: { access_token: string; refresh_token: string; expires_at?: number | null }, user: SessionUser): CreatedSession {
   return {
-    accessToken: data.session.access_token,
-    user: {
-      id: userId,
-      email: data.user.email ?? '',
-      displayName: profile?.display_name ?? data.user.email ?? '用户',
-      roles: roleRows.map((r) => r.role),
-      organizationId: profile?.organization_id ?? null,
-      cohortIds: cohortRows.map((r) => r.cohort_id),
-    },
+    accessToken: session.access_token,
+    refreshToken: session.refresh_token,
+    expiresAt: (session.expires_at ?? Math.floor(Date.now() / 1000) + 3600) * 1000,
+    user,
   };
+}
+
+export async function createSession(email: string, password: string): Promise<CreatedSession | null> {
+  const { data, error } = await getAnonClient().auth.signInWithPassword({ email, password });
+  if (error || !data.session || !data.user) return null;
+  const user = await loadBusinessUser(data.user.id, data.user.email ?? '');
+  if (!user) return null;
+  return toCreatedSession(data.session, user);
+}
+
+export async function refreshSession(refreshToken: string): Promise<CreatedSession | null> {
+  if (!refreshToken) return null;
+  const { data, error } = await getAnonClient().auth.refreshSession({ refresh_token: refreshToken });
+  if (error || !data.session || !data.user) return null;
+  const user = await loadBusinessUser(data.user.id, data.user.email ?? '');
+  if (!user) return null;
+  return toCreatedSession(data.session, user);
 }
 
 export class ApiError extends Error {
-  status: number;
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
+  constructor(public status: number, message: string) { super(message); }
 }
-
-/** 要求登录 */
-export async function requireUser(request: Request): Promise<SessionUser> {
+export async function requireUser(request: Request, opts?: { allowPasswordChange?: boolean }): Promise<SessionUser> {
   const user = await getSessionUser(request);
   if (!user) throw new ApiError(401, '请先登录');
+  // 强制改密门控: 使用初始密码/被重置密码的账号必须先改密, 否则拒绝一切业务 API。
+  // 428 Precondition Required; 仅改密接口本身(allowPasswordChange)放行。
+  if (user.mustChangePassword && !opts?.allowPasswordChange) throw new ApiError(428, '请先修改初始密码');
   return user;
 }
-
-/** 要求具备任一指定角色 */
 export async function requireRole(request: Request, roles: Role[]): Promise<SessionUser> {
   const user = await requireUser(request);
-  const ok = user.roles.some((r) => roles.includes(r)) || user.roles.includes('super_admin');
-  if (!ok) throw new ApiError(403, '没有权限执行此操作');
+  if (!user.roles.includes('super_admin') && !user.roles.some(role => roles.includes(role))) throw new ApiError(403, '没有权限执行此操作');
   return user;
 }
-
-/** 要求属于指定组织（super_admin 不受限） */
 export function requireSameOrg(user: SessionUser, organizationId: string | null): void {
   if (user.roles.includes('super_admin')) return;
-  if (!organizationId || user.organizationId !== organizationId) {
-    throw new ApiError(403, '不能访问其他机构的数据');
-  }
+  if (!organizationId || user.organizationId !== organizationId) throw new ApiError(403, '不能访问其他机构的数据');
 }
-
 export const ADMIN_ROLES: Role[] = ['super_admin', 'school_admin'];
 export const STAFF_ROLES: Role[] = ['super_admin', 'school_admin', 'teacher'];
 export const QUESTION_EDIT_ROLES: Role[] = ['super_admin', 'school_admin', 'question_editor'];

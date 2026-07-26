@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/session-client';
 
 interface Student {
   id: string;
@@ -15,22 +16,18 @@ interface Student {
 export default function TeacherStudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
-  const _t = toast;
 
   const fetchStudents = useCallback(async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('/api/teacher/students', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data.success) setStudents(data.data.items || []);
+      const res = await apiFetch<{ items: Student[] }>('/api/teacher/students');
+      if (res.ok && res.data) setStudents(res.data.items || []);
+      else toast.error(res.error || '加载失败');
     } catch {
       toast.error('加载失败');
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, []);
 
   useEffect(() => { fetchStudents(); }, [fetchStudents]);
 

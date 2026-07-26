@@ -1,6 +1,7 @@
 /** API 路由公共工具：统一 JSON 响应、Zod 校验、错误处理 */
 import { ZodSchema, ZodError } from 'zod';
 import { ApiError } from '@/server/auth';
+import { randomInt } from 'node:crypto';
 
 export function ok<T>(data: T, init?: ResponseInit): Response {
   return Response.json({ success: true, data }, init);
@@ -53,11 +54,12 @@ export function catchError(e: unknown): Response {
 
 /** 生成随机初始密码（易读、适合零基础学员抄写） */
 export function genInitialPassword(): string {
+  // 使用密码学安全随机数，避免 Math.random() 生成可预测的初始密码。
   const digits = '23456789';
   const letters = 'abcdefghjkmnpqrstuvwxyz';
   let pw = '';
-  for (let i = 0; i < 4; i++) pw += letters[Math.floor(Math.random() * letters.length)];
-  for (let i = 0; i < 4; i++) pw += digits[Math.floor(Math.random() * digits.length)];
+  for (let i = 0; i < 4; i++) pw += letters[randomInt(letters.length)];
+  for (let i = 0; i < 4; i++) pw += digits[randomInt(digits.length)];
   return pw;
 }
 

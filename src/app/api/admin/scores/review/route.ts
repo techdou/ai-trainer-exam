@@ -1,195 +1,124 @@
 import { NextRequest } from 'next/server';
+import { z } from 'zod';
 import { requireRole } from '@/server/auth';
-import { dbQuery, dbExec } from '@/server/db';
-import {ok, fail, catchError} from '@/lib/api';
+import { dbOne, dbQuery, dbTx } from '@/server/db';
+import { ok, fail, catchError, parseBody } from '@/lib/api';
+import { assertOrganizationScope, assertTeacherCohortAccess } from '@/server/exam-security';
 
-/**
- * GET /api/admin/scores/review?scoreId=xxx
- * 获取单条成绩详情（含自动评分明细、学员答题记录）
- */
+const patchSchema = z.object({
+  scoreId: z.string().uuid(),
+  action: z.enum(['approve', 'adjust']),
+  adjustments: z.object({
+    theoryScore: z.number().min(0).optional(), cleaningScore: z.number().min(0).optional(),
+    imageAnnotationScore: z.number().min(0).optional(), textAnnotationScore: z.number().min(0).optional(),
+    audioScore: z.number().min(0).optional(), statisticsScore: z.number().min(0).optional(),
+  }).optional(),
+  note: z.string().trim().min(3).max(1000).optional(),
+});
+
+interface ScoreRow {
+  id: string; attempt_id: string; schedule_id: string; user_id: string; organization_id: string | null; cohort_id: string;
+  pass_score: number; theory_score: number; cleaning_score: number; image_annotation_score: number;
+  text_annotation_score: number; audio_score: number; statistics_score: number; total_score: number;
+  max_score: number; passed: boolean; status: string; auto_score_detail: unknown; created_at: string;
+}
+
+async function loadScore(scoreId: string): Promise<ScoreRow | null> {
+  return dbOne<ScoreRow>(`SELECT sc.id,sc.attempt_id,sc.schedule_id,sc.user_id,s.organization_id,s.cohort_id,p.pass_score,
+      sc.theory_score,sc.cleaning_score,sc.image_annotation_score,sc.text_annotation_score,sc.audio_score,
+      sc.statistics_score,sc.total_score,sc.max_score,sc.passed,sc.status,sc.auto_score_detail,sc.created_at
+    FROM exam_scores sc JOIN exam_schedules s ON s.id=sc.schedule_id JOIN exam_papers p ON p.id=s.paper_id
+    WHERE sc.id=$1 AND s.deleted_at IS NULL`, scoreId);
+}
+
+async function assertAccess(user: Awaited<ReturnType<typeof requireRole>>, score: ScoreRow) {
+  assertOrganizationScope(user, score.organization_id);
+  if (user.roles.includes('teacher')) await assertTeacherCohortAccess(user, score.cohort_id);
+}
+
 export async function GET(req: NextRequest) {
   try {
-    await requireRole(req, ['super_admin', 'school_admin', 'teacher', 'invigilator']);
+    const user = await requireRole(req, ['super_admin', 'school_admin', 'teacher', 'invigilator', 'auditor']);
+    const scoreId = new URL(req.url).searchParams.get('scoreId');
+    if (!scoreId || !z.string().uuid().safeParse(scoreId).success) return fail(400, 'scoreId 不正确');
+    const score = await loadScore(scoreId);
+    if (!score) return fail(404, '成绩记录不存在');
+    await assertAccess(user, score);
 
-    const { searchParams } = new URL(req.url);
-    const scoreId = searchParams.get('scoreId');
-    if (!scoreId) {
-      return fail(400, '缺少 scoreId');
-    }
-
-    // 1. 获取成绩
-    const scores = await dbQuery<{
-      id: string; attempt_id: string; schedule_id: string; user_id: string;
-      theory_score: number; cleaning_score: number; image_annotation_score: number;
-      text_annotation_score: number; audio_score: number; statistics_score: number;
-      total_score: number; max_score: number; passed: boolean; status: string;
-      auto_score_detail: string; created_at: string;
-    }>(
-      `SELECT id, attempt_id, schedule_id, user_id,
-              theory_score, cleaning_score, image_annotation_score,
-              text_annotation_score, audio_score, statistics_score,
-              total_score, max_score, passed, status,
-              auto_score_detail::text, created_at
-       FROM exam_scores WHERE id = $1`,
-      scoreId,
-    );
-
-    if (scores.length === 0) {
-      return fail(404, '成绩记录不存在');
-    }
-
-    const sc = scores[0];
-
-    // 2. 获取答题明细
     const responses = await dbQuery<{
-      id: string; item_id: string; item_type: string;
-      response: string; score: number; graded_at: string;
-    }>(
-      `SELECT id, item_id, item_type, response::text, score, graded_at
-       FROM exam_responses WHERE attempt_id = $1
-       ORDER BY item_type, created_at`,
-      sc.attempt_id,
-    );
-
-    // 3. 获取题目信息
-    const items = responses.length > 0
-      ? await dbQuery<{ id: string; stem: string; answer_key: string; question_type: string }>(
-          `SELECT id, stem, answer_key::text, question_type
-           FROM question_items WHERE id = ANY($1::uuid[])`,
-          responses.map(r => r.item_id),
-        )
-      : [];
-
-    const itemMap = new Map(items.map(i => [i.id, i]));
+      id: string; item_id: string; item_type: string; response: unknown; score: number; max_score: number;
+      grader_version: string | null; grading_detail: unknown; graded_at: string | null; item_snapshot: unknown; answer_key_snapshot: unknown;
+    }>(`SELECT r.id,r.item_id,r.item_type,r.response,r.score,r.max_score,r.grader_version,r.grading_detail,r.graded_at,
+               pi.item_snapshot,pi.answer_key_snapshot
+          FROM exam_responses r LEFT JOIN exam_paper_items pi ON pi.id=r.item_id
+         WHERE r.attempt_id=$1 ORDER BY pi.sort_order NULLS LAST,r.created_at`, score.attempt_id);
 
     return ok({
       score: {
-        id: sc.id,
-        attemptId: sc.attempt_id,
-        scheduleId: sc.schedule_id,
-        userId: sc.user_id,
-        scores: {
-          theory: Number(sc.theory_score),
-          cleaning: Number(sc.cleaning_score),
-          imageAnnotation: Number(sc.image_annotation_score),
-          textAnnotation: Number(sc.text_annotation_score),
-          audio: Number(sc.audio_score),
-          statistics: Number(sc.statistics_score),
-          total: Number(sc.total_score),
-          max: Number(sc.max_score),
-        },
-        passed: sc.passed,
-        status: sc.status,
-        autoScoreDetail: sc.auto_score_detail ? JSON.parse(sc.auto_score_detail) : null,
-        createdAt: sc.created_at,
+        id: score.id, attemptId: score.attempt_id, scheduleId: score.schedule_id, userId: score.user_id,
+        scores: { theory: Number(score.theory_score), cleaning: Number(score.cleaning_score),
+          imageAnnotation: Number(score.image_annotation_score), textAnnotation: Number(score.text_annotation_score),
+          audio: Number(score.audio_score), statistics: Number(score.statistics_score),
+          total: Number(score.total_score), max: Number(score.max_score) },
+        passed: score.passed, status: score.status, passScore: Number(score.pass_score),
+        autoScoreDetail: score.auto_score_detail, createdAt: score.created_at,
       },
-      responses: responses.map(r => {
-        const item = itemMap.get(r.item_id);
-        return {
-          id: r.id,
-          itemId: r.item_id,
-          itemType: r.item_type,
-          response: r.response ? JSON.parse(r.response) : null,
-          score: Number(r.score ?? 0),
-          gradedAt: r.graded_at,
-          stem: item?.stem ?? null,
-          answerKey: item?.answer_key ? JSON.parse(item.answer_key) : null,
-          questionType: item?.question_type ?? null,
-        };
-      }),
+      responses: responses.map(r => ({ id: r.id, itemId: r.item_id, itemType: r.item_type, response: r.response,
+        score: Number(r.score), maxScore: Number(r.max_score), graderVersion: r.grader_version,
+        gradingDetail: r.grading_detail, gradedAt: r.graded_at, itemSnapshot: r.item_snapshot,
+        // 复核页需要展示正确答案; 题干/题型在 itemSnapshot 里, 答案在 answer_key_snapshot 里。
+        answerKey: r.answer_key_snapshot })),
     });
-  } catch (e: unknown) {
-    return catchError(e);
-  }
+  } catch (error) { return catchError(error); }
 }
 
-/**
- * PATCH /api/admin/scores/review
- * 手动复核成绩（调整分数或标记状态）
- * 请求体: { scoreId: string, action: 'approve'|'adjust', adjustments?: {...}, note?: string }
- */
 export async function PATCH(req: NextRequest) {
   try {
-    await requireRole(req, ['super_admin', 'school_admin']);
+    const user = await requireRole(req, ['super_admin', 'school_admin']);
+    const body = await parseBody(req, patchSchema);
+    const current = await loadScore(body.scoreId);
+    if (!current) return fail(404, '成绩记录不存在');
+    await assertAccess(user, current);
+    // 状态守卫: 已发布/作废的成绩不能再走复核(通过或调整), 否则发布后可被无限改回 reviewed 反复调整。
+    if (!['auto_graded','reviewed','pending'].includes(current.status)) {
+      return fail(409, `当前成绩状态为 ${current.status}，不能复核。已发布的成绩需先撤回发布。`);
+    }
 
-    const body = await req.json() as {
-      scoreId?: string;
-      action?: 'approve' | 'adjust';
-      adjustments?: {
-        theoryScore?: number;
-        cleaningScore?: number;
-        imageAnnotationScore?: number;
-        textAnnotationScore?: number;
-        audioScore?: number;
-        statisticsScore?: number;
-      };
-      note?: string;
+    if (body.action === 'approve') {
+      if (!body.note) return fail(400, '复核通过也必须填写复核说明');
+      await dbTx(async client => {
+        await client.query(`UPDATE exam_scores SET status='reviewed',updated_at=NOW() WHERE id=$1`, [body.scoreId]);
+        await client.query(`INSERT INTO audit_logs(actor_id,actor_role,organization_id,action,entity_type,entity_id,detail)
+          VALUES($1,$2,$3,'score_review_approve','exam_score',$4,$5)`,
+          [user.id, user.roles[0] ?? null, current.organization_id, body.scoreId, { note: body.note, total: Number(current.total_score) }]);
+      });
+      return ok({ scoreId: body.scoreId, status: 'reviewed' });
+    }
+
+    if (!body.note) return fail(400, '调整成绩必须填写原因');
+    const adj = body.adjustments ?? {};
+    if (Object.keys(adj).length === 0) return fail(400, '没有需要调整的分数项');
+    const next = {
+      theory: adj.theoryScore ?? Number(current.theory_score), cleaning: adj.cleaningScore ?? Number(current.cleaning_score),
+      image: adj.imageAnnotationScore ?? Number(current.image_annotation_score),
+      text: adj.textAnnotationScore ?? Number(current.text_annotation_score), audio: adj.audioScore ?? Number(current.audio_score),
+      statistics: adj.statisticsScore ?? Number(current.statistics_score),
     };
+    const total = Number((next.theory + next.cleaning + next.image + next.text + next.audio + next.statistics).toFixed(2));
+    if (total > Number(current.max_score)) return fail(400, '调整后的总分不能超过试卷满分');
+    const passed = total >= Number(current.pass_score);
 
-    const { scoreId, action } = body;
-    if (!scoreId || !action) {
-      return fail(400, '缺少 scoreId 或 action');
-    }
-
-    if (action === 'approve') {
-      const rowCount = await dbExec(
-        `UPDATE exam_scores SET status = 'published', updated_at = NOW() WHERE id = $1 AND status != 'published'`,
-        scoreId,
-      );
-      if (rowCount === 0) {
-        return fail(400, '成绩已发布或不存在');
-      }
-      return ok({ scoreId, status: 'published' });
-    }
-
-    if (action === 'adjust') {
-      const adj = body.adjustments ?? {};
-      const sets: string[] = [];
-      const params: unknown[] = [];
-      let idx = 1;
-
-      if (adj.theoryScore !== undefined) { sets.push(`theory_score = $${idx++}`); params.push(adj.theoryScore); }
-      if (adj.cleaningScore !== undefined) { sets.push(`cleaning_score = $${idx++}`); params.push(adj.cleaningScore); }
-      if (adj.imageAnnotationScore !== undefined) { sets.push(`image_annotation_score = $${idx++}`); params.push(adj.imageAnnotationScore); }
-      if (adj.textAnnotationScore !== undefined) { sets.push(`text_annotation_score = $${idx++}`); params.push(adj.textAnnotationScore); }
-      if (adj.audioScore !== undefined) { sets.push(`audio_score = $${idx++}`); params.push(adj.audioScore); }
-      if (adj.statisticsScore !== undefined) { sets.push(`statistics_score = $${idx++}`); params.push(adj.statisticsScore); }
-
-      if (sets.length === 0) {
-        return fail(400, '没有需要调整的分数项');
-      }
-
-      // 重新计算总分和通过状态
-      const theory = adj.theoryScore ?? 0;
-      const cleaning = adj.cleaningScore ?? 0;
-      const image = adj.imageAnnotationScore ?? 0;
-      const text = adj.textAnnotationScore ?? 0;
-      const audio = adj.audioScore ?? 0;
-      const stats = adj.statisticsScore ?? 0;
-      const total = theory + cleaning + image + text + audio + stats;
-
-      sets.push(`total_score = $${idx++}`);
-      params.push(total);
-      sets.push(`passed = $${idx++}`);
-      params.push(total >= 60 ? 1 : 0);
-      sets.push(`status = 'reviewed'`);
-      sets.push(`updated_at = NOW()`);
-
-      params.push(scoreId);
-      const rowCount = await dbExec(
-        `UPDATE exam_scores SET ${sets.join(', ')} WHERE id = $${idx}`,
-        ...params,
-      );
-
-      if (rowCount === 0) {
-        return fail(404, '成绩记录不存在');
-      }
-
-      return ok({ scoreId, totalScore: total, passed: total >= 60, status: 'reviewed' });
-    }
-
-    return fail(400, '未知操作类型');
-  } catch (e: unknown) {
-    return catchError(e);
-  }
+    await dbTx(async client => {
+      await client.query(`UPDATE exam_scores SET theory_score=$1,cleaning_score=$2,image_annotation_score=$3,
+          text_annotation_score=$4,audio_score=$5,statistics_score=$6,total_score=$7,passed=$8,
+          original_total=COALESCE(original_total,total_score),adjusted_total=$7,adjust_reason=$9,adjusted_by=$10,
+          status='reviewed',updated_at=NOW() WHERE id=$11`,
+        [next.theory,next.cleaning,next.image,next.text,next.audio,next.statistics,total,passed,body.note,user.id,body.scoreId]);
+      await client.query(`INSERT INTO audit_logs(actor_id,actor_role,organization_id,action,entity_type,entity_id,detail)
+          VALUES($1,$2,$3,'score_adjust','exam_score',$4,$5)`,
+        [user.id,user.roles[0] ?? null,current.organization_id,body.scoreId,
+          { note: body.note, before: { theory: Number(current.theory_score), cleaning: Number(current.cleaning_score), image: Number(current.image_annotation_score), text: Number(current.text_annotation_score), audio: Number(current.audio_score), statistics: Number(current.statistics_score), total: Number(current.total_score) }, after: { ...next, total, passed } }]);
+    });
+    return ok({ scoreId: body.scoreId, totalScore: total, passed, status: 'reviewed' });
+  } catch (error) { return catchError(error); }
 }

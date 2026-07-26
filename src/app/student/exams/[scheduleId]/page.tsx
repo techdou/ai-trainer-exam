@@ -1,287 +1,173 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { ExamTaskInput } from '@/components/exam-task-input';
+import { apiFetch } from '@/lib/session-client';
 import { toast } from 'sonner';
 
-interface ExamQuestion {
+interface ExamItem {
   id: string;
-  question_type: string;
-  stem: string;
-  options: Record<string, string>;
+  itemType: 'question'|'task';
+  sortOrder: number;
   score: number;
   section: string;
+  content: Record<string, unknown>;
+}
+interface ExamPayload {
+  attemptId:string;
+  scheduleId:string;
+  serverNow:string;
+  serverDeadline:string;
+  durationMinutes:number;
+  items:ExamItem[];
+  savedResponses:Record<string,unknown>;
+}
+
+function answered(value: unknown): boolean {
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (!value || typeof value !== 'object') return false;
+  return Object.keys(value as Record<string,unknown>).length > 0;
 }
 
 export default function ExamTakePage() {
-  const params = useParams();
+  const { scheduleId } = useParams<{ scheduleId:string }>();
   const router = useRouter();
-  const scheduleId = params.scheduleId as string;
+  const [payload,setPayload]=useState<ExamPayload|null>(null);
+  const [responses,setResponses]=useState<Record<string,unknown>>({});
+  const [index,setIndex]=useState(0);
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [submitting,setSubmitting]=useState(false);
+  const [receipt,setReceipt]=useState<string|null>(null);
+  const [serverOffset,setServerOffset]=useState(0);
+  const [loadError,setLoadError]=useState('');
+  // null = 倒计时尚未初始化; 仅当初始化后归零才触发自动交卷,避免试卷刚加载时误交白卷。
+  const [timeLeft,setTimeLeft]=useState<number|null>(null);
+  const dirtyRef=useRef(new Set<string>());
+  const saveTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
 
-  const [questions, setQuestions] = useState<ExamQuestion[]>([]);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [attemptId, setAttemptId] = useState<string | null>(null);
-  const [results, setResults] = useState<{
-    total: number;
-    correct: number;
-    score: number;
-    passed: boolean;
-  } | null>(null);
-  const [timeLeft, setTimeLeft] = useState<number | null>(null);
-  const [durationMinutes, setDurationMinutes] = useState(90);
+  // 用 ref 承载高频变化的状态,让 flush/submit/定时器引用稳定,避免每答一题重建全部定时器。
+  const payloadRef=useRef<ExamPayload|null>(null);
+  const responsesRef=useRef<Record<string,unknown>>({});
+  const receiptRef=useRef<string|null>(null);
+  const submittingRef=useRef(false);
+  const idemKeyRef=useRef<string|null>(null);
+  useEffect(()=>{payloadRef.current=payload},[payload]);
+  useEffect(()=>{responsesRef.current=responses},[responses]);
+  useEffect(()=>{receiptRef.current=receipt},[receipt]);
 
-  // Fetch exam questions
-  const fetchQuestions = useCallback(async () => {
-    try {
-      const token = localStorage.getItem('accessToken');
-      // 先尝试开始考试
-      const startRes = await fetch('/api/student/exams/start', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ scheduleId }),
-      });
-      const startData = await startRes.json();
-      if (startData.success) {
-        setAttemptId(startData.data.attemptId);
-      } else if (startRes.status !== 400 || !startData.error?.includes('已提交')) {
-        // 非已提交错误才提示
-        toast.error('开始考试失败', { description: startData.error });
-      }
+  const load=useCallback(async()=>{
+    setLoading(true);setLoadError('');
+    const start=await apiFetch<{attemptId:string;serverDeadline:string}>('/api/student/exams/start',{method:'POST',body:{scheduleId}});
+    if(!start.ok||!start.data){setLoadError(start.error??'无法开始考试');setLoading(false);return;}
+    const result=await apiFetch<ExamPayload>(`/api/student/exams/questions?scheduleId=${encodeURIComponent(scheduleId)}`);
+    // start 幂等(重复进入返回同一 attempt), 试卷加载失败可直接重试, 不会重复开考。
+    if(!result.ok||!result.data){setLoadError(result.error??'试卷加载失败,请点击重试');setLoading(false);return;}
+    if(result.data.attemptId!==start.data.attemptId){setLoadError('考试状态异常,请返回列表重试');setLoading(false);return;}
+    setPayload(result.data);
+    setResponses(result.data.savedResponses??{});
+    setServerOffset(new Date(result.data.serverNow).getTime()-Date.now());
+    // 幂等键按 attempt 固定:重复交卷/断网重试时服务端可识别为同一次提交。
+    idemKeyRef.current=`submit-${result.data.attemptId}`;
+    setLoading(false);
+  },[scheduleId]);
+  useEffect(()=>{void load()},[load]);
 
-      // 获取题目
-      const res = await fetch(`/api/student/exams/questions?scheduleId=${scheduleId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data.success) {
-        setQuestions(data.data.questions);
-        setDurationMinutes(data.data.durationMinutes ?? 90);
-        setTimeLeft((data.data.durationMinutes ?? 90) * 60);
-      } else {
-        toast.error('加载失败', { description: data.error });
-      }
-    } catch {
-      toast.error('网络错误');
-    } finally {
-      setLoading(false);
+  const flush=useCallback(async(keepalive=false)=>{
+    const p=payloadRef.current;
+    if(!p||dirtyRef.current.size===0||receiptRef.current)return true;
+    const ids=[...dirtyRef.current];
+    const body=ids.map(itemId=>({itemId,response:responsesRef.current[itemId]??{},workspaceSnapshot:responsesRef.current[itemId]??{}}));
+    setSaving(true);
+    const result=await apiFetch<{saved:number}>('/api/student/exams/save',{method:'POST',body:{scheduleId,attemptId:p.attemptId,responses:body},keepalive});
+    setSaving(false);
+    if(result.ok){ids.forEach(id=>dirtyRef.current.delete(id));return true;}
+    toast.error('自动保存失败',{description:result.error});return false;
+  },[scheduleId]);
+
+  // 答题后 1.2s 防抖保存
+  useEffect(()=>{
+    if(!payload||receipt)return;
+    if(saveTimer.current)clearTimeout(saveTimer.current);
+    saveTimer.current=setTimeout(()=>void flush(),1200);
+    return()=>{if(saveTimer.current)clearTimeout(saveTimer.current)};
+  },[responses,payload,receipt,flush]);
+  // 15s 周期兜底保存
+  useEffect(()=>{
+    if(!payload||receipt)return;
+    const timer=setInterval(()=>void flush(),15_000);
+    return()=>clearInterval(timer);
+  },[payload,receipt,flush]);
+  // 离开页面/切后台时尽力保存,避免丢失最近作答(keepalive 允许请求在页面卸载后继续完成)
+  useEffect(()=>{
+    if(!payload||receipt)return;
+    const onUnload=()=>{void flush(true)};
+    const onVisibility=()=>{if(document.visibilityState==='hidden')void flush(true)};
+    window.addEventListener('beforeunload',onUnload);
+    document.addEventListener('visibilitychange',onVisibility);
+    return()=>{window.removeEventListener('beforeunload',onUnload);document.removeEventListener('visibilitychange',onVisibility)};
+  },[payload,receipt,flush]);
+  useEffect(()=>{
+    if(!payload||receipt)return;
+    const ping=()=>void apiFetch('/api/student/exams/heartbeat',{method:'POST',body:{scheduleId,attemptId:payload.attemptId,clientOffsetMs:serverOffset}});
+    ping();const timer=setInterval(ping,30_000);return()=>clearInterval(timer);
+  },[payload,receipt,scheduleId,serverOffset]);
+  useEffect(()=>{
+    if(!payload||receipt)return;
+    const update=()=>{const left=Math.max(0,Math.floor((new Date(payload.serverDeadline).getTime()-(Date.now()+serverOffset))/1000));setTimeLeft(left)};
+    update();const timer=setInterval(update,1000);return()=>clearInterval(timer);
+  },[payload,receipt,serverOffset]);
+
+  const submit=useCallback(async()=>{
+    const p=payloadRef.current;
+    // 同步 ref 锁:快速双击/倒计时归零与手动交卷并发时只放行一次。
+    if(!p||submittingRef.current||receiptRef.current)return;
+    submittingRef.current=true;setSubmitting(true);
+    try{
+      await flush();
+      const result=await apiFetch<{receipt:string;message:string}>('/api/student/exams/submit',{method:'POST',body:{scheduleId,attemptId:p.attemptId,idempotencyKey:idemKeyRef.current??`submit-${p.attemptId}`,responses:Object.entries(responsesRef.current).map(([itemId,response])=>({itemId,response,workspaceSnapshot:response}))}});
+      if(!result.ok||!result.data){toast.error('交卷失败',{description:result.error});return;}
+      setReceipt(result.data.receipt);toast.success('交卷成功');
+    }finally{
+      submittingRef.current=false;setSubmitting(false);
     }
-  }, [scheduleId]);
+  },[flush,scheduleId]);
+  useEffect(()=>{if(payload&&timeLeft!==null&&timeLeft<=0&&!receipt)void submit()},[payload,timeLeft,receipt,submit]);
 
-  useEffect(() => { fetchQuestions(); }, [fetchQuestions]);
+  const change=(itemId:string,value:unknown)=>{setResponses(prev=>({...prev,[itemId]:value}));dirtyRef.current.add(itemId)};
+  const count=useMemo(()=>Object.values(responses).filter(answered).length,[responses]);
+  const format=(seconds:number)=>`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
 
-  // Timer countdown
-  useEffect(() => {
-    if (timeLeft === null || submitted) return;
-    if (timeLeft <= 0) {
-      handleSubmit();
-      return;
-    }
-    const timer = setTimeout(() => setTimeLeft(t => (t ?? 0) - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [timeLeft, submitted]); // eslint-disable-line react-hooks/exhaustive-deps
+  if(loading)return <div className="flex min-h-[60vh] items-center justify-center text-lg text-muted-foreground">正在安全加载试卷…</div>;
+  // 开考是幂等的, 试卷加载失败可直接重试(不会重复创建考试记录)。
+  if(loadError)return <div className="mx-auto max-w-lg py-16 text-center"><p className="mb-4 text-lg">{loadError}</p><div className="flex justify-center gap-3"><Button onClick={()=>void load()}>重新加载</Button><Button variant="outline" onClick={()=>router.push('/student/exams')}>返回考试列表</Button></div></div>;
+  if(!payload)return <div className="mx-auto max-w-lg py-16 text-center"><p className="mb-4 text-lg">无法进入考试，请返回考试列表查看开放时间。</p><Button onClick={()=>router.push('/student/exams')}>返回考试列表</Button></div>;
+  if(receipt)return <div className="mx-auto max-w-xl py-16 text-center"><div className="mb-4 text-6xl text-success" aria-hidden>✓</div><h1 className="mb-3 text-2xl font-bold">交卷成功</h1><p className="mb-2 text-muted-foreground">成绩将在学校审核并发布后显示。</p><p className="mb-8 break-all text-xs text-muted-foreground">交卷回执：{receipt}</p><Button size="lg" onClick={()=>router.replace('/student/exams')}>返回考试列表</Button></div>;
 
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
+  const item=payload.items[index];
+  if(!item)return <div className="py-16 text-center">试卷没有可作答内容，请联系考务人员。</div>;
+  const questionType=String(item.content.questionType??'');
+  const options=(item.content.options??{}) as Record<string,string>;
+  const current=responses[item.id];
+  const selected=typeof current==='string'?current:String((current as {answer?:unknown;selectedOption?:unknown}|undefined)?.answer??(current as {selectedOption?:unknown}|undefined)?.selectedOption??'');
+  const lowTime=timeLeft!==null&&timeLeft<300;
 
-  const handleAnswer = (questionId: string, answer: string) => {
-    if (submitted) return;
-    setAnswers(prev => ({ ...prev, [questionId]: answer }));
-  };
-
-  const handleSubmit = async () => {
-    if (submitting || submitted) return;
-    setSubmitting(true);
-
-    try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('/api/student/exams/submit', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          scheduleId,
-          answers: Object.entries(answers).map(([questionId, answer]) => ({
-            questionId,
-            answer,
-          })),
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setResults(data.data);
-        setSubmitted(true);
-        toast.success('交卷成功', { description: `得分: ${data.data.score}分${data.data.passed ? ' - 通过' : ' - 未通过'}` });
-      } else {
-        toast.error('交卷失败', { description: data.error });
-      }
-    } catch {
-      toast.error('网络错误');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  if (loading) {
-    return <div className="flex items-center justify-center min-h-[60vh] text-lg text-gray-500">加载试卷中...</div>;
-  }
-
-  // Results view
-  if (submitted && results) {
-    return (
-      <div className="max-w-lg mx-auto py-16 text-center space-y-6">
-        <div className="text-7xl font-bold text-primary">{results.score}</div>
-        <div className="text-xl text-gray-600">分</div>
-        <div className="flex justify-center gap-8 text-base">
-          <div>总题数: {results.total}</div>
-          <div>答对: {results.correct}</div>
-          <div>正确率: {results.total > 0 ? Math.round(results.correct / results.total * 100) : 0}%</div>
-        </div>
-        <div className={`inline-block px-6 py-2 rounded-full text-lg font-medium ${
-          results.passed ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-        }`}>
-          {results.passed ? '✓ 通过' : '✗ 未通过'}
-        </div>
-        <div>
-          <Button size="lg" onClick={() => router.push('/student/exams')} className="text-lg px-8 py-3">
-            返回考试列表
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  const currentQ = questions[currentIndex];
-  if (!currentQ) return <div className="text-center py-12">试卷暂无题目</div>;
-
-  const answeredCount = Object.keys(answers).length;
-  const isTrueFalse = currentQ.question_type === 'true_false';
-  const tfOptions: Record<string, string> = { A: '正确', B: '错误' };
-
-  return (
-    <div className="max-w-3xl mx-auto space-y-4">
-      {/* Top bar */}
-      <div className="flex items-center justify-between bg-white border rounded-lg px-6 py-3">
-        <div className="text-base font-medium">
-          第 {currentIndex + 1} / {questions.length} 题
-        </div>
-        <div className="text-base">
-          已答: {answeredCount} / {questions.length}
-        </div>
-        {timeLeft !== null && (
-          <div className={`text-lg font-mono font-bold ${timeLeft < 300 ? 'text-red-600' : 'text-primary'}`}>
-            {formatTime(timeLeft)}
-          </div>
-        )}
-      </div>
-
-      {/* Question */}
-      <Card>
-        <CardContent className="py-8 px-6 space-y-6">
-          <div className="flex items-start justify-between">
-            <p className="text-xl font-medium leading-relaxed flex-1">{currentQ.stem}</p>
-            <span className="text-sm text-gray-400 ml-4 shrink-0">{currentQ.score}分</span>
-          </div>
-
-          <div className="space-y-3">
-            {Object.entries(isTrueFalse ? tfOptions : currentQ.options).map(([key, text]) => {
-              const isSelected = answers[currentQ.id] === key;
-              return (
-                <button
-                  key={key}
-                  onClick={() => handleAnswer(currentQ.id, key)}
-                  disabled={submitted}
-                  className={`w-full text-left px-6 py-4 rounded-lg border-2 text-lg transition-colors ${
-                    isSelected
-                      ? 'border-primary bg-primary/5 font-medium'
-                      : 'border-gray-200 hover:border-primary/40 hover:bg-gray-50'
-                  }`}
-                >
-                  <span className="inline-block w-8 font-bold text-primary">{key}.</span>
-                  {text}
-                </button>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Navigation */}
-      <div className="flex items-center justify-between">
-        <Button
-          variant="outline"
-          size="lg"
-          onClick={() => setCurrentIndex(i => Math.max(0, i - 1))}
-          disabled={currentIndex === 0}
-          className="text-base px-6"
-        >
-          上一题
-        </Button>
-
-        <div className="flex gap-2 flex-wrap justify-center max-w-md">
-          {questions.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setCurrentIndex(i)}
-              className={`w-8 h-8 rounded text-sm font-medium transition-colors ${
-                i === currentIndex
-                  ? 'bg-primary text-white'
-                  : answers[questions[i].id]
-                    ? 'bg-primary/20 text-primary'
-                    : 'bg-gray-100 text-gray-500'
-              }`}
-            >
-              {i + 1}
-            </button>
-          ))}
-        </div>
-
-        {currentIndex < questions.length - 1 ? (
-          <Button
-            size="lg"
-            onClick={() => setCurrentIndex(i => i + 1)}
-            className="text-base px-6"
-          >
-            下一题
-          </Button>
-        ) : (
-          <Button
-            size="lg"
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="text-base px-6 bg-accent hover:bg-accent/90"
-          >
-            {submitting ? '交卷中...' : '交卷'}
-          </Button>
-        )}
-      </div>
-
-      {/* Bottom submit bar */}
-      {answeredCount > 0 && !submitted && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t px-6 py-3 flex items-center justify-center z-50">
-          <Button
-            size="lg"
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="text-lg px-12 py-4 bg-accent hover:bg-accent/90"
-          >
-            {submitting ? '交卷中...' : `交卷（已答 ${answeredCount}/${questions.length}）`}
-          </Button>
-        </div>
-      )}
+  return <div className="mx-auto max-w-5xl space-y-4 pb-28">
+    <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/95 px-5 py-3 backdrop-blur">
+      <strong>第 {index+1}/{payload.items.length} 项</strong><span>已完成 {count}/{payload.items.length}</span><span className="text-sm text-muted-foreground">{saving?'正在保存…':'已启用自动保存'}</span>
+      <span className="flex items-center gap-2">
+        {lowTime&&<span className="text-sm font-medium text-destructive" role="alert">⚠ 时间不多了，请检查未答项目</span>}
+        <strong className={lowTime?'text-destructive':'text-primary'} aria-label="剩余时间">{timeLeft===null?'--:--':format(timeLeft)}</strong>
+      </span>
     </div>
-  );
+    <Card><CardContent className="space-y-6 p-6 sm:p-8">
+      <div className="flex items-start justify-between gap-4"><div><span className="mb-2 inline-block rounded bg-primary/10 px-2 py-1 text-sm text-primary">{item.itemType==='question'?(questionType==='true_false'?'判断题':'单选题'):'实操题'}</span><h1 className="text-xl font-semibold leading-relaxed">{String(item.content.stem??item.content.title??'')}</h1>{item.content.instructions?<p className="mt-2 text-base text-muted-foreground">{String(item.content.instructions)}</p>:null}</div><span className="shrink-0 text-sm text-muted-foreground">{item.score}分</span></div>
+      {item.itemType==='question'?<div className="space-y-3">{Object.entries(questionType==='true_false'?{A:'正确',B:'错误'}:options).map(([key,text])=><button key={key} type="button" onClick={()=>change(item.id,key)} className={`w-full rounded-lg border-2 p-4 text-left text-lg ${selected===key?'border-primary bg-primary/5':'hover:border-primary/40'}`}><strong className="mr-3 text-primary">{key}.</strong>{text}</button>)}</div>:<ExamTaskInput content={item.content} value={current} onChange={value=>change(item.id,value)} />}
+    </CardContent></Card>
+    <div className="flex items-center justify-between gap-3"><Button size="lg" variant="outline" disabled={index===0} onClick={()=>setIndex(i=>i-1)}>上一项</Button><div className="hidden max-w-2xl flex-wrap justify-center gap-1 md:flex">{payload.items.map((x,i)=><button key={x.id} onClick={()=>setIndex(i)} className={`h-9 min-w-9 rounded px-2 text-sm ${i===index?'bg-primary text-primary-foreground':answered(responses[x.id])?'bg-primary/15 text-primary':'bg-muted'}`}>{i+1}</button>)}</div><Button size="lg" disabled={index===payload.items.length-1} onClick={()=>setIndex(i=>i+1)}>下一项</Button></div>
+    <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background px-4 py-3"><div className="mx-auto flex max-w-5xl items-center justify-between gap-4"><span className="text-sm text-muted-foreground">交卷后不能修改，请检查未完成项目。</span><Button size="lg" variant="destructive" disabled={submitting} onClick={()=>void submit()}>{submitting?'正在交卷…':`确认交卷（${count}/${payload.items.length}）`}</Button></div></div>
+  </div>;
 }

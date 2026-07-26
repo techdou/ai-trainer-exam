@@ -26,7 +26,11 @@ async function createPool(): Promise<Pool> {
 
 export function getPool(): Promise<Pool> {
   if (!poolPromise) {
-    poolPromise = createPool();
+    // 创建失败时重置,允许后续请求重试,避免一次 DB 抖动导致进程永久不可用。
+    poolPromise = createPool().catch(err => {
+      poolPromise = null;
+      throw err;
+    });
   }
   return poolPromise;
 }
@@ -77,5 +81,6 @@ export async function dbExec(text: string, ...params: unknown[]): Promise<number
 /** 服务端当前时间（数据库时间，考试计时以此为唯一权威） */
 export async function dbNow(): Promise<Date> {
   const row = await dbOne<{ now: Date }>('SELECT now() AS now');
-  return row!.now;
+  if (!row) throw new Error('dbNow: SELECT now() 未返回结果');
+  return row.now;
 }

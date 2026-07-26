@@ -36,7 +36,10 @@ const TYPE_LABELS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: '草稿', color: 'bg-gray-100 text-gray-600' },
+  imported_unreviewed: { label: '待审核', color: 'bg-yellow-50 text-yellow-700' },
   pending_review: { label: '待审核', color: 'bg-yellow-50 text-yellow-700' },
+  reviewed: { label: '审核通过', color: 'bg-blue-50 text-blue-700' },
+  needs_revision: { label: '需修改', color: 'bg-orange-50 text-orange-700' },
   published: { label: '已发布', color: 'bg-green-50 text-green-700' },
   retired: { label: '已下架', color: 'bg-red-50 text-red-700' },
 };
@@ -62,7 +65,7 @@ export default function PracticeBankPage() {
   const handleRetire = async (id: string) => {
     const r = await apiFetch(`/api/admin/questions/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ action: 'retire', bankType: 'practice' }),
+      body: { action: 'retire', bankType: 'practice' },
     });
     if (r.ok) {
       toast.success('已下架');

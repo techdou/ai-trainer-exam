@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getToken } from '@/lib/session-client';
 
 export default function ImportPage() {
   const router = useRouter();
@@ -11,7 +12,6 @@ export default function ImportPage() {
   const [result, setResult] = useState<{
     inserted: number;
     skipped: number;
-    duplicates: number;
     errors: string[];
     totalParsed: number;
   } | null>(null);
@@ -28,11 +28,15 @@ export default function ImportPage() {
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('bankType', bankType);
+    // 后端读 bank_type; 历史上前端发 bankType 被静默忽略, 选考试库也会落进练习库。
+    formData.append('bank_type', bankType);
 
     try {
+      // 必须带 Authorization: 系统用 Bearer token(sessionStorage), 历史上裸 fetch 导致所有用户 401。
+      const token = getToken();
       const res = await fetch('/api/admin/import', {
         method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: formData,
       });
       const data = await res.json();
@@ -104,8 +108,8 @@ export default function ImportPage() {
         </div>
 
         {error && (
-          <div className="rounded-md bg-red-50 border border-red-200 p-3">
-            <p className="text-base text-red-800">✗ {error}</p>
+          <div className="rounded-md bg-destructive/10 border border-destructive/30 p-3">
+            <p className="text-base text-destructive">✗ {error}</p>
           </div>
         )}
 
@@ -130,27 +134,27 @@ export default function ImportPage() {
         <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
           <h2 className="text-lg font-bold text-gray-900">导入结果</h2>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <div className="rounded-md bg-blue-50 p-3 text-center">
-              <div className="text-2xl font-bold text-blue-700">{result.totalParsed}</div>
-              <div className="text-sm text-gray-600">解析总数</div>
+            <div className="rounded-md bg-primary/10 p-3 text-center">
+              <div className="text-2xl font-bold text-primary">{result.totalParsed}</div>
+              <div className="text-sm text-muted-foreground">解析总数</div>
             </div>
-            <div className="rounded-md bg-green-50 p-3 text-center">
-              <div className="text-2xl font-bold text-green-700">{result.inserted}</div>
-              <div className="text-sm text-gray-600">✓ 成功导入</div>
+            <div className="rounded-md bg-success/10 p-3 text-center">
+              <div className="text-2xl font-bold text-success">{result.inserted}</div>
+              <div className="text-sm text-muted-foreground">✓ 成功导入</div>
             </div>
-            <div className="rounded-md bg-orange-50 p-3 text-center">
-              <div className="text-2xl font-bold text-orange-700">{result.skipped}</div>
-              <div className="text-sm text-gray-600">跳过</div>
+            <div className="rounded-md bg-warning/10 p-3 text-center">
+              <div className="text-2xl font-bold text-warning">{result.skipped}</div>
+              <div className="text-sm text-muted-foreground">跳过</div>
             </div>
-            <div className="rounded-md bg-yellow-50 p-3 text-center">
-              <div className="text-2xl font-bold text-yellow-700">{result.duplicates}</div>
-              <div className="text-sm text-gray-600">重复题</div>
+            <div className="rounded-md bg-warning/10 p-3 text-center">
+              <div className="text-2xl font-bold text-warning">{result.errors.length}</div>
+              <div className="text-sm text-muted-foreground">错误数</div>
             </div>
           </div>
           {result.errors.length > 0 && (
-            <div className="rounded-md bg-red-50 border border-red-200 p-3">
-              <p className="text-sm font-medium text-red-800 mb-1">错误详情：</p>
-              <ul className="text-sm text-red-700 space-y-1 max-h-40 overflow-y-auto">
+            <div className="rounded-md bg-destructive/10 border border-destructive/30 p-3">
+              <p className="text-sm font-medium text-destructive mb-1">错误详情：</p>
+              <ul className="text-sm text-destructive space-y-1 max-h-40 overflow-y-auto">
                 {result.errors.slice(0, 20).map((e, i) => (
                   <li key={i}>• {e}</li>
                 ))}

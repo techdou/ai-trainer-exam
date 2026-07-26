@@ -1,12 +1,14 @@
 import { NextRequest } from 'next/server';
 import { requireRole } from '@/server/auth';
+import { assertPracticeUnlocked } from '@/server/exam-security';
 import { dbQuery } from '@/server/db';
 import {ok, fail, catchError } from '@/lib/api';
 
 /** GET /api/student/practice/task - 列出学员可做的实操任务 */
 export async function GET(req: NextRequest) {
   try {
-    const user = await requireRole(req, ['student', 'super_admin', 'teacher']);
+    const user = await requireRole(req, ['student']);
+    await assertPracticeUnlocked(user);
 
     // 获取学员所在班级的实操作业
     const tasks = await dbQuery<{
@@ -22,9 +24,9 @@ export async function GET(req: NextRequest) {
       FROM practice_task_templates t
       INNER JOIN practice_assignments a ON a.item_id = t.id AND a.item_type = 'task_template'
       INNER JOIN enrollments e ON e.cohort_id = a.cohort_id AND e.user_id = $1
-      WHERE t.deleted_at IS NULL AND t.review_status = 'published'
+      WHERE t.deleted_at IS NULL AND t.review_status = 'published' AND (t.organization_id = $2 OR t.organization_id IS NULL)
       ORDER BY t.difficulty ASC, t.title ASC
-    `, user.id);
+    `, user.id, user.organizationId);
 
     // 为每个任务获取学员最近一次尝试
     const tasksWithAttempts = await Promise.all(tasks.map(async (t) => {

@@ -42,24 +42,32 @@ export default function CohortsPage() {
 
   useEffect(() => { fetchData(); }, []);
 
+  const [saving, setSaving] = useState(false);
+
   const handleCreate = async () => {
     if (!newName.trim()) { toast.error('班级名称不能为空'); return; }
-    const r = await apiFetch<{ id: string }>('/api/admin/cohorts', {
-      method: 'POST',
-      body: JSON.stringify({ name: newName, organizationId: selectedOrgId || undefined }),
-    });
-    if (r.ok) {
-      toast.success('创建成功');
-      setShowCreate(false);
-      setNewName('');
-      setSelectedOrgId('');
-      fetchData();
-    } else {
-      toast.error('创建失败', { description: r.error });
+    if (saving) return;
+    setSaving(true);
+    try {
+      const r = await apiFetch<{ id: string }>('/api/admin/cohorts', {
+        method: 'POST',
+        body: { name: newName, organizationId: selectedOrgId || undefined },
+      });
+      if (r.ok) {
+        toast.success('创建成功');
+        setShowCreate(false);
+        setNewName('');
+        setSelectedOrgId('');
+        fetchData();
+      } else {
+        toast.error('创建失败', { description: r.error });
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
-  if (loading) return <div className="text-center py-12 text-lg text-gray-500">加载中...</div>;
+  if (loading) return <div className="text-center py-12 text-lg text-muted-foreground">加载中...</div>;
 
   return (
     <div>
@@ -100,7 +108,7 @@ export default function CohortsPage() {
       )}
 
       <div className="space-y-3">
-        {cohorts.length === 0 && <div className="text-center py-12 text-gray-500">暂无班级数据</div>}
+        {cohorts.length === 0 && <div className="text-center py-12 text-muted-foreground">暂无班级数据</div>}
         {cohorts.map(c => (
           <Card key={c.id}>
             <CardContent className="py-4 flex items-center justify-between">
@@ -110,7 +118,7 @@ export default function CohortsPage() {
                 </div>
                 <div>
                   <div className="text-lg font-medium">{c.name}</div>
-                  <div className="text-base text-gray-500">
+                  <div className="text-base text-muted-foreground">
                     {c.organizationName} · {c.studentCount} 名学员
                   </div>
                 </div>

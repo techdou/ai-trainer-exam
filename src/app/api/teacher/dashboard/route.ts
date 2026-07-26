@@ -8,10 +8,11 @@ export async function GET(req: NextRequest) {
   try {
     const user = await requireRole(req, ['teacher', 'super_admin']);
 
-    // 教师关联的班级 (通过 teacher_cohort_grants)
-    const cohortRows = await dbQuery<{ cohort_id: string }>(`
-      SELECT cohort_id FROM teacher_cohort_grants WHERE teacher_id = $1
-    `, user.id);
+    // 教师关联的班级 (通过 teacher_cohort_grants); super_admin 无 grant 行, 看全部班级
+    // (与其他教师端 API 的 super_admin 全局分支一致, 否则管理员打开教师仪表盘全 0)。
+    const cohortRows = user.roles.includes('super_admin')
+      ? await dbQuery<{ cohort_id: string }>(`SELECT id AS cohort_id FROM cohorts WHERE deleted_at IS NULL`)
+      : await dbQuery<{ cohort_id: string }>(`SELECT cohort_id FROM teacher_cohort_grants WHERE teacher_id = $1`, user.id);
     const cohortIds = cohortRows.map(r => r.cohort_id);
 
     // 如果没有关联班级，返回空数据

@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/session-client';
 import { toast } from 'sonner';
+import { Image as ImageIcon, Music } from 'lucide-react';
+import { ExamTaskInput } from '@/components/exam-task-input';
 
 // ─── 类型 ──────────────────────────────────────────────────────
 
@@ -21,14 +23,15 @@ interface TaskConfig {
   // excel_delete_rows
   columns?: string[];
   dataRows?: string[][];
+  rowIds?: string[];
   // stats_table
   rows?: string[][];
   editableCells?: string[];
   // file_classify
   categories?: string[];
-  files?: { name: string; size: string }[];
+  files?: { id?: string; name: string; size: string }[];
   // image_clean
-  images?: { id: string; description: string; issues: string[] }[];
+  images?: { id: string; description: string; url?: string; issues?: string[] }[];
   // image_annotation
   imageUrl?: string;
   targetLabels?: string[];
@@ -58,17 +61,17 @@ export default function TaskPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    apiFetch<{ success: boolean; data: TaskItem[]; error?: string }>('/api/student/practice/task')
+    apiFetch<TaskItem[]>('/api/student/practice/task')
       .then(data => {
-        if (data.ok && data.data?.success) {
+        if (data.ok && data.data) {
           setTasks(
-            (data.data.data as TaskItem[]).map(t => ({
+            data.data.map(t => ({
               ...t,
               config: t.config ?? null,
             })),
           );
         } else {
-          toast.error(data.error || data.data?.error || '加载任务失败');
+          toast.error(data.error || '加载任务失败');
         }
       })
       .catch(() => toast.error('网络错误，请稍后重试'))
@@ -76,25 +79,24 @@ export default function TaskPage() {
   }, []);
 
   const handleSubmit = useCallback(
-    async (submission: unknown, graderId: string) => {
+    async (submission: unknown) => {
       if (!activeTask) return;
       setSubmitting(true);
       try {
-        const res = await apiFetch<{ success: boolean; data: SubmitResult; error?: string }>(
+        const res = await apiFetch<SubmitResult>(
           '/api/student/practice/submit',
           {
             method: 'POST',
             body: {
               taskId: activeTask.id,
               submission,
-              graderId,
             },
           },
         );
-        if (res.ok && res.data?.success) {
-          setResult(res.data.data as SubmitResult);
+        if (res.ok && res.data) {
+          setResult(res.data);
         } else {
-          toast.error(res.error || res.data?.error || '提交失败');
+          toast.error(res.error || '提交失败');
         }
       } catch {
         toast.error('网络错误，请稍后重试');
@@ -169,7 +171,7 @@ export default function TaskPage() {
                 <span className="text-lg font-semibold">{task.title}</span>
                 <DifficultyBadge level={task.difficulty} />
               </div>
-              <p className="text-muted-foreground line-clamp-1 text-sm">
+              <p className="text-muted-foreground line-clamp-1 text-base">
                 {task.instructions}
               </p>
             </div>
@@ -242,7 +244,7 @@ function ResultView({
         </h2>
         <p className="text-muted-foreground mb-4 text-sm">任务：{taskTitle}</p>
         <div className="bg-muted mb-6 rounded-xl py-4">
-          <span className="text-3xl font-bold">{Math.round(result.score * 100)}</span>
+          <span className="text-3xl font-bold">{Math.round(result.score)}</span>
           <span className="text-muted-foreground">分</span>
         </div>
         {result.feedback && (
@@ -283,7 +285,7 @@ function TaskWorkspace({
 }: {
   task: TaskItem;
   submitting: boolean;
-  onSubmit: (submission: unknown, graderId: string) => void;
+  onSubmit: (submission: unknown) => void;
 }) {
   const cfg = task.config;
 
@@ -331,13 +333,6 @@ function TaskWorkspace({
           onSubmit={onSubmit}
         />
       )}
-      {task.taskType === 'image_annotation' && (
-        <ImageAnnotationTask
-          config={cfg}
-          submitting={submitting}
-          onSubmit={onSubmit}
-        />
-      )}
       {task.taskType === 'audio_transcription' && (
         <AudioTranscriptionTask
           config={cfg}
@@ -345,15 +340,65 @@ function TaskWorkspace({
           onSubmit={onSubmit}
         />
       )}
-      {![
-        'excel_delete_rows',
-        'stats_table',
-        'file_classify',
-        'image_clean',
-        'text_sentiment',
-        'image_annotation',
-        'audio_transcription',
-      ].includes(task.taskType) && <GenericTaskPlaceholder title={task.title} />}
+      {/* 标注类与通用题型统一走 ExamTaskInput(与考试端同一实现, 单一事实来源,
+          避免练习页像素坐标组件缺属性支持导致 bbox 题永远扣分的旧 bug)。 */}
+      {GENERIC_TASK_TYPES.includes(task.taskType) && (
+        <GenericTaskWorkspace task={task} submitting={submitting} onSubmit={onSubmit} />
+      )}
+      {!SPECIAL_TASK_TYPES.includes(task.taskType) &&
+        !GENERIC_TASK_TYPES.includes(task.taskType) && <GenericTaskPlaceholder title={task.title} />}
+    </div>
+  );
+}
+
+/** 有专属工作区组件的题型(历史实现, 工作正常, 不动)。 */
+const SPECIAL_TASK_TYPES = [
+  'excel_delete_rows',
+  'stats_table',
+  'file_classify',
+  'image_clean',
+  'text_sentiment',
+  'audio_transcription',
+];
+
+/** 走通用 ExamTaskInput 工作区的题型: 4 种标注 + 3 种新题型。 */
+const GENERIC_TASK_TYPES = [
+  'image_annotation',
+  'bounding_box',
+  'point_annotation',
+  'polyline_annotation',
+  'polygon_annotation',
+  'data_labeling',
+  'dataset_quality',
+  'composite_task',
+];
+
+/** 通用任务工作区: ExamTaskInput 受控输入 + 统一提交按钮。 */
+function GenericTaskWorkspace({
+  task,
+  submitting,
+  onSubmit,
+}: {
+  task: TaskItem;
+  submitting: boolean;
+  onSubmit: (submission: unknown) => void;
+}) {
+  const [value, setValue] = useState<unknown>(null);
+  return (
+    <div className="space-y-4">
+      <ExamTaskInput
+        content={{ taskType: task.taskType, config: task.config ?? {} }}
+        value={value}
+        onChange={setValue}
+        disabled={submitting}
+      />
+      <button
+        onClick={() => onSubmit(value)}
+        disabled={submitting || value === null}
+        className="bg-primary text-primary-foreground hover:bg-primary/90 w-full rounded-xl py-3 text-base font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {submitting ? '提交中...' : '提交答案'}
+      </button>
     </div>
   );
 }
@@ -363,7 +408,7 @@ function TaskWorkspace({
 interface TaskProps {
   config: TaskConfig | null;
   submitting: boolean;
-  onSubmit: (submission: unknown, graderId: string) => void;
+  onSubmit: (submission: unknown) => void;
 }
 
 function ExcelDeleteRowsTask({ config, submitting, onSubmit }: TaskProps) {
@@ -382,10 +427,9 @@ function ExcelDeleteRowsTask({ config, submitting, onSubmit }: TaskProps) {
 
   const handleSubmit = () => {
     // grader expects: retainedRowIndexes = 保留的行（未被删除的）
-    const retainedRowIndexes = dataRows
-      .map((_, idx) => idx)
-      .filter(idx => !selectedIndexes.has(idx));
-    onSubmit({ retainedRowIndexes }, 'excel_delete_rows');
+    const retainedRowIndexes = dataRows.map((_, idx) => idx).filter(idx => !selectedIndexes.has(idx));
+    const retainedRowIds = (config?.rowIds ?? []).filter((_, idx) => !selectedIndexes.has(idx));
+    onSubmit(retainedRowIds.length === dataRows.length - selectedIndexes.size ? { retainedRowIds } : { retainedRowIndexes });
   };
 
   return (
@@ -394,7 +438,7 @@ function ExcelDeleteRowsTask({ config, submitting, onSubmit }: TaskProps) {
         <table className="w-full text-base">
           <thead>
             <tr className="bg-secondary/60 border-b">
-              <th className="px-3 py-2 text-center font-medium" style={{ width: 48 }}>删?</th>
+              <th className="px-3 py-2 text-center font-medium" style={{ width: 48 }}>删除</th>
               {columns.map((col, ci) => (
                 <th key={ci} className="px-3 py-2 text-left font-medium">{col}</th>
               ))}
@@ -461,11 +505,8 @@ function StatsTableFillTask({ config, submitting, onSubmit }: TaskProps) {
   const handleSubmit = () => {
     // grader expects: { cells: { "E2": value, ... } }
     const cells: Record<string, string | number> = {};
-    for (const [k, v] of Object.entries(cellValues)) {
-      const num = parseFloat(v);
-      cells[k] = isNaN(num) ? v : num;
-    }
-    onSubmit({ cells }, 'stats_table');
+    for (const [k, v] of Object.entries(cellValues)) cells[k] = v.trim();
+    onSubmit({ cells });
   };
 
   const hasContent = Object.values(cellValues).some(v => v.trim() !== '');
@@ -527,15 +568,16 @@ function FileClassificationTask({ config, submitting, onSubmit }: TaskProps) {
   const [classifications, setClassifications] = useState<Record<string, string>>({});
   const [draggedFile, setDraggedFile] = useState<string | null>(null);
 
-  const assignFile = (fileName: string, category: string) => {
-    setClassifications(prev => ({ ...prev, [fileName]: category }));
+  const assignFile = (fileId: string, category: string) => {
+    setClassifications(prev => ({ ...prev, [fileId]: category }));
   };
 
   const handleSubmit = () => {
-    onSubmit({ classifications }, 'file_classify');
+    onSubmit({ classifications });
   };
 
-  const unclassifiedFiles = files.filter(f => !classifications[f.name]);
+  const fileId = (file: { id?: string; name: string }) => file.id ?? file.name;
+  const unclassifiedFiles = files.filter(f => !classifications[fileId(f)]);
 
   return (
     <div className="space-y-4">
@@ -547,9 +589,9 @@ function FileClassificationTask({ config, submitting, onSubmit }: TaskProps) {
           )}
           {unclassifiedFiles.map(f => (
             <div
-              key={f.name}
+              key={fileId(f)}
               draggable
-              onDragStart={() => setDraggedFile(f.name)}
+              onDragStart={() => setDraggedFile(fileId(f))}
               onDragEnd={() => setDraggedFile(null)}
               className="bg-card hover:border-primary flex cursor-grab items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors active:cursor-grabbing"
             >
@@ -561,7 +603,7 @@ function FileClassificationTask({ config, submitting, onSubmit }: TaskProps) {
       </div>
       <div className="grid grid-cols-2 gap-3">
         {categories.map(cat => {
-          const items = files.filter(f => classifications[f.name] === cat);
+          const items = files.filter(f => classifications[fileId(f)] === cat);
           return (
             <div
               key={cat}
@@ -576,7 +618,7 @@ function FileClassificationTask({ config, submitting, onSubmit }: TaskProps) {
               <div className="space-y-1">
                 {items.map(f => (
                   <div
-                    key={f.name}
+                    key={fileId(f)}
                     className="bg-card flex items-center justify-between rounded border px-2 py-1 text-sm"
                   >
                     <span>{f.name}</span>
@@ -584,7 +626,7 @@ function FileClassificationTask({ config, submitting, onSubmit }: TaskProps) {
                       onClick={() =>
                         setClassifications(prev => {
                           const next = { ...prev };
-                          delete next[f.name];
+                          delete next[fileId(f)];
                           return next;
                         })
                       }
@@ -625,7 +667,7 @@ function ImageCleaningTask({ config, submitting, onSubmit }: TaskProps) {
   };
 
   const handleSubmit = () => {
-    onSubmit({ decisions }, 'image_clean');
+    onSubmit({ decisions });
   };
 
   const allDecided = images.every(img => decisions[img.id]);
@@ -635,7 +677,6 @@ function ImageCleaningTask({ config, submitting, onSubmit }: TaskProps) {
       <div className="grid gap-3 sm:grid-cols-2">
         {images.map(img => {
           const decision = decisions[img.id];
-          const hasIssues = img.issues && img.issues.length > 0;
           return (
             <div
               key={img.id}
@@ -647,23 +688,14 @@ function ImageCleaningTask({ config, submitting, onSubmit }: TaskProps) {
                     : ''
               }`}
             >
-              <div className="mb-2 flex items-center gap-2">
-                <span className="bg-muted flex h-10 w-10 items-center justify-center rounded-lg text-xl">
-                  {hasIssues ? '⚠' : '🖼'}
-                </span>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">{img.description}</p>
-                  {hasIssues && (
-                    <p className="text-destructive text-xs">
-                      质量问题：{img.issues.join('、')}
-                    </p>
-                  )}
-                </div>
+              <div className="mb-3 overflow-hidden rounded-lg border bg-muted">
+                {img.url ? <img src={img.url} alt={img.description} className="h-36 w-full object-cover" /> : <div className="flex h-36 flex-col items-center justify-center gap-1 text-muted-foreground"><ImageIcon className="w-10 h-10" aria-hidden /><span className="text-sm">图片占位</span></div>}
               </div>
+              <p className="mb-3 text-sm font-medium">{img.description}</p>
               <div className="flex gap-2">
                 <button
                   onClick={() => handleDecide(img.id, 'keep')}
-                  className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
+                  className={`flex min-h-[44px] flex-1 items-center justify-center rounded-lg py-2 text-sm font-medium transition-colors ${
                     decision === 'keep'
                       ? 'bg-success text-success-foreground'
                       : 'bg-secondary hover:bg-secondary/70 text-secondary-foreground'
@@ -673,7 +705,7 @@ function ImageCleaningTask({ config, submitting, onSubmit }: TaskProps) {
                 </button>
                 <button
                   onClick={() => handleDecide(img.id, 'discard')}
-                  className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
+                  className={`flex min-h-[44px] flex-1 items-center justify-center rounded-lg py-2 text-sm font-medium transition-colors ${
                     decision === 'discard'
                       ? 'bg-destructive text-destructive-foreground'
                       : 'bg-secondary hover:bg-secondary/70 text-secondary-foreground'
@@ -708,7 +740,7 @@ function TextSentimentTask({ config, submitting, onSubmit }: TaskProps) {
   };
 
   const handleSubmit = () => {
-    onSubmit({ sentiments }, 'text_sentiment');
+    onSubmit({ sentiments });
   };
 
   const allLabeled = texts.every(t => sentiments[t.id]);
@@ -731,7 +763,7 @@ function TextSentimentTask({ config, submitting, onSubmit }: TaskProps) {
                   <button
                     key={label}
                     onClick={() => handleSelect(t.id, label)}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                    className={`flex min-h-[44px] items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                       selected
                         ? labelColors[label] ?? 'bg-primary text-primary-foreground'
                         : 'bg-secondary hover:bg-secondary/70 text-secondary-foreground'
@@ -755,157 +787,6 @@ function TextSentimentTask({ config, submitting, onSubmit }: TaskProps) {
   );
 }
 
-// ─── 6. 图片标注任务 ──────────────────────────────────────────
-
-interface DrawBox {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  label: string;
-}
-
-function ImageAnnotationTask({ config, submitting, onSubmit }: TaskProps) {
-  const imageUrl = config?.imageUrl ?? '';
-  const targetLabels = config?.targetLabels ?? ['目标'];
-  const [boxes, setBoxes] = useState<DrawBox[]>([]);
-  const [drawing, setDrawing] = useState(false);
-  const [startPt, setStartPt] = useState<{ x: number; y: number } | null>(null);
-  const [currentLabel, setCurrentLabel] = useState(targetLabels[0]);
-  const canvasRef = useRef<HTMLDivElement | null>(null);
-
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    setDrawing(true);
-    setStartPt({ x, y });
-  };
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!drawing || !startPt) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-    const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-    const lastBox = boxes[boxes.length - 1];
-    if (lastBox && drawing) {
-      const newBoxes = [...boxes];
-      newBoxes[newBoxes.length - 1] = {
-        ...lastBox,
-        width: Math.abs(x - startPt.x),
-        height: Math.abs(y - startPt.y),
-        x: Math.min(x, startPt.x),
-        y: Math.min(y, startPt.y),
-      };
-      setBoxes(newBoxes);
-    }
-  };
-
-  const handleMouseUp = () => {
-    setDrawing(false);
-    setStartPt(null);
-    const lastBox = boxes[boxes.length - 1];
-    if (lastBox && (lastBox.width < 5 || lastBox.height < 5)) {
-      setBoxes(boxes.slice(0, -1));
-    }
-  };
-
-  const startDrawing = () => {
-    setBoxes([...boxes, { x: 0, y: 0, width: 0, height: 0, label: currentLabel }]);
-  };
-
-  const removeBox = (idx: number) => {
-    setBoxes(boxes.filter((_, i) => i !== idx));
-  };
-
-  const handleSubmit = () => {
-    onSubmit({ boxes }, 'image_annotation');
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        <span className="text-muted-foreground self-center text-sm">选择标签：</span>
-        {targetLabels.map(label => (
-          <button
-            key={label}
-            onClick={() => setCurrentLabel(label)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-              currentLabel === label
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-secondary text-secondary-foreground hover:bg-secondary/70'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <div
-        className="relative w-full cursor-crosshair overflow-hidden rounded-xl border bg-muted"
-        style={{ minHeight: 300 }}
-        onMouseDown={(e) => { startDrawing(); handleMouseDown(e); }}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-      >
-        {imageUrl && (
-          <img
-            src={imageUrl}
-            alt="标注图片"
-            className="pointer-events-none max-h-[400px] w-full object-contain"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-          />
-        )}
-        {!imageUrl && (
-          <div className="flex min-h-[300px] items-center justify-center text-muted-foreground">
-            <div className="text-center">
-              <p className="mb-2 text-4xl">🖼</p>
-              <p className="text-sm">图片区域 - 在此处拖拽绘制标注框</p>
-            </div>
-          </div>
-        )}
-        {boxes.filter(b => b.width > 0 && b.height > 0).map((box, idx) => (
-          <div
-            key={idx}
-            className="absolute border-2 border-primary bg-primary/15"
-            style={{
-              left: box.x,
-              top: box.y,
-              width: box.width,
-              height: box.height,
-            }}
-          >
-            <span className="bg-primary text-primary-foreground absolute -top-6 left-0 whitespace-nowrap rounded px-1 text-xs">
-              {box.label}
-            </span>
-          </div>
-        ))}
-      </div>
-      {boxes.filter(b => b.width > 5).length > 0 && (
-        <div>
-          <p className="mb-2 text-sm font-medium">已标注 {boxes.filter(b => b.width > 5).length} 个框</p>
-          <div className="flex flex-wrap gap-2">
-            {boxes.filter(b => b.width > 5).map((box, idx) => (
-              <button
-                key={idx}
-                onClick={() => removeBox(boxes.indexOf(box))}
-                className="bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg px-3 py-1 text-xs transition-colors"
-              >
-                {box.label} ×
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      <SubmitButton
-        submitting={submitting}
-        disabled={boxes.filter(b => b.width > 5).length === 0}
-        onClick={handleSubmit}
-        label="提交评分"
-      />
-    </div>
-  );
-}
 
 // ─── 7. 音频转写任务 ──────────────────────────────────────────
 
@@ -914,7 +795,7 @@ function AudioTranscriptionTask({ config, submitting, onSubmit }: TaskProps) {
   const [transcript, setTranscript] = useState('');
 
   const handleSubmit = () => {
-    onSubmit({ transcript }, 'audio_transcription');
+    onSubmit({ transcript });
   };
 
   return (
@@ -927,8 +808,8 @@ function AudioTranscriptionTask({ config, submitting, onSubmit }: TaskProps) {
           </audio>
         ) : (
           <div className="flex items-center justify-center py-8">
-            <div className="text-center">
-              <p className="mb-2 text-4xl">🎵</p>
+            <div className="flex flex-col items-center gap-1 text-center">
+              <Music className="w-10 h-10 text-muted-foreground" aria-hidden />
               <p className="text-muted-foreground text-sm">音频区域 - 请听音频并转写</p>
             </div>
           </div>

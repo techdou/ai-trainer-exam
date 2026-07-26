@@ -17,7 +17,7 @@ interface HomeData {
   displayName: string;
   onboardingCompleted: boolean;
   practiceStats: { totalAttempts: number; correctRate: number | null };
-  upcomingExam: { id: string; title: string; examOpenAt: string; status: string } | null;
+  upcomingExam: { id: string; title: string; examStartAt: string; status: string } | null;
   lockedPractice: boolean;
 }
 
@@ -65,7 +65,7 @@ export default function StudentHomePage() {
       {/* 新手引导卡片 */}
       {!data?.onboardingCompleted && (
         <button
-          onClick={() => router.push('/student/onboarding')}
+          onClick={() => router.push('/student/help')}
           className="w-full mb-6 rounded-2xl border-2 border-accent bg-accent/30 p-6 text-left focus:outline-none focus:ring-4 focus:ring-ring"
         >
           <div className="flex items-center gap-3 mb-2">
@@ -87,7 +87,7 @@ export default function StudentHomePage() {
           icon={MousePointerClick}
           title="电脑基础入门"
           desc="鼠标、键盘、文件、表格的基本操作"
-          onClick={() => router.push('/student/onboarding')}
+          onClick={() => router.push('/student/help')}
         />
         <EntryCard
           icon={BookOpen}

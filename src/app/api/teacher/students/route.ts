@@ -1,55 +1,18 @@
 import { NextRequest } from 'next/server';
 import { requireRole } from '@/server/auth';
 import { dbQuery } from '@/server/db';
-import { ok, fail } from '@/lib/api';
-
-export async function GET(request: NextRequest) {
-  try {
-    const user = await requireRole(request, ['teacher', 'super_admin']);
-
-    // 教师通过 organization_id 关联学员
-    // 获取该组织下所有学员
-    const students = await dbQuery<{
-      id: string; display_name: string; email: string; created_at: string;
-    }>(
-      `SELECT p.id, p.display_name, p.email, p.created_at
-       FROM profiles p
-       JOIN user_roles ur ON ur.user_id = p.id AND ur.role = 'student'
-       WHERE ur.organization_id = $1
-       ORDER BY p.display_name`,
-      user.organizationId ?? '00000000-0000-0000-0000-000000000001'
-    );
-
-    // 批量获取学员练习统计
-    const studentIds = students.map(s => s.id);
-    let stats: Array<{ user_id: string; total: string; passed_count: string }> = [];
-    if (studentIds.length > 0) {
-      stats = await dbQuery<{ user_id: string; total: string; passed_count: string }>(
-        `SELECT user_id, COUNT(*)::text as total, COUNT(*) FILTER (WHERE passed)::text as passed_count
-         FROM practice_attempts
-         WHERE user_id = ANY($1::text[])
-         GROUP BY user_id`,
-        studentIds
-      );
-    }
-
-    const statsMap = new Map(stats.map(s => [s.user_id, s]));
-
-    const items = students.map(s => {
-      const st = statsMap.get(s.id);
-      return {
-        id: s.id,
-        displayName: s.display_name || s.email,
-        email: s.email,
-        createdAt: s.created_at,
-        totalAttempts: st ? parseInt(st.total, 10) : 0,
-        passedAttempts: st ? parseInt(st.passed_count, 10) : 0,
-      };
-    });
-
-    return ok({ items, total: items.length });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : '未知错误';
-    return fail(500, msg);
-  }
+import { ok, catchError } from '@/lib/api';
+export async function GET(request:NextRequest){
+ try{
+  const user=await requireRole(request,['teacher','school_admin','super_admin']); const args:unknown[]=[]; let scope='TRUE';
+  if(user.roles.includes('teacher')){args.push(user.id);scope=`EXISTS(SELECT 1 FROM teacher_cohort_grants g WHERE g.cohort_id=e.cohort_id AND g.teacher_id=$${args.length})`;}
+  else if(!user.roles.includes('super_admin')){args.push(user.organizationId);scope=`c.organization_id=$${args.length}`;}
+  const students=await dbQuery<{id:string;display_name:string;email:string;created_at:string;total_attempts:string;passed_attempts:string}>(
+   `SELECT p.id,p.display_name,p.email,p.created_at,count(pa.id)::text total_attempts,
+     count(pa.id) FILTER(WHERE pa.passed)::text passed_attempts
+     FROM profiles p JOIN enrollments e ON e.user_id=p.id AND e.status='active' JOIN cohorts c ON c.id=e.cohort_id
+     LEFT JOIN practice_attempts pa ON pa.user_id=p.id WHERE ${scope}
+     GROUP BY p.id ORDER BY p.display_name`,...args);
+  return ok({items:students.map(s=>({id:s.id,display_name:s.display_name,displayName:s.display_name,email:s.email,createdAt:s.created_at,totalAttempts:Number(s.total_attempts),passedAttempts:Number(s.passed_attempts),correctRate:Number(s.total_attempts)?Math.round(Number(s.passed_attempts)/Number(s.total_attempts)*100):null})),total:students.length});
+ }catch(error){return catchError(error)}
 }

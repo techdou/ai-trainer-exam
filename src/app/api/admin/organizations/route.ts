@@ -1,86 +1,20 @@
 import { NextRequest } from 'next/server';
+import { z } from 'zod';
 import { requireRole } from '@/server/auth';
 import { dbQuery } from '@/server/db';
-import { ok, fail } from '@/lib/api';
+import { catchError, ok, parseBody } from '@/lib/api';
+import { insertAudit } from '@/server/audit';
 
-/** GET /api/admin/organizations - 列出组织（学校） */
-export async function GET(req: NextRequest) {
-  try {
-    const user = await requireRole(req, ['super_admin', 'school_admin']);
-
-    let orgId: string | null = null;
-    if (user.roles.includes('school_admin') && !user.roles.includes('super_admin')) {
-      orgId = user.organizationId;
-    }
-
-    type OrgRow = {
-      id: string;
-      name: string;
-      code: string;
-      contact: string | null;
-      status: string;
-      created_at: string;
-      cohort_count: string;
-      student_count: string;
-    };
-
-    let orgs: OrgRow[];
-
-    if (orgId) {
-      orgs = await dbQuery<OrgRow>(
-        `SELECT o.id, o.name, o.code, o.contact, o.status, o.created_at,
-                (SELECT COUNT(*)::text FROM cohorts c WHERE c.organization_id = o.id AND c.deleted_at IS NULL) as cohort_count,
-                (SELECT COUNT(*)::text FROM enrollments e
-                 INNER JOIN cohorts c ON c.id = e.cohort_id AND c.organization_id = o.id) as student_count
-         FROM organizations o WHERE o.id = $1`,
-        orgId,
-      );
-    } else {
-      orgs = await dbQuery<OrgRow>(
-        `SELECT o.id, o.name, o.code, o.contact, o.status, o.created_at,
-                (SELECT COUNT(*)::text FROM cohorts c WHERE c.organization_id = o.id AND c.deleted_at IS NULL) as cohort_count,
-                (SELECT COUNT(*)::text FROM enrollments e
-                 INNER JOIN cohorts c ON c.id = e.cohort_id AND c.organization_id = o.id) as student_count
-         FROM organizations o
-         ORDER BY o.created_at DESC`,
-      );
-    }
-
-    return ok(orgs.map(o => ({
-      id: o.id,
-      name: o.name,
-      code: o.code,
-      contact: o.contact,
-      status: o.status,
-      createdAt: o.created_at,
-      cohortCount: parseInt(o.cohort_count, 10),
-      studentCount: parseInt(o.student_count, 10),
-    })));
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : '未知错误';
-    console.error('[admin/organizations] GET error:', msg);
-    return fail(500, '服务器开小差了，请稍后再试');
-  }
+const createSchema = z.object({name:z.string().trim().min(2).max(200),code:z.string().trim().min(2).max(64).regex(/^[A-Za-z0-9_-]+$/,'只能包含字母、数字、下划线和短横线'),contact:z.string().trim().max(200).optional()});
+export async function GET(request:NextRequest){
+ try{const user=await requireRole(request,['super_admin','school_admin']);const rows=await dbQuery<{id:string;name:string;code:string;contact:string|null;status:string;created_at:string;cohort_count:string;student_count:string}>(
+ `SELECT o.id,o.name,o.code,o.contact,o.status,o.created_at,
+ (SELECT COUNT(*)::text FROM cohorts c WHERE c.organization_id=o.id AND c.deleted_at IS NULL) cohort_count,
+ (SELECT COUNT(DISTINCT e.user_id)::text FROM enrollments e JOIN cohorts c ON c.id=e.cohort_id WHERE c.organization_id=o.id AND e.status='active') student_count
+ FROM organizations o WHERE o.deleted_at IS NULL AND ($1::text IS NULL OR o.id=$1) ORDER BY o.created_at DESC`,user.roles.includes('super_admin')?null:user.organizationId);
+ return ok(rows.map(row=>({id:row.id,name:row.name,code:row.code,contact:row.contact,status:row.status,createdAt:row.created_at,cohortCount:Number(row.cohort_count),studentCount:Number(row.student_count)})));
+ }catch(error){return catchError(error)}
 }
-
-/** POST /api/admin/organizations - 创建组织 */
-export async function POST(req: NextRequest) {
-  try {
-    await requireRole(req, ['super_admin']);
-    const body = await req.json() as { name?: string; code?: string; contact?: string };
-    const { name, code, contact } = body;
-    if (!name) return fail(400, '组织名称不能为空');
-    if (!code) return fail(400, '组织编码不能为空');
-
-    const rows = await dbQuery<{ id: string }>(
-      `INSERT INTO organizations (name, code, contact, status) VALUES ($1, $2, $3, 'active') RETURNING id`,
-      name, code, contact || null,
-    );
-
-    return ok({ id: rows[0]?.id });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : '未知错误';
-    console.error('[admin/organizations] POST error:', msg);
-    return fail(500, '创建失败');
-  }
+export async function POST(request:NextRequest){
+ try{const user=await requireRole(request,['super_admin']);const body=await parseBody(request,createSchema);const rows=await dbQuery<{id:string}>(`INSERT INTO organizations(name,code,contact,status) VALUES($1,$2,$3,'active') RETURNING id`,body.name,body.code,body.contact??null);await insertAudit({actorId:user.id,actorRole:user.roles[0],action:'organization.create',entityType:'organization',entityId:rows[0]?.id??null,organizationId:rows[0]?.id??null,details:body.name});return ok({id:rows[0]?.id},{status:201})}catch(error){return catchError(error)}
 }

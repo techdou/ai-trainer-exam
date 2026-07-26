@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { apiFetch } from '@/lib/session-client';
+import { toast } from 'sonner';
 
 interface WrongItem {
   id: string;
@@ -14,7 +15,6 @@ interface WrongItem {
   question_type: string;
   stem: string;
   options: Record<string, string> | null;
-  answer_key: unknown;
   explanation: string | null;
   knowledge_point: string | null;
 }
@@ -26,45 +26,45 @@ interface WrongListData {
   pageSize: number;
 }
 
+interface CheckResult {
+  correct: boolean;
+  correctAnswer: string;
+  explanation: string | null;
+}
+
 export default function WrongItemsPage() {
-  const router = useRouter();
   const [data, setData] = useState<WrongListData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [showResolved, setShowResolved] = useState(false);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [selectedAnswer, setSelectedAnswer] = useState<string>('');
-  const [result, setResult] = useState<{ correct: boolean; correctAnswer: string; explanation: string | null } | null>(null);
+  const [result, setResult] = useState<CheckResult | null>(null);
   const [checking, setChecking] = useState(false);
 
   const loadWrongItems = useCallback(async () => {
     setLoading(true);
-    try {
-      const res = await fetch(`/api/student/practice/wrong?resolved=${showResolved}&limit=20`);
-      if (res.status === 401) { router.push('/login'); return; }
-      const json = await res.json();
-      if (json.success) setData(json.data);
-    } finally {
-      setLoading(false);
-    }
-  }, [router, showResolved]);
+    setError('');
+    const res = await apiFetch<WrongListData>(`/api/student/practice/wrong?resolved=${showResolved}&limit=20`);
+    if (res.ok && res.data) setData(res.data);
+    else setError(res.error ?? '加载失败，请稍后重试');
+    setLoading(false);
+  }, [showResolved]);
 
   useEffect(() => { loadWrongItems(); }, [loadWrongItems]);
 
   const handleCheck = async (questionId: string) => {
     if (!selectedAnswer) return;
     setChecking(true);
-    try {
-      const res = await fetch('/api/student/practice/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questionId, userAnswer: selectedAnswer }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        setResult(json.data);
-      }
-    } finally {
-      setChecking(false);
+    const res = await apiFetch<CheckResult>('/api/student/practice/check', {
+      method: 'POST',
+      body: { questionId, userAnswer: selectedAnswer },
+    });
+    setChecking(false);
+    if (res.ok && res.data) {
+      setResult(res.data);
+    } else {
+      toast.error('提交失败', { description: res.error ?? '请稍后重试' });
     }
   };
 
@@ -72,6 +72,15 @@ export default function WrongItemsPage() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-lg text-muted-foreground">正在加载错题本...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <div className="text-lg text-muted-foreground">{error}</div>
+        <Button onClick={() => loadWrongItems()}>重新加载</Button>
       </div>
     );
   }
@@ -140,9 +149,9 @@ export default function WrongItemsPage() {
                     className={[
                       'flex w-full items-start gap-3 rounded-lg border-2 p-4 text-left transition-colors',
                       result && isCorrectAnswer
-                        ? 'border-green-500 bg-green-50'
+                        ? 'border-success bg-success/10'
                         : isWrongSelection
-                          ? 'border-red-500 bg-red-50'
+                          ? 'border-destructive bg-destructive/10'
                           : isSelected
                             ? 'border-primary bg-primary/5'
                             : 'border-border hover:border-primary/50',
@@ -154,10 +163,10 @@ export default function WrongItemsPage() {
                     </span>
                     <span className="pt-1 text-base">{optionText}</span>
                     {result && isCorrectAnswer && (
-                      <span className="ml-auto pt-1 text-green-600 font-medium text-sm">✓ 正确答案</span>
+                      <span className="ml-auto pt-1 text-success font-medium text-sm">✓ 正确答案</span>
                     )}
                     {isWrongSelection && (
-                      <span className="ml-auto pt-1 text-red-600 font-medium text-sm">✗ 你的选择</span>
+                      <span className="ml-auto pt-1 text-destructive font-medium text-sm">✗ 你的选择</span>
                     )}
                   </button>
                 );
@@ -166,11 +175,11 @@ export default function WrongItemsPage() {
           </Card>
 
           {result && (
-            <Card className={`p-4 mb-4 ${result.correct ? 'border-green-500/50' : 'border-red-500/50'}`}>
+            <Card className={`p-4 mb-4 ${result.correct ? 'border-success/50' : 'border-destructive/50'}`}>
               {result.correct ? (
-                <span className="text-lg font-medium text-green-600">✓ 做对了！这道题你已经掌握了</span>
+                <span className="text-lg font-medium text-success">✓ 做对了！这道题你已经掌握了</span>
               ) : (
-                <span className="text-lg font-medium text-red-600">✗ 还是做错了，没关系，继续加油</span>
+                <span className="text-lg font-medium text-destructive">✗ 还是做错了，没关系，继续加油</span>
               )}
               {result.explanation && (
                 <div className="mt-2 text-sm text-muted-foreground leading-relaxed">

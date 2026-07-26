@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/session-client';
 import { Card, CardContent } from '@/components/ui/card';
 import { MonitorCheck, Users, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
+import { EXAM_STATUS_LABELS, type ExamStatus } from '@/lib/constants';
 
 interface Schedule {
   id: string;
@@ -15,22 +16,17 @@ interface Schedule {
   lateEntryMinutes: number;
   status: string;
   attemptCount: number;
+  submittedCount?: number;
   resultsReleased: boolean;
-}
-
-interface HeartbeatInfo {
-  scheduleId: string;
-  onlineCount: number;
-  submittedCount: number;
 }
 
 export default function ExamMonitorPage() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [loading, setLoading] = useState(true);
-  const [now, setNow] = useState(0);
+  // 初始值直接取当前时间(纯客户端组件), 避免首帧全部显示"加载中"。
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(timer);
   }, []);
@@ -38,9 +34,10 @@ export default function ExamMonitorPage() {
   useEffect(() => {
     apiFetch<Schedule[]>('/api/admin/exam-schedules').then(r => {
       if (r.ok && r.data) {
-        // 只显示正在进行或即将开始的考试
+        // 只显示即将开始或进行中的考试。历史上过滤条件用了状态机里不存在的
+        // in_progress, 真正的进行中状态 exam_open 反被滤掉, 监控页永远空白。
         setSchedules(r.data.filter(s =>
-          s.status === 'published' || s.status === 'in_progress' || s.status === 'draft'
+          ['published', 'waiting', 'practice_locked', 'exam_open'].includes(s.status)
         ));
       }
       setLoading(false);
@@ -48,12 +45,12 @@ export default function ExamMonitorPage() {
   }, []);
 
   const getTimeStatus = (s: Schedule) => {
-    if (!now) return { label: '加载中', color: 'text-gray-400', icon: Clock };
+    if (!now) return { label: '加载中', color: 'text-muted-foreground', icon: Clock };
     const start = new Date(s.examStartAt).getTime();
     const end = new Date(s.examEndAt).getTime();
-    if (now < start) return { label: '未开始', color: 'text-yellow-600', icon: Clock };
-    if (now >= start && now <= end) return { label: '进行中', color: 'text-green-600', icon: MonitorCheck };
-    return { label: '已结束', color: 'text-gray-400', icon: CheckCircle2 };
+    if (now < start) return { label: '未开始', color: 'text-warning', icon: Clock };
+    if (now >= start && now <= end) return { label: '进行中', color: 'text-success', icon: MonitorCheck };
+    return { label: '已结束', color: 'text-muted-foreground', icon: CheckCircle2 };
   };
 
   if (loading) return <div className="text-center py-12 text-lg text-gray-500">加载中...</div>;
@@ -100,7 +97,7 @@ export default function ExamMonitorPage() {
                       <div className="flex items-center justify-center gap-2 text-gray-500">
                         <Users className="w-4 h-4" /> 已交卷
                       </div>
-                      <div className="text-2xl font-bold mt-1">{s.attemptCount}</div>
+                      <div className="text-2xl font-bold mt-1">{s.submittedCount ?? 0}<span className="text-base font-normal text-gray-400">/{s.attemptCount}</span></div>
                     </div>
                     <div className="text-center">
                       <div className="flex items-center justify-center gap-2 text-gray-500">
@@ -112,7 +109,7 @@ export default function ExamMonitorPage() {
                       <div className="flex items-center justify-center gap-2 text-gray-500">
                         <Clock className="w-4 h-4" /> 状态
                       </div>
-                      <div className="text-lg font-medium mt-1">{s.status}</div>
+                      <div className="text-lg font-medium mt-1">{EXAM_STATUS_LABELS[s.status as ExamStatus] ?? s.status}</div>
                     </div>
                   </div>
                 </CardContent>

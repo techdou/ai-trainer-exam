@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { getReportBuffer, createWrappedFetch } from 'coze-coding-dev-sdk';
 
 let envLoaded = false;
@@ -16,6 +16,8 @@ function loadEnv(): void {
 
   try {
     try {
+      // dotenv 是可选依赖,运行时动态加载;缺失时落入下方的 workload identity 分支。
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       require('dotenv').config();
       if (process.env.COZE_SUPABASE_URL && process.env.COZE_SUPABASE_ANON_KEY) {
         envLoaded = true;
@@ -39,11 +41,27 @@ except Exception as e:
     print(f"# Error: {e}", file=sys.stderr)
 `;
 
-    const output = execSync(`python3 -c '${pythonCode.replace(/'/g, "'\"'\"'")}'`, {
-      encoding: 'utf-8',
-      timeout: 10000,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    // 用 execFileSync 直接传参,不走 shell;execSync 的单引号包裹在 Windows cmd 下会导致
+    // "unterminated string literal",使 workload identity 在 Windows 开发机上永远加载失败。
+    let output: string;
+    try {
+      output = execFileSync('python3', ['-c', pythonCode], {
+        encoding: 'utf-8',
+        timeout: 10000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        // Windows 上 Python 可能只有 python 命令
+        output = execFileSync('python', ['-c', pythonCode], {
+          encoding: 'utf-8',
+          timeout: 10000,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+      } else {
+        throw err;
+      }
+    }
 
     const lines = output.trim().split('\n');
     for (const line of lines) {
@@ -63,8 +81,9 @@ except Exception as e:
     }
 
     envLoaded = true;
-  } catch {
-    // Silently fail
+  } catch (err) {
+    // workload identity 加载失败时保留诊断信息,否则凭据缺失的根因无法排查。
+    console.warn('[supabase-client] loadEnv failed:', (err as Error).message);
   }
 }
 
@@ -100,7 +119,7 @@ function getSupabaseClient(token?: string): SupabaseClient {
     key = serviceRoleKey ?? anonKey;
   }
 
-  const globalOptions: Record<string, any> = {};
+  const globalOptions: { headers?: Record<string, string>; fetch?: typeof fetch } = {};
   if (token) {
     globalOptions.headers = { Authorization: `Bearer ${token}` };
   }

@@ -63,9 +63,9 @@ export function parsePlainText(text: string): ParseResult {
   // 将所有文本按题目边界切分
   // 题目起始标志：行首数字 + 点号/顿号/空格 + 题干内容
   // 注意：文档有"一、单选题" "二、判断题" 这样的章节标题
-  let currentSection: 'single_choice' | 'true_false' | null = null;
-  let buffer: string[] = [];
-  let currentNumber: string | null = null;
+  const currentSection: 'single_choice' | 'true_false' | null = null;
+  const buffer: string[] = [];
+  const currentNumber: string | null = null;
   let lineIdx = 0;
 
   // 先合并连续行（同一题目的选项可能跨行）
@@ -78,7 +78,6 @@ export function parsePlainText(text: string): ParseResult {
       questions.push(q);
       if (q.sourceNumber) {
         const count = numbersSeen.get(q.sourceNumber) ?? 0;
-        numbersSeen.get(q.sourceNumber);
         numbersSeen.set(q.sourceNumber, count + 1);
       }
     } else {
@@ -142,18 +141,21 @@ function splitIntoQuestionBlocks(lines: string[]): Block[] {
   const questionStart = /^(\d{1,4})[.、\s]+/;
 
   for (const line of lines) {
-    // 检测章节标题
+    // 检测章节标题(切换前必须先冲刷未闭合的题目块,否则块会被静默丢弃)
     if (sectionChoice.test(line) && line.length < 20) {
+      if (currentBlock) { blocks.push({ text: currentBlock, sectionType: currentSection }); currentBlock = null; }
       currentSection = 'single_choice';
       continue;
     }
     if (sectionJudge.test(line) && line.length < 20) {
+      if (currentBlock) { blocks.push({ text: currentBlock, sectionType: currentSection }); currentBlock = null; }
       currentSection = 'true_false';
       continue;
     }
 
     const m = line.match(questionStart);
-    if (m && line.length > 10) {
+    // 题号后必须有实际内容即视为新题;不再用固定长度门槛,避免短题干被整题丢弃。
+    if (m && line.length > m[0].length) {
       // 新题开始
       if (currentBlock) {
         blocks.push({ text: currentBlock, sectionType: currentSection });
@@ -184,8 +186,9 @@ function parseSingleBlock(
   const sourceIdx = 0; // 由调用方设置
 
   // 判断题型：如果块中有 (A)正确 (B)错误 或 √/× → true_false
-  // 如果块中有 (A)...(B)...(C)...(D)... → single_choice
-  const hasFourOptions = /\(?[Aa]\)[\s\S]+\(?[Bb]\)[\s\S]+\(?[Cc]\)[\s\S]+\(?[Dd]\)/.test(fullText);
+  // 如果块中有 A/B/C/D 四个选项标记(括号或点号形式均可) → single_choice
+  const opt = (ch: string): string => `[（(]?[${ch}${ch.toLowerCase()}][）).、]`;
+  const hasFourOptions = new RegExp(`${opt('A')}[\\s\\S]+${opt('B')}[\\s\\S]+${opt('C')}[\\s\\S]+${opt('D')}`).test(fullText);
   const hasTrueFalse = /\(?[Aa]\)\s*正确|√|×|对\b|错\b/.test(fullText);
 
   let questionType: 'single_choice' | 'true_false';
@@ -240,23 +243,35 @@ function parseSingleChoice(
     if (answerLabel) answerKey = answerLabel[1].toUpperCase();
   }
 
+  // Fallback: 复用 extractAnswerKey 的引号字母模式(覆盖 行尾"C 无 tab 的情况)
+  if (!answerKey) {
+    answerKey = extractAnswerKey(allText, 'single_choice');
+  }
+  // Fallback: 答案独立成行且只有一个字母(如块末单独一行的 C)
+  if (!answerKey) {
+    const trailingLetter = allText.match(/(?:^|\s)([A-Da-d])\s*$/);
+    if (trailingLetter) answerKey = trailingLetter[1].toUpperCase();
+  }
+
   // ---- NEXT: Extract options ----
-  // 查找选项模式 (A) 或 （A） 或 A. 或 A、或 A）
-  const optionPattern = /[（(]([A-Da-d])[）)、.，,\s]+/g;
-  const optionMatches: { letter: string; startPos: number; endPos: number }[] = [];
+  // 选项标记支持 (A) （A） A. A、 等形式;记录 markerStart 以精确切分选项文本。
+  const optionPattern = /[（(]([A-Da-d])[）)、.，,\s]+|(?:^|\s)([A-Da-d])[.、]\s+/g;
+  const optionMatches: { letter: string; markerStart: number; startPos: number; endPos: number }[] = [];
   let m: RegExpExecArray | null;
   while ((m = optionPattern.exec(allText)) !== null) {
+    const letter = (m[1] ?? m[2] ?? '').toUpperCase();
     optionMatches.push({
-      letter: m[1].toUpperCase(),
+      letter,
+      markerStart: m.index,
       startPos: m.index + m[0].length,
       endPos: 0,
     });
   }
 
-  // 设定每个选项文本的结束位置为下一选项的开始
+  // 每个选项文本结束于下一选项标记的开始
   for (let i = 0; i < optionMatches.length; i++) {
     optionMatches[i].endPos =
-      i + 1 < optionMatches.length ? optionMatches[i + 1].startPos - optionMatches[i + 1].letter.length - 1 : allText.length;
+      i + 1 < optionMatches.length ? optionMatches[i + 1].markerStart : allText.length;
   }
 
   // 过滤出 A/B/C/D 四个选项
@@ -282,7 +297,7 @@ function parseSingleChoice(
   const firstLine = lines[0] ?? '';
   const numMatch = firstLine.match(/^\d{1,4}[.、\s]+/);
   const afterNumber = numMatch ? firstLine.slice(numMatch[0].length) : firstLine;
-  const firstOptionPos = validOptions.length > 0 ? allText.indexOf(allText.match(/[（(][Aa][）)、.,\s]/)?.[0] ?? '') : -1;
+  const firstOptionPos = validOptions.length > 0 ? validOptions[0].markerStart : -1;
   let stem: string;
   if (firstOptionPos > 0) {
     stem = allText.slice(0, firstOptionPos).trim();
