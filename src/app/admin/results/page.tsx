@@ -4,8 +4,11 @@ import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '@/lib/session-client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Award, CheckCircle2, XCircle, Eye, ChevronLeft, RotateCcw } from 'lucide-react';
+import { Award, CheckCircle2, XCircle, Eye, ChevronLeft, RotateCcw, Pencil, Save, X, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { getStoredUser } from '@/lib/session-client';
 
 interface ExamResult {
   id: string;
@@ -45,6 +48,7 @@ interface ScoreDetail {
     };
     passed: boolean;
     status: string;
+    passScore?: number;
     autoScoreDetail: Record<string, unknown> | null;
   };
   responses: Array<{
@@ -72,6 +76,87 @@ export default function ResultsPage() {
   const [selectedScore, setSelectedScore] = useState<ScoreDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [adjusting, setAdjusting] = useState(false);
+  const [adjustMode, setAdjustMode] = useState(false);
+  const [adjustValues, setAdjustValues] = useState<Record<string, number>>({});
+  const [adjustReason, setAdjustReason] = useState('');
+  const [currentUser, setCurrentUser] = useState<{ roles: string[] } | null>(null);
+
+  useEffect(() => {
+    setCurrentUser(getStoredUser());
+  }, []);
+
+  const canAdjust = currentUser?.roles.some(r => r === 'super_admin' || r === 'school_admin') ?? false;
+
+  /** 进入调整模式，填充当前分数到编辑框 */
+  const enterAdjustMode = () => {
+    if (!selectedScore) return;
+    const s = selectedScore.score.scores;
+    setAdjustValues({
+      theory: s.theory, cleaning: s.cleaning, imageAnnotation: s.imageAnnotation,
+      textAnnotation: s.textAnnotation, audio: s.audio, statistics: s.statistics,
+    });
+    setAdjustReason('');
+    setAdjustMode(true);
+  };
+
+  /** 计算调整后的总分 */
+  const previewTotal = adjustMode
+    ? Object.values(adjustValues).reduce((sum, v) => sum + (Number.isFinite(v) ? v : 0), 0)
+    : 0;
+
+  /** 调整后是否通过 */
+  const previewPassed = selectedScore
+    ? previewTotal >= (selectedScore.score.passScore ?? 0)
+    : false;
+
+  /** 检测哪些项发生了变化 */
+  const changedKeys = adjustMode && selectedScore
+    ? Object.entries(adjustValues)
+        .filter(([key, val]) => {
+          const orig = selectedScore.score.scores[key as keyof typeof selectedScore.score.scores];
+          return Number.isFinite(val) && Math.abs((val ?? 0) - orig) > 0.001;
+        })
+        .map(([key]) => key)
+    : [];
+
+  /** 提交分数调整 */
+  const adjustScore = async () => {
+    if (!selectedScore) return;
+    if (changedKeys.length === 0) {
+      toast.error('没有发生变化的分数项');
+      return;
+    }
+    if (adjustReason.trim().length < 5) {
+      toast.error('调整原因至少 5 个字');
+      return;
+    }
+    if (previewTotal > selectedScore.score.scores.max) {
+      toast.error('调整后的总分不能超过满分');
+      return;
+    }
+    const adjustments: Record<string, number> = {};
+    for (const key of changedKeys) {
+      const fieldMap: Record<string, string> = {
+        theory: 'theoryScore', cleaning: 'cleaningScore', imageAnnotation: 'imageAnnotationScore',
+        textAnnotation: 'textAnnotationScore', audio: 'audioScore', statistics: 'statisticsScore',
+      };
+      adjustments[fieldMap[key]] = adjustValues[key];
+    }
+    setAdjusting(true);
+    apiFetch(`/api/admin/scores/review`, {
+      method: 'PATCH',
+      body: { scoreId: selectedScore.score.id, action: 'adjust', adjustments, note: adjustReason.trim() },
+    }).then(r => {
+      if (r.ok) {
+        toast.success('分数调整成功');
+        loadResults();
+        setSelectedScore(null);
+        setAdjustMode(false);
+      } else {
+        toast.error(r.error || '操作失败');
+      }
+    }).finally(() => setAdjusting(false));
+  };
 
   const loadResults = useCallback(() => {
     setLoading(true);
@@ -127,7 +212,7 @@ export default function ResultsPage() {
     return (
       <div className="space-y-4">
         <button
-          onClick={() => setSelectedScore(null)}
+          onClick={() => { setSelectedScore(null); setAdjustMode(false); setAdjustReason(''); }}
           className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
         >
           <ChevronLeft className="w-4 h-4" />
@@ -154,14 +239,85 @@ export default function ResultsPage() {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle className="text-base">各项分数</CardTitle></CardHeader>
-            <CardContent className="space-y-1 text-sm">
-              <div className="flex justify-between"><span>理论</span><span>{selectedScore.score.scores.theory}</span></div>
-              <div className="flex justify-between"><span>数据清洗</span><span>{selectedScore.score.scores.cleaning}</span></div>
-              <div className="flex justify-between"><span>图片标注</span><span>{selectedScore.score.scores.imageAnnotation}</span></div>
-              <div className="flex justify-between"><span>文本标注</span><span>{selectedScore.score.scores.textAnnotation}</span></div>
-              <div className="flex justify-between"><span>音频</span><span>{selectedScore.score.scores.audio}</span></div>
-              <div className="flex justify-between"><span>统计</span><span>{selectedScore.score.scores.statistics}</span></div>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center justify-between">
+                各项分数
+                {canAdjust && !adjustMode && selectedScore.score.status !== 'published' && (
+                  <Button variant="outline" size="sm" onClick={enterAdjustMode}>
+                    <Pencil className="w-3.5 h-3.5 mr-1" />
+                    调整分数
+                  </Button>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {([
+                ['theory', '理论'],
+                ['cleaning', '数据清洗'],
+                ['imageAnnotation', '图片标注'],
+                ['textAnnotation', '文本标注'],
+                ['audio', '音频'],
+                ['statistics', '统计'],
+              ] as const).map(([key, label]) => (
+                <div key={key} className="flex items-center justify-between gap-2">
+                  <span className="shrink-0">{label}</span>
+                  {adjustMode ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400 line-through">
+                        {selectedScore.score.scores[key]}
+                      </span>
+                      <Input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={adjustValues[key] ?? 0}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          setAdjustValues(prev => ({ ...prev, [key]: Number.isFinite(v) && v >= 0 ? v : 0 }));
+                        }}
+                        className={`w-20 h-8 text-sm ${changedKeys.includes(key) ? 'border-accent ring-1 ring-accent/30' : ''}`}
+                      />
+                    </div>
+                  ) : (
+                    <span className="font-medium">{selectedScore.score.scores[key]}</span>
+                  )}
+                </div>
+              ))}
+              {adjustMode && (
+                <>
+                  <div className="border-t pt-2 mt-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold">调整后总分</span>
+                      <span className={`font-bold text-lg ${previewTotal > selectedScore.score.scores.max ? 'text-destructive' : 'text-primary'}`}>
+                        {previewTotal.toFixed(1)}
+                        <span className="text-sm text-gray-400">/{selectedScore.score.scores.max}</span>
+                      </span>
+                    </div>
+                    <div className={`mt-1 inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-xs font-medium ${
+                      previewPassed ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'
+                    }`}>
+                      {previewPassed ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                      {previewPassed ? '调整后通过' : '调整后未通过'}
+                    </div>
+                  </div>
+                  <div className="pt-2">
+                    <label className="text-xs text-gray-500 mb-1 block">调整原因（必填，至少 5 字，写入审计日志）</label>
+                    <Textarea
+                      value={adjustReason}
+                      onChange={(e) => setAdjustReason(e.target.value)}
+                      placeholder="例如：第 3 题图片标注评分过严，经人工复查该标注位置正确"
+                      className="text-sm"
+                      rows={3}
+                    />
+                  </div>
+                  {previewTotal > selectedScore.score.scores.max && (
+                    <div className="flex items-center gap-1 text-xs text-destructive">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      总分不能超过满分 {selectedScore.score.scores.max}
+                    </div>
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -171,21 +327,51 @@ export default function ResultsPage() {
               <div className="text-sm text-gray-500 mb-2">
                 状态: {STATUS_LABELS[selectedScore.score.status]?.label ?? selectedScore.score.status}
               </div>
-              {selectedScore.score.status !== 'published' && (
-                <Button
-                  onClick={() => approveScore(selectedScore.score.id)}
-                  disabled={adjusting}
-                  className="w-full"
-                  size="lg"
-                >
-                  <CheckCircle2 className="w-4 h-4 mr-1" />
-                  确认并发布成绩
-                </Button>
-              )}
-              {selectedScore.score.status === 'published' && (
-                <div className="text-sm text-success flex items-center gap-1">
-                  <CheckCircle2 className="w-4 h-4" /> 成绩已发布
-                </div>
+              {adjustMode ? (
+                <>
+                  <Button
+                    onClick={adjustScore}
+                    disabled={adjusting || changedKeys.length === 0 || adjustReason.trim().length < 5 || previewTotal > selectedScore.score.scores.max}
+                    className="w-full"
+                    size="lg"
+                  >
+                    <Save className="w-4 h-4 mr-1" />
+                    {adjusting ? '保存中...' : '保存调整'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => { setAdjustMode(false); setAdjustReason(''); }}
+                    disabled={adjusting}
+                    className="w-full"
+                  >
+                    <X className="w-4 h-4 mr-1" />
+                    取消
+                  </Button>
+                  {changedKeys.length > 0 && (
+                    <div className="text-xs text-gray-400 pt-1">
+                      已修改 {changedKeys.length} 项
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {selectedScore.score.status !== 'published' && (
+                    <Button
+                      onClick={() => approveScore(selectedScore.score.id)}
+                      disabled={adjusting}
+                      className="w-full"
+                      size="lg"
+                    >
+                      <CheckCircle2 className="w-4 h-4 mr-1" />
+                      确认并发布成绩
+                    </Button>
+                  )}
+                  {selectedScore.score.status === 'published' && (
+                    <div className="text-sm text-success flex items-center gap-1">
+                      <CheckCircle2 className="w-4 h-4" /> 成绩已发布
+                    </div>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>
