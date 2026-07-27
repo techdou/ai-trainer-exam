@@ -26,7 +26,7 @@ export async function GET(
     const asset = await dbOne<{ object_key: string; media_kind: string; status: string }>(
       `SELECT object_key, media_kind, status
        FROM asset_manifests
-       WHERE id = $1 AND deleted_at IS NULL`,
+       WHERE id = $1`,
       id,
     );
 
