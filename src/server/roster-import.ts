@@ -111,8 +111,16 @@ export function parseRoster(fileBuffer: ArrayBuffer): ParsedRoster {
 
     // 跳过空行和注脚行
     if (!idCard || !name) continue;
-    // 身份证号至少 15 位
-    if (idCard.length < 15) continue;
+    // 身份证号格式校验: 18 位(老 15 位也接受), 末位为数字或 X
+    if (!/^\d{17}[\dX]$/.test(idCard) && !/^\d{15}$/.test(idCard)) continue;
+    // 18 位身份证校验位算法(GB 11643-1999), 拦截拼凑/手误的号码
+    if (idCard.length === 18) {
+      const weights = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2];
+      const checkCodes = ['1', '0', 'X', '9', '8', '7', '6', '5', '4', '3', '2'];
+      let sum = 0;
+      for (let i = 0; i < 17; i++) sum += parseInt(idCard[i], 10) * weights[i];
+      if (checkCodes[sum % 11] !== idCard[17].toUpperCase()) continue;
+    }
     // 跳过"注："开头的注脚
     if (idCard.startsWith('注') || name.startsWith('注')) continue;
 
@@ -141,7 +149,17 @@ export function idCardToEmail(idCard: string): string {
   return `${idCard.toLowerCase()}@student.exam.local`;
 }
 
-/** 身份证号 → 初始密码（后六位）。 */
-export function idCardToPassword(idCard: string): string {
-  return idCard.slice(-6);
+/**
+ * 身份证号 + 机构后缀 → 初始密码。
+ *
+ * 安全设计(2026-07-27 修正): 单纯"身份证后六位"等于把名册当密码本,
+ * 任何拿到名册的人(老师/同学/打印件/拍照)都能登录任意学员账号。
+ * 改为"身份证后六位 + 机构级随机后缀": 学员需要同时知道身份证号和机构后缀才能登录,
+ * 后缀由管理员通过 system_settings(roster_password_suffix) 配置并安全渠道告知学员。
+ *
+ * @param idCard 学员身份证号
+ * @param orgSuffix 机构级随机后缀(8 位字母数字), 调用方从 system_settings 读取
+ */
+export function idCardToPassword(idCard: string, orgSuffix: string): string {
+  return `${idCard.slice(-6)}${orgSuffix}`;
 }

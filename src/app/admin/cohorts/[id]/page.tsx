@@ -97,7 +97,7 @@ export default function CohortDetailPage({ params }: { params: Promise<{ id: str
             <div className="text-center py-16">
               <UsersRound className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
               <div className="text-lg text-muted-foreground mb-1">该班级暂无学员</div>
-              <div className="text-sm text-muted-foreground">点击右上角"追加导入"上传学员名册</div>
+              <div className="text-sm text-muted-foreground">点击右上角「追加导入」上传学员名册</div>
             </div>
           ) : (
             <div className="overflow-x-auto">
