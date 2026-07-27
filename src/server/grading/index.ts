@@ -227,14 +227,14 @@ function optimalPairs(matrix: number[][], threshold: number): Array<[number, num
   return edges.filter(([r, c]) => { if (usedR.has(r) || usedC.has(c)) return false; usedR.add(r); usedC.add(c); return true; });
 }
 
-// 7. 矩形框（含红绿灯属性）
+// 7. 矩形框标注（IoU 重叠度算法，默认阈值 45%，支持类别 + 属性匹配）
 export interface ImageAnnotationSubmission { boxes: BoundingBox[] }
 export interface ImageAnnotationAnswerKey { boxes: BoundingBox[]; iouThreshold?: number }
 export const imageAnnotationGrader: Grader<ImageAnnotationSubmission, ImageAnnotationAnswerKey> = {
-  id: 'image_annotation', version: '2.0.0',
+  id: 'image_annotation', version: '2.1.0',
   grade(submission, answerKey) {
     if (!Array.isArray(submission?.boxes) || !Array.isArray(answerKey?.boxes) || submission.boxes.some(b => !validBox(b)) || answerKey.boxes.some(b => !validBox(b))) return invalid(imageAnnotationGrader, '标注坐标必须是相对于原图的 0—1 归一化坐标');
-    const threshold = Math.max(0, Math.min(1, answerKey.iouThreshold ?? 0.5));
+    const threshold = Math.max(0, Math.min(1, answerKey.iouThreshold ?? 0.45));
     if (!answerKey.boxes.length) {
       const correct = !submission.boxes.length;
       return { correct, score: correct ? 1 : 0, feedback: correct ? '做对了！' : '存在多余标注', graderVersion: versionOf(imageAnnotationGrader) };
@@ -298,13 +298,14 @@ function chamferDistance(a: Point[], b: Point[]): number {
   const directed = (p: Point[], q: Point[]) => p.reduce((sum, x) => sum + Math.min(...q.map(y => Math.hypot(x.x - y.x, x.y - y.y))), 0) / Math.max(1, p.length);
   return (directed(a, b) + directed(b, a)) / 2;
 }
+// 8. 折线标注（双向 Chamfer 距离，默认阈值 8% 图片尺寸，等距重采样消除点密度差异）
 export interface PolylineSubmission { lines: PolylineAnnotation[] }
 export interface PolylineAnswerKey { lines: PolylineAnnotation[]; distanceTolerance?: number }
 export const polylineAnnotationGrader: Grader<PolylineSubmission, PolylineAnswerKey> = {
-  id: 'polyline_annotation', version: '1.0.0',
+  id: 'polyline_annotation', version: '2.0.0',
   grade(submission, answerKey) {
     if (!Array.isArray(submission?.lines) || !Array.isArray(answerKey?.lines)) return invalid(polylineAnnotationGrader);
-    const tolerance = Math.max(0.001, Math.min(1, answerKey.distanceTolerance ?? 0.04));
+    const tolerance = Math.max(0.001, Math.min(1, answerKey.distanceTolerance ?? 0.08));
     const validLine = (l: PolylineAnnotation) => !!asString(l.label) && Array.isArray(l.points) && l.points.length >= 2 && l.points.every(p => validUnit(p.x) && validUnit(p.y));
     if (submission.lines.some(l => !validLine(l)) || answerKey.lines.some(l => !validLine(l))) return invalid(polylineAnnotationGrader);
     const matrix = answerKey.lines.map(e => submission.lines.map(a => {
@@ -338,13 +339,14 @@ function polygonIoU(a: Point[], b: Point[], grid = 80): number {
   }
   return union ? inter / union : 0;
 }
+// 9. 轮廓标注（网格栅格化多边形 IoU，80×80 采样，默认阈值 40%）
 export interface PolygonSubmission { polygons: PolylineAnnotation[] }
 export interface PolygonAnswerKey { polygons: PolylineAnnotation[]; iouThreshold?: number }
 export const polygonAnnotationGrader: Grader<PolygonSubmission, PolygonAnswerKey> = {
-  id: 'polygon_annotation', version: '1.0.0',
+  id: 'polygon_annotation', version: '2.0.0',
   grade(submission, answerKey) {
     if (!Array.isArray(submission?.polygons) || !Array.isArray(answerKey?.polygons)) return invalid(polygonAnnotationGrader);
-    const threshold = Math.max(0, Math.min(1, answerKey.iouThreshold ?? 0.5));
+    const threshold = Math.max(0, Math.min(1, answerKey.iouThreshold ?? 0.4));
     const validPoly = (l: PolylineAnnotation) => !!asString(l.label) && Array.isArray(l.points) && l.points.length >= 3 && l.points.every(p => validUnit(p.x) && validUnit(p.y));
     if (submission.polygons.some(l => !validPoly(l)) || answerKey.polygons.some(l => !validPoly(l))) return invalid(polygonAnnotationGrader);
     const matrix = answerKey.polygons.map(e => submission.polygons.map(a => e.label === a.label && attrsMatch(a.attributes, e.attributes) ? polygonIoU(e.points, a.points) : 0));

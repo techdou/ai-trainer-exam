@@ -30,6 +30,19 @@ describe('确定性评分引擎安全回归', () => {
     expect(polylineAnnotationGrader.grade({lines:[{label:'线',points:[{x:0,y:0},{x:1,y:1}]}]},{lines:[{label:'线',points:[{x:0,y:0},{x:1,y:1}]}],distanceTolerance:.05}).correct).toBe(true);
     expect(polygonAnnotationGrader.grade({polygons:[{label:'动物',points:[{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}]}]},{polygons:[{label:'动物',points:[{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}]}],iouThreshold:.5}).correct).toBe(true);
   });
+  it('方框标注默认 IoU 阈值为 0.45', () => {
+    // IoU=0.44 应判错, IoU=0.46 应判对
+    const tooLow = imageAnnotationGrader.grade({boxes:[{x:0,y:0,width:.2,height:.2,label:'人物'}]},{boxes:[{x:.01,y:0,width:.2,height:.2,label:'人物'}]});
+    expect(tooLow.details).toMatchObject({ threshold: 0.45 });
+  });
+  it('折线标注默认 Chamfer 容差为 0.08', () => {
+    const r = polylineAnnotationGrader.grade({lines:[{label:'线',points:[{x:0,y:0},{x:1,y:0}]}]},{lines:[{label:'线',points:[{x:0,y:0},{x:1,y:0}]}]});
+    expect(r.details).toMatchObject({ tolerance: 0.08 });
+  });
+  it('轮廓标注默认 IoU 阈值为 0.4', () => {
+    const r = polygonAnnotationGrader.grade({polygons:[{label:'动物',points:[{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}]}]},{polygons:[{label:'动物',points:[{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}]}]});
+    expect(r.details).toMatchObject({ threshold: 0.4 });
+  });
   it('情感标注精确匹配', () => expect(textSentimentGrader.grade({sentiments:{t1:'好评'}},{correctSentiments:{t1:'好评'}}).score).toBe(1));
   it('音频转写强制保留语气助词', () => {
     const r=audioTranscriptionGrader.grade({transcript:'这个产品真的很好'},{correctTranscript:'嗯这个产品真的很好啊',requiredFillers:['嗯','啊'],similarityThreshold:.75});
