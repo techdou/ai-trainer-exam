@@ -460,7 +460,51 @@ export const datasetQualityGrader: Grader<DatasetQualitySubmission, DatasetQuali
   },
 };
 
-// 12. 综合任务（答案键内部配置由服务端冻结，客户端不能提供 graderId）
+// 12. 提示词描述题。根据图片素材撰写自然语言提示词，按关键词命中率评分。
+export interface PromptDescriptionSubmission { text: string }
+export interface PromptDescriptionAnswerKey {
+  keywords: string[];
+  referencePrompt?: string;
+  passThreshold?: number;
+}
+function normalizePromptText(text: string): string {
+  return toHalfWidth(text).normalize('NFKC').toLowerCase().replace(/\s+/g, '');
+}
+export const promptDescriptionGrader: Grader<PromptDescriptionSubmission, PromptDescriptionAnswerKey> = {
+  id: 'prompt_description', version: '1.0.0',
+  grade(submission, answerKey) {
+    if (typeof submission?.text !== 'string') return invalid(promptDescriptionGrader, '请输入提示词描述');
+    const text = submission.text.trim();
+    if (!text) return invalid(promptDescriptionGrader, '请输入提示词描述');
+    const rawKeywords = Array.isArray(answerKey?.keywords) ? answerKey.keywords : [];
+    const keywordGroups: string[][] = rawKeywords
+      .filter((k): k is string => typeof k === 'string' && k.trim().length > 0)
+      .map(k => k.split('|').map(s => s.trim()).filter(Boolean));
+    if (!keywordGroups.length) return invalid(promptDescriptionGrader, '标准答案关键词未配置');
+    const normalizedText = normalizePromptText(text);
+    const matched: string[] = [];
+    const missed: string[] = [];
+    for (const group of keywordGroups) {
+      const hit = group.some(term => normalizedText.includes(normalizePromptText(term)));
+      if (hit) matched.push(group[0]); else missed.push(group[0]);
+    }
+    const ratio = matched.length / keywordGroups.length;
+    const threshold = Math.max(0, Math.min(1, answerKey.passThreshold ?? 0.6));
+    const correct = ratio >= threshold;
+    const parts: string[] = [];
+    if (correct) parts.push(`做对了！命中 ${matched.length}/${keywordGroups.length} 个关键词。`);
+    else parts.push(`命中 ${matched.length}/${keywordGroups.length} 个关键词。`);
+    if (missed.length) parts.push(`未命中关键词：${missed.join('、')}`);
+    if (answerKey.referencePrompt) parts.push(`参考提示词：${answerKey.referencePrompt}`);
+    return {
+      correct, score: ratio, feedback: parts.join(' '),
+      graderVersion: versionOf(promptDescriptionGrader),
+      details: { matched, missed, ratio, threshold, total: keywordGroups.length },
+    };
+  },
+};
+
+// 13. 综合任务（答案键内部配置由服务端冻结，客户端不能提供 graderId）
 export interface CompositeTaskSubmission { subtasks: Record<string, unknown> }
 export interface CompositeTaskAnswerKey { subtasks: Record<string, { weight: number; graderId: string; answerKey: unknown }> }
 export const compositeTaskGrader: Grader<CompositeTaskSubmission, CompositeTaskAnswerKey> = {

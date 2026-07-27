@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server';
 import { requireRole } from '@/server/auth';
-import { dbOne, dbQuery, dbExec } from '@/server/db';
+import { dbOne, dbTx } from '@/server/db';
 import { ok, fail, catchError } from '@/lib/api';
 import { insertAudit } from '@/server/audit';
 import { getSupabaseClient, loadEnv } from '@/storage/database/supabase-client';
-import { parseRoster, idCardToEmail, idCardToPassword, type RosterStudent } from '@/server/roster-import';
+import { parseRoster, idCardToEmail, idCardToPassword } from '@/server/roster-import';
 
 export const runtime = 'nodejs';
 
@@ -59,8 +59,8 @@ export async function POST(req: NextRequest) {
     }
     if (!cohortId) {
       const created = await dbOne<{ id: string }>(
-        'INSERT INTO cohorts(organization_id, name, status) VALUES($1, $2, $3) RETURNING id',
-        orgId, cohortName, 'active',
+        'INSERT INTO cohorts(organization_id, name) VALUES($1, $2) RETURNING id',
+        orgId, cohortName,
       );
       cohortId = created!.id;
     }
@@ -90,12 +90,14 @@ export async function POST(req: NextRequest) {
 
         if (existingProfile) {
           // 已存在：确保已注册到当前班级
-          await dbExec(
-            `INSERT INTO enrollments(user_id, cohort_id, status, created_at, updated_at)
-             VALUES($1, $2, 'active', NOW(), NOW())
-             ON CONFLICT(user_id, cohort_id) DO UPDATE SET status='active', updated_at=NOW()`,
-            existingProfile.id, cohortId,
-          );
+          await dbTx(async (tx) => {
+            await tx.query(
+              `INSERT INTO enrollments(user_id, cohort_id, status, created_at, updated_at)
+               VALUES($1, $2, 'active', NOW(), NOW())
+               ON CONFLICT(user_id, cohort_id) DO UPDATE SET status='active', updated_at=NOW()`,
+              [existingProfile.id, cohortId],
+            );
+          });
           result.skipped++;
           result.students.push({ name: student.name, idCard: student.idCard, email, status: 'skipped', message: '账号已存在，已关联到本班级' });
           continue;
@@ -144,8 +146,15 @@ export async function POST(req: NextRequest) {
             );
           });
 
-        result.created++;
-        result.students.push({ name: student.name, idCard: student.idCard, email, status: 'created' });
+          result.created++;
+          result.students.push({ name: student.name, idCard: student.idCard, email, status: 'created' });
+        } catch (dbErr) {
+          // DB 落库失败：补偿删除 Auth 账号，避免孤儿
+          await supabase.auth.admin.deleteUser(userId);
+          const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+          result.errors.push(`${student.name}(${student.idCard}): ${msg}`);
+          result.students.push({ name: student.name, idCard: student.idCard, email, status: 'error', message: msg });
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         result.errors.push(`${student.name}(${student.idCard}): ${msg}`);
