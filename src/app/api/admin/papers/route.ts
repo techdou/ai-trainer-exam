@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { requireRole, requireSameOrg } from '@/server/auth';
 import { dbQuery, dbOne, dbTx } from '@/server/db';
 import { ok, fail, handler, parseBody } from '@/lib/api';
-import { graderIdForTaskType, gradeByType, parseFillInBlankAnswerKey } from '@/server/grading';
+import { graderIdForTaskType, gradeByType, parseFillInBlankAnswerKey, parsePromptDescriptionAnswerKey } from '@/server/grading';
 
 const itemSchema = z.object({
   itemType: z.enum(['question', 'task']),
@@ -54,14 +54,16 @@ async function loadSourceItem(item: z.infer<typeof itemSchema>, organizationId: 
       item.itemId, organizationId,
     );
     if (!row) return null;
-    const graderId = row.question_type === 'true_false' ? 'true_false' : row.question_type === 'fill_in_blank' ? 'fill_in_blank' : 'single_choice';
+    const graderId = row.question_type === 'true_false' ? 'true_false' : row.question_type === 'fill_in_blank' ? 'fill_in_blank' : row.question_type === 'prompt_description' ? 'prompt_description' : 'single_choice';
     const rawAnswer = unwrapJsonScalar(row.answer_key);
     const answerKey = row.question_type === 'true_false'
       ? { correctAnswer: typeof rawAnswer === 'boolean' ? rawAnswer : ['A','TRUE','正确','对'].includes(String(rawAnswer).trim().toUpperCase()) }
       : row.question_type === 'fill_in_blank'
         ? { acceptable: parseFillInBlankAnswerKey(rawAnswer) ?? [] }
-        : { correctOption: String((rawAnswer as { letter?: unknown } | null)?.letter ?? rawAnswer ?? '').trim().toUpperCase() };
-    const probe = gradeByType(graderId, row.question_type === 'true_false' ? { answer: false } : row.question_type === 'fill_in_blank' ? { text: '' } : { selectedOption: 'A' }, answerKey);
+        : row.question_type === 'prompt_description'
+          ? (parsePromptDescriptionAnswerKey(rawAnswer) ?? { keywords: [] })
+          : { correctOption: String((rawAnswer as { letter?: unknown } | null)?.letter ?? rawAnswer ?? '').trim().toUpperCase() };
+    const probe = gradeByType(graderId, row.question_type === 'true_false' ? { answer: false } : row.question_type === 'fill_in_blank' ? { text: '' } : row.question_type === 'prompt_description' ? { text: '' } : { selectedOption: 'A' }, answerKey);
     return { id: row.id, itemType: 'question', itemId: row.id, section: 'theory', score: item.score, snapshot: { sourceItemId: row.id, questionType: row.question_type, stem: row.stem, options: row.options, explanation: row.explanation, knowledgePoint: row.knowledge_point, difficulty: row.difficulty, sourceVersion: row.published_version }, answerKey, gradingConfig: {}, graderId, graderVersion: probe.graderVersion };
   }
 

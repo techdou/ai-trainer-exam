@@ -20,6 +20,7 @@ interface PracticeQuestion {
 interface CheckResult {
   correct: boolean;
   correctAnswer: string;
+  feedback?: string;
   explanation: string | null;
   knowledgePoint: string | null;
 }
@@ -113,6 +114,7 @@ export default function TheoryPracticePage() {
   const q = questions[currentIdx];
   const isTrueFalse = q.question_type === 'true_false';
   const isFillInBlank = q.question_type === 'fill_in_blank';
+  const isPromptDescription = q.question_type === 'prompt_description';
   const optionKeys = isTrueFalse ? ['A', 'B'] : ['A', 'B', 'C', 'D'];
 
   return (
@@ -139,7 +141,7 @@ export default function TheoryPracticePage() {
       <Card className="p-6 mb-4">
         <div className="mb-2 flex items-center gap-2">
           <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-            {isFillInBlank ? '填空题' : isTrueFalse ? '判断题' : '单选题'}
+            {isPromptDescription ? '提示词描述题' : isFillInBlank ? '填空题' : isTrueFalse ? '判断题' : '单选题'}
           </span>
           <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
             难度：{q.difficulty}

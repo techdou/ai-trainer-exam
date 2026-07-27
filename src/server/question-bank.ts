@@ -18,7 +18,7 @@ export interface QuestionRow {
   id: string;
   bank_type: 'practice' | 'exam';
   organization_id: string | null;
-  question_type: 'single_choice' | 'true_false' | 'fill_in_blank';
+  question_type: 'single_choice' | 'true_false' | 'fill_in_blank' | 'prompt_description';
   stem: string;
   options: Record<string, string> | null;  // JSONB → JS object
   answer_key: unknown;                     // JSONB → string (single_choice) / boolean (true_false) / object (fill_in_blank)
@@ -170,7 +170,7 @@ export async function getQuestionById(id: string): Promise<QuestionRow | null> {
 
 /** bulkInsertQuestions 的输入行类型，仅包含 INSERT 语句实际使用的字段 */
 export interface QuestionInsertRow {
-  question_type: 'single_choice' | 'true_false' | 'fill_in_blank';
+  question_type: 'single_choice' | 'true_false' | 'fill_in_blank' | 'prompt_description';
   stem: string;
   options: string[] | Record<string, string> | null;
   answer_key: string;  // Raw answer: 'A'/'B'/'C'/'D' for single_choice, 'true'/'false' for true_false, JSON for fill_in_blank
@@ -555,10 +555,10 @@ export interface AnswerKeyRow {
  */
 export async function createQuestion(data: {
   bankType: 'practice' | 'exam';
-  questionType: 'single_choice' | 'true_false';
+  questionType: 'single_choice' | 'true_false' | 'fill_in_blank' | 'prompt_description';
   stem: string;
   options: Record<string, string>;
-  answerKey: string | boolean;
+  answerKey: string | boolean | Record<string, unknown>;
   explanation?: string;
   knowledgePoint?: string;
   difficulty?: number;

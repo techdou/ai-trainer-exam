@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     if (!user.organizationId && !user.roles.includes('super_admin')) return fail(403, '账号未绑定机构');
     const body = await parseBody(request, createSchema);
     if (body.questionType === 'single_choice' && Object.keys(body.options).length < 2) return fail(400, '单选题至少需要两个选项');
-    const answer = typeof body.answerKey === 'boolean' ? body.answerKey : body.answerKey.trim();
+    const answer = typeof body.answerKey === 'boolean' ? body.answerKey : typeof body.answerKey === 'string' ? body.answerKey.trim() : body.answerKey;
     if (body.questionType === 'single_choice' && !Object.prototype.hasOwnProperty.call(body.options, String(answer))) return fail(400, '答案必须对应一个有效选项');
     const id = await createQuestion({ ...body, answerKey: answer, createdBy: user.id, organizationId: user.organizationId });
     return ok({ id }, { status: 201 });
