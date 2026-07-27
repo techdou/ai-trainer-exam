@@ -20,6 +20,8 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   allowedDevOrigins: ['*.dev.coze.site'],
   images: { unoptimized: true },
+  // 生产环境关闭 Next.js DevTools 浮层(开发期调试用, 生产暴露不专业)
+  devIndicators: false,
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
