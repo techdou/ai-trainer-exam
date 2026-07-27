@@ -149,7 +149,38 @@ export default function TheoryPracticePage() {
         </div>
         <p className="mb-4 text-lg leading-relaxed whitespace-pre-wrap">{q.stem}</p>
 
-        {isFillInBlank ? (
+        {isPromptDescription ? (
+          <div className="space-y-4">
+            {q.options?.image && (
+              <div className="overflow-hidden rounded-lg border-2 border-border">
+                <img
+                  src={q.options.image}
+                  alt="提示词描述素材"
+                  className="max-h-96 w-full object-contain"
+                  loading="lazy"
+                />
+              </div>
+            )}
+            <textarea
+              value={selectedAnswer}
+              onChange={e => !result && setSelectedAnswer(e.target.value)}
+              disabled={!!result}
+              placeholder="请仔细观察图片，用自然语言描述图片内容，撰写一段提示词。描述应包含画面中的主体、颜色、场景、动作、风格等关键信息。"
+              rows={6}
+              className="w-full resize-y rounded-lg border-2 border-border p-4 text-lg leading-relaxed focus:border-primary focus:outline-none disabled:opacity-60"
+            />
+            {result && (
+              <div className={`rounded-lg border-2 p-4 ${result.correct ? 'border-success bg-success/10' : 'border-destructive bg-destructive/10'}`}>
+                <span className="text-base">
+                  {result.correct ? '✓ 做对了！' : '✗ 再看看图片中有哪些关键信息没有描述到'}
+                </span>
+                {result.feedback && (
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{result.feedback}</p>
+                )}
+              </div>
+            )}
+          </div>
+        ) : isFillInBlank ? (
           <div className="space-y-3">
             <input
               type="text"
