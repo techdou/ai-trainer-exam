@@ -107,39 +107,54 @@ export const PATCH = handler(async (request: Request) => {
   return ok({ id: body.id, status });
 });
 
-/** PUT /api/admin/task-templates — 更新任务的标准答案 (answer_key) 和评分参数 */
+/** PUT /api/admin/task-templates — 更新任务的标准答案 (answer_key)、评分参数和图片 */
 const updateAnswerKeySchema = z.object({
   bankType: z.enum(['practice', 'exam']),
   id: z.string().min(1),
-  answerKey: z.unknown(),
+  answerKey: z.unknown().optional(),
   gradingConfig: z.record(z.string(), z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const PUT = handler(async (request: Request) => {
   const user = await requireRole(request, ['super_admin', 'school_admin', 'question_editor']);
   const body = await parseBody(request, updateAnswerKeySchema);
   const table = body.bankType === 'exam' ? 'exam_task_templates' : 'practice_task_templates';
-  const row = await dbOne<{ organization_id: string | null; task_type: string; review_status: string }>(
-    `SELECT organization_id, task_type, review_status FROM ${table} WHERE id=$1 AND deleted_at IS NULL`,
+  const row = await dbOne<{ organization_id: string | null; task_type: string; review_status: string; config: Record<string, unknown> }>(
+    `SELECT organization_id, task_type, review_status, config FROM ${table} WHERE id=$1 AND deleted_at IS NULL`,
     body.id,
   );
   if (!row) return fail(404, '任务不存在');
   requireSameOrg(user, row.organization_id);
   const nextStatus = statusAfterContentEdit(row.review_status);
   if (!nextStatus) return fail(409, '已退役任务不能编辑');
-  const hasGrading = body.gradingConfig !== undefined;
-  if (hasGrading) {
-    const changed = await dbExec(
-      `UPDATE ${table} SET answer_key=$1, grading_config=$2, review_status=$3, reviewer_id=NULL, updated_at=NOW() WHERE id=$4 AND review_status=$5`,
-      JSON.stringify(body.answerKey), JSON.stringify(body.gradingConfig), nextStatus, body.id, row.review_status,
-    );
-    if (changed === 0) return fail(409, '任务状态已变化，请刷新后重试');
-  } else {
-    const changed = await dbExec(
-      `UPDATE ${table} SET answer_key=$1, review_status=$2, reviewer_id=NULL, updated_at=NOW() WHERE id=$3 AND review_status=$4`,
-      JSON.stringify(body.answerKey), nextStatus, body.id, row.review_status,
-    );
-    if (changed === 0) return fail(409, '任务状态已变化，请刷新后重试');
+
+  // Build dynamic SET clause
+  const sets: string[] = ['review_status=$1', 'reviewer_id=NULL', 'updated_at=NOW()'];
+  const params: unknown[] = [nextStatus];
+  let paramIdx = 2;
+
+  if (body.config) {
+    sets.push(`config=$${paramIdx}`);
+    params.push(JSON.stringify({ ...row.config, ...body.config }));
+    paramIdx++;
   }
+  if (body.answerKey !== undefined) {
+    sets.push(`answer_key=$${paramIdx}`);
+    params.push(JSON.stringify(body.answerKey));
+    paramIdx++;
+  }
+  if (body.gradingConfig !== undefined) {
+    sets.push(`grading_config=$${paramIdx}`);
+    params.push(JSON.stringify(body.gradingConfig));
+    paramIdx++;
+  }
+
+  params.push(body.id, row.review_status);
+  const changed = await dbExec(
+    `UPDATE ${table} SET ${sets.join(', ')} WHERE id=$${paramIdx} AND review_status=$${paramIdx + 1}`,
+    ...params,
+  );
+  if (changed === 0) return fail(409, '任务状态已变化，请刷新后重试');
   return ok({ id: body.id, updated: true });
 });
