@@ -211,8 +211,8 @@ export default function GradingCalibrationPage() {
         body: formData,
       });
       const json = await res.json();
-      if (json.success && json.data?.url) {
-        setImageUrlInput(json.data.url);
+      if (json.success && json.data?.imageUrl) {
+        setImageUrlInput(json.data.imageUrl);
         toast.success(`Uploaded: ${json.data.fileName ?? file.name}`);
         await fetchImages();
       } else {

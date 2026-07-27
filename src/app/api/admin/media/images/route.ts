@@ -61,7 +61,7 @@ export async function GET(request: Request) {
     for (const a of studioAssets) {
       const labelText = a.meta?.prompt?.toString().slice(0, 30) ?? (a.meta?.originalFileName as string | undefined)?.slice(0, 30) ?? a.id.slice(0, 8);
       studioImages.push({
-        url: `asset:${a.id}`,
+        url: `/api/media/asset/${a.id}`,
         label: `${a.category ?? 'studio'} - ${labelText}`,
         source: 'studio' as const,
         assetId: a.id,

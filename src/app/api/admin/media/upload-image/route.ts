@@ -83,10 +83,11 @@ export async function POST(request: Request) {
       },
     );
 
-    // Return asset:UUID format for persistent storage (presigned URL is generated on-demand)
+    // Return proxy URL — relative path works in <img> directly, never expires
     return ok({
       assetId: asset!.id,
-      imageUrl: `asset:${asset!.id}`,
+      url: `/api/media/asset/${asset!.id}`,
+      imageUrl: `/api/media/asset/${asset!.id}`,
       fileName: file.name,
       size: file.size,
     });
