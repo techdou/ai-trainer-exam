@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState, useCallback } from 'react';
+import { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 
 /**
@@ -60,7 +60,11 @@ export function AnnotationCanvas({
   const [activeAttribute, setActiveAttribute] = useState('');
   const [dragStart, setDragStart] = useState<NormalizedPoint | null>(null);
   const [draftPoints, setDraftPoints] = useState<NormalizedPoint[]>([]);
+  const [imgError, setImgError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Reset error state when image URL changes
+  useEffect(() => { setImgError(false); }, [imageUrl]);
 
   const boxes = value.boxes ?? [];
   const points = value.points ?? [];
@@ -178,8 +182,19 @@ export function AnnotationCanvas({
         className={`relative overflow-hidden rounded-lg border bg-muted ${readOnly ? 'cursor-default' : 'cursor-crosshair'}`}
         style={{ minHeight: `${minHeight}px` }}
       >
-        {imageUrl ? (
-          <img src={imageUrl} alt="annotation target" className="block w-full select-none" draggable={false} />
+        {imageUrl && !imgError ? (
+          <img
+            src={imageUrl}
+            alt="annotation target"
+            className="block w-full select-none"
+            draggable={false}
+            onError={() => setImgError(true)}
+          />
+        ) : imageUrl && imgError ? (
+          <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground" style={{ minHeight: `${minHeight}px` }}>
+            <span className="text-destructive">图片加载失败</span>
+            <span className="text-sm">{imageUrl}</span>
+          </div>
         ) : (
           <div className="flex items-center justify-center text-muted-foreground" style={{ minHeight: `${minHeight}px` }}>
             image not configured
