@@ -133,7 +133,7 @@ export const statsTableGrader: Grader<StatsTableSubmission, StatsTableAnswerKey>
     if (!isRecord(submission?.cells) || !isRecord(answerKey?.correctCells)) return invalid(statsTableGrader);
     const expectedKeys = Object.keys(answerKey.correctCells);
     if (!expectedKeys.length) return invalid(statsTableGrader, '标准答案未配置');
-    const tolerance = Number.isFinite(answerKey.numericTolerance) ? Math.max(0, answerKey.numericTolerance!) : 0.01;
+    const tolerance = safeNumber(answerKey.numericTolerance) ?? 0.01;
     let correctCount = 0;
     const wrong: string[] = [];
     for (const cell of expectedKeys) {
@@ -563,7 +563,8 @@ export const excelComprehensiveGrader: Grader<ExcelComprehensiveSubmission, Exce
   id: 'excel_comprehensive', version: '1.0.0',
   grade(submission, answerKey) {
     if (!isRecord(submission) || !isRecord(answerKey)) return invalid(excelComprehensiveGrader);
-    const tolerance = Number.isFinite(answerKey.numericTolerance) ? Math.max(0, answerKey.numericTolerance!) : 0.01;
+    const tolRaw = answerKey.numericTolerance;
+    const tolerance = typeof tolRaw === 'number' && Number.isFinite(tolRaw) ? Math.max(0, tolRaw) : 0.01;
     const results: Array<{ label: string; passed: boolean; detail: string }> = [];
 
     // ── 检查 1: 表格边框 ──

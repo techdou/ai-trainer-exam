@@ -42,6 +42,11 @@ interface TaskConfig {
   audioUrl?: string;
   // shared
   instructions?: string;
+  // excel_comprehensive
+  classColumnIndex?: number;
+  scoreColumnIndices?: number[];
+  totalColumnIndex?: number;
+  colorOptions?: string[];
 }
 
 interface SubmitResult {
@@ -371,6 +376,7 @@ const GENERIC_TASK_TYPES = [
   'data_labeling',
   'dataset_quality',
   'composite_task',
+  'excel_comprehensive',
 ];
 
 /** 通用任务工作区: ExamTaskInput 受控输入 + 统一提交按钮。 */

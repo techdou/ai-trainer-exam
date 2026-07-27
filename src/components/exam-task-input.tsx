@@ -30,6 +30,13 @@ type Config = {
   attributes?: Record<string, string[]>;
   items?: Array<{ id: string; content?: string; imageUrl?: string; description?: string }>;
   subtasks?: Array<{ id: string; title: string; instructions?: string; taskType: string; config?: Record<string, unknown> }>;
+  // excel_comprehensive
+  classColumnIndex?: number;
+  scoreColumnIndices?: number[];
+  totalColumnIndex?: number;
+  colorOptions?: string[];
+  requirements?: string[];
+  formulaHint?: string;
 };
 
 function record(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
@@ -49,6 +56,7 @@ export function ExamTaskInput({ content, value, onChange, disabled = false }: Pr
   if (taskType === 'data_labeling') return <DataLabeling config={config} value={value} onChange={onChange} disabled={disabled} />;
   if (taskType === 'dataset_quality') return <DatasetQuality config={config} value={value} onChange={onChange} disabled={disabled} />;
   if (taskType === 'composite_task') return <CompositeTask config={config} value={value} onChange={onChange} disabled={disabled} />;
+  if (taskType === 'excel_comprehensive') return <ExcelComprehensive config={config} value={value} onChange={onChange} disabled={disabled} />;
   return <div className="rounded-lg border border-warning/40 bg-warning/10 p-4 text-warning">该实操类型暂无法在当前浏览器作答，请联系考务人员：{taskType}</div>;
 }
 
@@ -167,6 +175,193 @@ function CompositeTask({ config, value, onChange, disabled }: { config:Config;va
             : <ExamTaskInput content={{ taskType: sub.taskType, config: sub.config ?? {} }} value={current[sub.id]} onChange={v => setSub(sub.id, v)} disabled={disabled} />}
         </section>
       ))}
+    </div>
+  );
+}
+
+/** Excel 综合操作题: 模拟 Excel 工具栏, 学员需完成边框/公式/排序/分类汇总/填充色/小数格式。 */
+interface ExcelRowState { id: string; cells: string[]; }
+interface ExcelSubmission {
+  borderApplied?: boolean;
+  rows?: ExcelRowState[];
+  rowOrder?: string[];
+  headerColor?: string;
+  decimalPlaces?: number;
+  summaryGroups?: Array<{ key: string; averages: Record<string, string | number> }>;
+}
+const COLOR_MAP: Record<string, string> = {
+  '蓝色': '#3b82f6',
+  '红色': '#ef4444',
+  '绿色': '#22c55e',
+  '黄色': '#eab308',
+  '无': '',
+};
+function formatDecimal(value: string, places: number | null): string {
+  if (places === null) return value;
+  const n = parseFloat(value);
+  if (Number.isNaN(n)) return value;
+  return n.toFixed(places);
+}
+function ExcelComprehensive({ config, value, onChange, disabled }: { config: Config; value: unknown; onChange: (v: unknown) => void; disabled: boolean }) {
+  const columns = config.columns ?? [];
+  const initialRows = config.dataRows ?? [];
+  const rowIds = config.rowIds?.length === initialRows.length ? config.rowIds : initialRows.map((_, i) => String(i));
+  const classColIdx = config.classColumnIndex ?? -1;
+  const scoreColIndices = config.scoreColumnIndices ?? [];
+  const totalColIdx = config.totalColumnIndex ?? -1;
+  const colorOptions = config.colorOptions ?? ['蓝色', '红色', '绿色', '黄色'];
+
+  const existing = record(value) as Partial<ExcelSubmission>;
+  const [rows, setRows] = useState<ExcelRowState[]>(() => {
+    if (Array.isArray(existing.rows)) return existing.rows as ExcelRowState[];
+    return initialRows.map((cells, i) => ({ id: rowIds[i], cells: [...cells] }));
+  });
+  const [borderApplied, setBorderApplied] = useState<boolean>(existing.borderApplied === true);
+  const [headerColor, setHeaderColor] = useState<string>(existing.headerColor ?? '');
+  const [decimalPlaces, setDecimalPlaces] = useState<number | null>(typeof existing.decimalPlaces === 'number' ? existing.decimalPlaces : null);
+  const [showSummary, setShowSummary] = useState<boolean>(Array.isArray(existing.summaryGroups) && (existing.summaryGroups as unknown[]).length > 0);
+
+  const emit = (patch: Partial<ExcelSubmission>) => {
+    onChange({ ...existing, rows, borderApplied, headerColor, decimalPlaces, showSummary, ...patch });
+  };
+
+  // 格式化显示：应用小数位设置
+  const displayCell = (raw: string): string => decimalPlaces !== null ? formatDecimal(raw, decimalPlaces) : raw;
+
+  // ── 操作 1: 设置边框 ──
+  const toggleBorder = () => { const next = !borderApplied; setBorderApplied(next); emit({ borderApplied: next }); };
+
+  // ── 操作 2: 用公式求班级（从学号提取）──
+  const applyFormula = () => {
+    if (classColIdx < 0) return;
+    const next = rows.map(r => {
+      const studentId = r.cells[0] ?? '';
+      // 学号如 120305 → 班级 "3班" (第3-4位)
+      const match = studentId.match(/^\d{2}(\d{1,2})/);
+      const classNum = match ? String(parseInt(match[1], 10)) : '';
+      const newCells = [...r.cells];
+      newCells[classColIdx] = classNum ? `${classNum}班` : '';
+      return { ...r, cells: newCells };
+    });
+    setRows(next); emit({ rows: next });
+  };
+
+  // ── 操作 3: 排序（班级降序，成绩降序）──
+  const sortRows = () => {
+    const sortKey = (r: ExcelRowState): [number, number] => {
+      const classStr = classColIdx >= 0 ? (r.cells[classColIdx] ?? '') : '';
+      const classNum = parseInt(classStr.replace(/[^\d]/g, ''), 10) || 0;
+      const totalStr = totalColIdx >= 0 ? (r.cells[totalColIdx] ?? '0') : '0';
+      const score = parseFloat(totalStr) || 0;
+      return [classNum, score];
+    };
+    const next = [...rows].sort((a, b) => {
+      const [ac, as] = sortKey(a), [bc, bs] = sortKey(b);
+      if (bc !== ac) return bc - ac;
+      return bs - as;
+    });
+    setRows(next); emit({ rows: next, rowOrder: next.map(r => r.id) });
+  };
+
+  // ── 操作 4: 分类汇总（按班级求平均值）──
+  const toggleSummary = () => {
+    const nextShow = !showSummary;
+    setShowSummary(nextShow);
+    if (!nextShow) { emit({ summaryGroups: [] }); return; }
+    // 按班级分组
+    const groups = new Map<string, ExcelRowState[]>();
+    for (const r of rows) {
+      const key = classColIdx >= 0 ? (r.cells[classColIdx] ?? '未知') : '未知';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(r);
+    }
+    const summaryGroups: Array<{ key: string; averages: Record<string, string | number> }> = [];
+    for (const [key, groupRows] of groups) {
+      const averages: Record<string, string | number> = {};
+      for (const colIdx of scoreColIndices) {
+        const values = groupRows.map(r => parseFloat(r.cells[colIdx] ?? '0')).filter(n => !isNaN(n));
+        const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+        averages[String(colIdx)] = decimalPlaces !== null ? parseFloat(avg.toFixed(decimalPlaces)) : parseFloat(avg.toFixed(2));
+      }
+      if (totalColIdx >= 0) {
+        const values = groupRows.map(r => parseFloat(r.cells[totalColIdx] ?? '0')).filter(n => !isNaN(n));
+        const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+        averages[String(totalColIdx)] = decimalPlaces !== null ? parseFloat(avg.toFixed(decimalPlaces)) : parseFloat(avg.toFixed(2));
+      }
+      summaryGroups.push({ key, averages });
+    }
+    emit({ summaryGroups });
+  };
+
+  // ── 操作 5: 标题行填充颜色 ──
+  const pickColor = (color: string) => { setHeaderColor(color); emit({ headerColor: color }); };
+
+  // ── 操作 6: 设置成绩保留小数位 ──
+  const setDecimals = (places: number) => { setDecimalPlaces(places); emit({ decimalPlaces: places }); };
+
+  const headerBg = COLOR_MAP[headerColor] ?? '';
+
+  return (
+    <div className="space-y-4">
+      {/* 工具栏 */}
+      <div className="flex flex-wrap gap-2 rounded-lg border bg-secondary/30 p-3">
+        <Button type="button" size="sm" variant={borderApplied ? 'default' : 'outline'} disabled={disabled} onClick={toggleBorder}>表格边框</Button>
+        {classColIdx >= 0 && <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={applyFormula}>fx 求班级</Button>}
+        <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={sortRows}>排序 ↕</Button>
+        <Button type="button" size="sm" variant={showSummary ? 'default' : 'outline'} disabled={disabled} onClick={toggleSummary}>分类汇总 Σ</Button>
+        <span className="flex items-center gap-1">
+          <span className="text-sm text-muted-foreground">标题色:</span>
+          {colorOptions.map(c => (
+            <button key={c} type="button" disabled={disabled} onClick={() => pickColor(c)}
+              className={`h-7 w-7 rounded border-2 ${headerColor === c ? 'ring-2 ring-primary ring-offset-1' : 'border-gray-300'}`}
+              style={{ backgroundColor: COLOR_MAP[c] || 'transparent' }}
+              aria-label={`标题填充${c}色`} title={c} />
+          ))}
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="text-sm text-muted-foreground">小数:</span>
+          {[0, 1, 2].map(d => (
+            <Button key={d} type="button" size="sm" variant={decimalPlaces === d ? 'default' : 'outline'} disabled={disabled} onClick={() => setDecimals(d)}>{d}位</Button>
+          ))}
+        </span>
+      </div>
+
+      {/* 数据表 */}
+      <div className={`overflow-x-auto rounded-lg ${borderApplied ? 'border-2 border-gray-400' : 'border'}`}>
+        <table className="w-full text-base">
+          <thead>
+            <tr style={headerBg ? { backgroundColor: headerBg } : undefined}>
+              {columns.map((col, ci) => (
+                <th key={ci} className={`px-3 py-2 text-left font-medium whitespace-nowrap ${borderApplied ? 'border border-gray-400' : 'border-b'}`}>
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, ri) => (
+              <tr key={row.id} className={showSummary && ri === 0 ? '' : ''}>
+                {row.cells.map((cell, ci) => (
+                  <td key={ci} className={`px-3 py-2 whitespace-nowrap ${borderApplied ? 'border border-gray-400' : 'border-b'}`}>
+                    {displayCell(cell)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+            {/* 分类汇总行 */}
+            {showSummary && Array.isArray(existing.summaryGroups) && (existing.summaryGroups as Array<{ key: string; averages: Record<string, string | number> }>).map((grp, gi) => (
+              <tr key={`summary-${gi}`} className="bg-secondary/40 font-medium">
+                {columns.map((_, ci) => {
+                  const val = grp.averages[String(ci)];
+                  if (ci === 0) return <td key={ci} className={`px-3 py-2 ${borderApplied ? 'border border-gray-400' : 'border-b'}`}>{grp.key} 平均值</td>;
+                  if (val !== undefined) return <td key={ci} className={`px-3 py-2 ${borderApplied ? 'border border-gray-400' : 'border-b'}`}>{decimalPlaces !== null ? formatDecimal(String(val), decimalPlaces) : val}</td>;
+                  return <td key={ci} className={`px-3 py-2 ${borderApplied ? 'border border-gray-400' : 'border-b'}`}>—</td>;
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
