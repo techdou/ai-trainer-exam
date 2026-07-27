@@ -3,9 +3,9 @@
  *
  * 优先级: process.env > .env.local > 抛出提示
  *
- * 在 .env.local 中配置（示例）:
- *   VERIFY_ADMIN_PASSWORD=SEEDED
- *   VERIFY_STUDENT_PASSWORD=SEEDED
+ * 在 .env.local 中配置（示例, 请填入真实种子密码）:
+ *   VERIFY_ADMIN_PASSWORD=<your-admin-password>
+ *   VERIFY_STUDENT_PASSWORD=<your-student-password>
  *   ...
  *
  * 用法:

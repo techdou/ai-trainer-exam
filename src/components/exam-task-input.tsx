@@ -276,6 +276,8 @@ function ExcelComprehensive({ config, value, onChange, disabled }: { config: Con
       groups.get(key)!.push(r);
     }
     const summaryGroups: Array<{ key: string; averages: Record<string, string | number> }> = [];
+    // averages 的 key 用列索引字符串(与 answer_key.summaryAverages 配置语义一致), 而非列名,
+    // 避免评分器 actual.averages[col] 恒为 undefined。组件与种子双方必须使用同一语义。
     for (const [key, groupRows] of groups) {
       const averages: Record<string, string | number> = {};
       for (const colIdx of scoreColIndices) {

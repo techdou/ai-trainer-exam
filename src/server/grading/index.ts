@@ -624,8 +624,15 @@ export const excelComprehensiveGrader: Grader<ExcelComprehensiveSubmission, Exce
 
     // ── 检查 5: 标题行填充色 ──
     if (typeof answerKey.headerColor === 'string') {
-      const colorPassed = normLabel(submission.headerColor) === normLabel(answerKey.headerColor);
-      results.push({ label: `标题行填充${answerKey.headerColor}色`, passed: colorPassed, detail: colorPassed ? '颜色正确' : `期望"${answerKey.headerColor}"色` });
+      // 颜色归一: 两端 trim; 空串/无/none 视为"未填色", 与组件默认选项"无"(提交空串)对齐。
+      const norm = (s: unknown) => {
+        const t = normLabel(s);
+        if (!t || t === '无' || t.toLowerCase() === 'none') return '';
+        return t;
+      };
+      const colorPassed = norm(submission.headerColor) === norm(answerKey.headerColor);
+      const label = norm(answerKey.headerColor) ? answerKey.headerColor : '无';
+      results.push({ label: `标题行填充${label}色`, passed: colorPassed, detail: colorPassed ? '颜色正确' : `期望"${label}"色` });
     }
 
     // ── 检查 6: 成绩保留小数 ──

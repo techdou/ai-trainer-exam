@@ -8,7 +8,7 @@
  * - createPaper: 在事务中创建试卷 + 写入快照条目
  */
 import { dbOne, dbQuery, dbTx } from './db';
-import { graderIdForTaskType, gradeByType, parseFillInBlankAnswerKey, parsePromptDescriptionAnswerKey } from './grading';
+import { graderIdForTaskType, gradeByType, parseFillInBlankAnswerKey, parsePromptDescriptionAnswerKey, parseTrueFalseAnswerKey } from './grading';
 
 // ============================================================
 // 类型
@@ -81,14 +81,20 @@ export async function loadSourceItem(item: PaperItemRequest, organizationId: str
     if (!row) return null;
     const graderId = row.question_type === 'true_false' ? 'true_false' : row.question_type === 'fill_in_blank' ? 'fill_in_blank' : row.question_type === 'prompt_description' ? 'prompt_description' : 'single_choice';
     const rawAnswer = unwrapJsonScalar(row.answer_key);
-    const answerKey = row.question_type === 'true_false'
-      ? { correctAnswer: typeof rawAnswer === 'boolean' ? rawAnswer : ['A','TRUE','正确','对'].includes(String(rawAnswer).trim().toUpperCase()) }
-      : row.question_type === 'fill_in_blank'
+    // true_false 推断与 practice/check 路径共用 parseTrueFalseAnswerKey, 脏 answer_key 一致报错而非静默 false。
+    if (row.question_type === 'true_false') {
+      const correct = parseTrueFalseAnswerKey(rawAnswer);
+      if (correct === null) return null;
+      const answerKey = { correctAnswer: correct };
+      const probe = gradeByType('true_false', { answer: false }, answerKey);
+      return { id: row.id, itemType: 'question', itemId: row.id, section: 'theory', score: item.score, snapshot: { sourceItemId: row.id, questionType: row.question_type, stem: row.stem, options: row.options, explanation: row.explanation, knowledgePoint: row.knowledge_point, difficulty: row.difficulty, sourceVersion: row.published_version }, answerKey, gradingConfig: {}, graderId, graderVersion: probe.graderVersion };
+    }
+    const answerKey = row.question_type === 'fill_in_blank'
         ? { acceptable: parseFillInBlankAnswerKey(rawAnswer) ?? [] }
         : row.question_type === 'prompt_description'
           ? (parsePromptDescriptionAnswerKey(rawAnswer) ?? { keywords: [] })
           : { correctOption: String((rawAnswer as { letter?: unknown } | null)?.letter ?? rawAnswer ?? '').trim().toUpperCase() };
-    const probe = gradeByType(graderId, row.question_type === 'true_false' ? { answer: false } : row.question_type === 'fill_in_blank' ? { text: '' } : row.question_type === 'prompt_description' ? { text: '' } : { selectedOption: 'A' }, answerKey);
+    const probe = gradeByType(graderId, row.question_type === 'fill_in_blank' ? { text: '' } : row.question_type === 'prompt_description' ? { text: '' } : { selectedOption: 'A' }, answerKey);
     return { id: row.id, itemType: 'question', itemId: row.id, section: 'theory', score: item.score, snapshot: { sourceItemId: row.id, questionType: row.question_type, stem: row.stem, options: row.options, explanation: row.explanation, knowledgePoint: row.knowledge_point, difficulty: row.difficulty, sourceVersion: row.published_version }, answerKey, gradingConfig: {}, graderId, graderVersion: probe.graderVersion };
   }
 

@@ -1,9 +1,10 @@
 import { NextRequest } from 'next/server';
+import { randomBytes } from 'node:crypto';
 import { requireRole } from '@/server/auth';
-import { dbOne, dbTx } from '@/server/db';
+import { dbOne, dbQuery, dbTx } from '@/server/db';
 import { ok, fail, catchError } from '@/lib/api';
 import { insertAudit } from '@/server/audit';
-import { getSupabaseClient, loadEnv } from '@/storage/database/supabase-client';
+import { getSupabaseClient, getSupabaseServiceRoleKey, loadEnv } from '@/storage/database/supabase-client';
 import { parseRoster, idCardToEmail, idCardToPassword } from '@/server/roster-import';
 
 export const runtime = 'nodejs';
@@ -15,7 +16,31 @@ interface ImportResult {
   created: number;
   skipped: number;
   errors: string[];
+  /** 机构后缀(首次导入时生成), 管理员需告知学员作为密码组成部分 */
+  passwordSuffix?: string;
   students: Array<{ name: string; idCard: string; email: string; status: 'created' | 'skipped' | 'error'; message?: string }>;
+}
+
+/**
+ * 读取或生成机构名册密码后缀。
+ * 存于 system_settings(roster_password_suffix), 全局共享; 首次导入时随机生成 8 位。
+ * 学员初始密码 = 身份证后六位 + 此后缀, 避免名册即密码本的安全漏洞。
+ */
+async function getOrCreatePasswordSuffix(): Promise<string> {
+  const row = await dbOne<{ value: string }>(
+    "SELECT value FROM system_settings WHERE key='roster_password_suffix'",
+  );
+  if (row?.value && row.value.length >= 6) return row.value;
+  // 8 位字母数字, 排除易混字符
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  const bytes = randomBytes(8);
+  const suffix = Array.from(bytes, b => alphabet[b % alphabet.length]).join('');
+  await dbQuery(
+    `INSERT INTO system_settings(key, value, updated_at) VALUES('roster_password_suffix', $1, NOW())
+     ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()`,
+    suffix,
+  );
+  return suffix;
 }
 
 export async function POST(req: NextRequest) {
@@ -32,6 +57,16 @@ export async function POST(req: NextRequest) {
     }
     if (!file.name.match(/\.xlsx?$/i)) {
       return fail(400, '仅支持 .xlsx 或 .xls 格式的名册文件');
+    }
+    // 文件大小上限 5MB, 防 XLSX 炸弹 OOM
+    if (file.size > 5 * 1024 * 1024) {
+      return fail(413, '名册文件不能超过 5MB');
+    }
+
+    // 显式校验 service role key: 缺失时 admin.createUser 必崩, 提前 fail 避免每条学员都静默 skipped
+    loadEnv();
+    if (!getSupabaseServiceRoleKey()) {
+      return fail(500, '服务器未配置 COZE_SUPABASE_SERVICE_ROLE_KEY, 无法创建账号, 请联系平台管理员');
     }
 
     // 解析 Excel
@@ -65,8 +100,7 @@ export async function POST(req: NextRequest) {
       cohortId = created!.id;
     }
 
-    // 批量创建学员
-    loadEnv();
+    const passwordSuffix = await getOrCreatePasswordSuffix();
     const supabase = getSupabaseClient();
     const result: ImportResult = {
       cohortId,
@@ -80,7 +114,7 @@ export async function POST(req: NextRequest) {
 
     for (const student of parsed.students) {
       const email = idCardToEmail(student.idCard);
-      const password = idCardToPassword(student.idCard);
+      const password = idCardToPassword(student.idCard, passwordSuffix);
 
       try {
         // 检查是否已存在（按邮箱查 profiles）
@@ -112,11 +146,40 @@ export async function POST(req: NextRequest) {
         });
 
         if (authError || !authData.user) {
-          // 唯一约束冲突 = 已存在
-          if (authError?.message.toLowerCase().includes('already')) {
-            // Auth 存在但 profiles 没有（异常状态），尝试通过 Admin API 获取并修复
-            result.skipped++;
-            result.students.push({ name: student.name, idCard: student.idCard, email, status: 'skipped', message: '账号已存在' });
+          const msg = (authError?.message ?? '创建失败').toLowerCase();
+          if (msg.includes('already')) {
+            // Auth 存在但 profiles 缺失(异常状态): 修复 profile+role+enrollment, 不静默 skipped
+            try {
+              const { data: existing } = await supabase.auth.admin.listUsers();
+              const authUser = existing?.users?.find(u => u.email?.toLowerCase() === email);
+              if (authUser) {
+                await dbTx(async (tx) => {
+                  await tx.query(
+                    `INSERT INTO profiles(id, organization_id, display_name, email, must_change_password, status)
+                     VALUES($1, $2, $3, $4, true, 'active')
+                     ON CONFLICT(id) DO UPDATE SET display_name=EXCLUDED.display_name, updated_at=NOW()`,
+                    [authUser.id, orgId, student.name, email],
+                  );
+                  await tx.query(
+                    'INSERT INTO user_roles(user_id, role, organization_id) VALUES($1, $2, $3) ON CONFLICT DO NOTHING',
+                    [authUser.id, 'student', orgId],
+                  );
+                  await tx.query(
+                    `INSERT INTO enrollments(user_id, cohort_id, status, created_at, updated_at)
+                     VALUES($1, $2, 'active', NOW(), NOW())
+                     ON CONFLICT(user_id, cohort_id) DO UPDATE SET status='active', updated_at=NOW()`,
+                    [authUser.id, cohortId],
+                  );
+                });
+                result.created++;
+                result.students.push({ name: student.name, idCard: student.idCard, email, status: 'created', message: '账号已存在并已修复业务数据' });
+                continue;
+              }
+            } catch {
+              // 修复失败, 落入 error 让管理员看到
+            }
+            result.errors.push(`${student.name}(${student.idCard}): Auth 账号已存在但无法修复业务数据, 请联系平台管理员`);
+            result.students.push({ name: student.name, idCard: student.idCard, email, status: 'error', message: 'Auth 账号已存在但业务数据修复失败' });
           } else {
             result.errors.push(`${student.name}(${student.idCard}): ${authError?.message ?? '创建失败'}`);
             result.students.push({ name: student.name, idCard: student.idCard, email, status: 'error', message: authError?.message ?? '创建失败' });
@@ -162,7 +225,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 审计日志
+    // 仅当本次有新建学员时回传后缀, 提示管理员告知学员
+    if (result.created > 0) result.passwordSuffix = passwordSuffix;
+
+    // 审计日志(密码相关不写详情)
     await insertAudit({
       actorId: user.id,
       actorRole: user.roles[0],

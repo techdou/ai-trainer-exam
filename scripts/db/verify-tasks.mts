@@ -46,8 +46,48 @@ function perfectSubmission(taskType: string, answer: Record<string, unknown>): u
       }
       return { subtasks: sub };
     }
+    case 'fill_in_blank': {
+      // 填空题满分提交: 每空填入第一个 acceptable 答案
+      const blanks: Record<string, string> = {};
+      for (const [k, arr] of Object.entries(answer.acceptable as Record<string, string[]>)) {
+        if (Array.isArray(arr) && arr.length) blanks[k] = arr[0];
+      }
+      return { blanks };
+    }
+    case 'prompt_description': {
+      // 提示词描述题: 把所有 keyword 拼进一段文本即可命中
+      const kws = (answer.keywords as string[]) ?? [];
+      return { text: kws.join(' ') };
+    }
+    case 'excel_comprehensive': {
+      // Excel 综合题满分: 套用全部 answer_key 期望值, 并把每行的"班级列"按 formulaResults 填上期望值
+      // (评分器读 submission.rows[i].cells[classColumnIndex], 不是直接读 formulaResults)
+      const classCol = (answer.classColumnIndex as number) ?? -1;
+      const formulaResults = (answer.formulaResults as Record<string, string>) ?? {};
+      const sortedRowOrder = (answer.sortedRowOrder as string[]) ?? [];
+      const rows = sortedRowOrder.length
+        ? sortedRowOrder.map(rowId => ({ id: rowId, cells: classCol >= 0 ? buildRowCells(rowId, classCol, formulaResults[rowId] ?? '') : [] }))
+        : Object.entries(formulaResults).map(([rowId, val]) => ({ id: rowId, cells: classCol >= 0 ? buildRowCells(rowId, classCol, val) : [] }));
+      const sub: Record<string, unknown> = {
+        borderApplied: answer.borderRequired ?? true,
+        headerColor: answer.headerColor ?? '',
+        decimalPlaces: answer.decimalPlaces ?? 0,
+        rows,
+        rowOrder: sortedRowOrder,
+      };
+      if (Array.isArray(answer.summaryAverages)) sub.summaryGroups = answer.summaryAverages;
+      return sub;
+    }
     default: return null;
   }
+}
+
+/** 构造一行 cells: 在 classCol 位置填入 classVal, 其余位置留空字符串。 */
+function buildRowCells(rowId: string, classCol: number, classVal: string): string[] {
+  // 题目列数较多(11 列), 这里只填到 classCol+1, 评分器只读 classCol 列
+  const cells: string[] = new Array(classCol + 1).fill('');
+  cells[classCol] = classVal;
+  return cells;
 }
 
 for (const bank of ['practice_task_templates', 'exam_task_templates'] as const) {
