@@ -87,6 +87,8 @@ interface ReportData {
 const typeNameMap: Record<string, string> = {
   single_choice: '单选题',
   true_false: '判断题',
+  fill_in_blank: '填空题',
+  prompt_description: '提示词描述题',
   excel_delete_rows: 'Excel删除行',
   stats_table_fill: '统计表填写',
   file_classification: '文件分类',
