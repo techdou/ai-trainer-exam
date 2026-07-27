@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { randomBytes } from 'node:crypto';
 import { requireRole } from '@/server/auth';
-import { dbOne, dbQuery, dbTx } from '@/server/db';
+import { dbOne, dbTx } from '@/server/db';
 import { ok, fail, catchError } from '@/lib/api';
 import { insertAudit } from '@/server/audit';
 import { getSupabaseClient, getSupabaseServiceRoleKey, loadEnv } from '@/storage/database/supabase-client';
@@ -23,24 +23,24 @@ interface ImportResult {
 
 /**
  * 读取或生成机构名册密码后缀。
- * 存于 system_settings(roster_password_suffix), 全局共享; 首次导入时随机生成 8 位。
+ * 每个机构独立存于 system_settings(roster_password_suffix:<organizationId>)。
  * 学员初始密码 = 身份证后六位 + 此后缀, 避免名册即密码本的安全漏洞。
  */
-async function getOrCreatePasswordSuffix(): Promise<string> {
-  const row = await dbOne<{ value: string }>(
-    "SELECT value FROM system_settings WHERE key='roster_password_suffix'",
-  );
-  if (row?.value && row.value.length >= 6) return row.value;
+async function getOrCreatePasswordSuffix(organizationId: string): Promise<string> {
+  const settingKey = `roster_password_suffix:${organizationId}`;
   // 8 位字母数字, 排除易混字符
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
   const bytes = randomBytes(8);
   const suffix = Array.from(bytes, b => alphabet[b % alphabet.length]).join('');
-  await dbQuery(
-    `INSERT INTO system_settings(key, value, updated_at) VALUES('roster_password_suffix', $1, NOW())
-     ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()`,
+  const row = await dbOne<{ value: string }>(
+    `INSERT INTO system_settings(key, value, updated_at) VALUES($1, $2, NOW())
+     ON CONFLICT(key) DO UPDATE SET key=EXCLUDED.key
+     RETURNING value`,
+    settingKey,
     suffix,
   );
-  return suffix;
+  if (!row?.value || row.value.length < 6) throw new Error('机构名册密码后缀配置无效');
+  return row.value;
 }
 
 export async function POST(req: NextRequest) {
@@ -55,20 +55,19 @@ export async function POST(req: NextRequest) {
     if (!file || !(file instanceof File)) {
       return fail(400, '请上传名册文件');
     }
-    if (!file.name.match(/\.xlsx?$/i)) {
-      return fail(400, '仅支持 .xlsx 或 .xls 格式的名册文件');
+    if (!file.name.match(/\.xlsx$/i)) {
+      return fail(400, '仅支持 .xlsx 格式的名册文件');
     }
     // 文件大小上限 5MB, 防 XLSX 炸弹 OOM
     if (file.size > 5 * 1024 * 1024) {
       return fail(413, '名册文件不能超过 5MB');
     }
-    // magic number 二次校验: xlsx/xls 实际是 ZIP(PK\x03\x04), 防伪造扩展名
+    // magic number 二次校验: xlsx 实际是 ZIP(PK\x03\x04), 防伪造扩展名
     const fileBuffer = await file.arrayBuffer();
     const header = new Uint8Array(fileBuffer.slice(0, 4));
     const isZip = header[0] === 0x50 && header[1] === 0x4b && header[2] === 0x03 && header[3] === 0x04;
-    const isOle = header[0] === 0xd0 && header[1] === 0xcf && header[2] === 0x11 && header[3] === 0xe0; // 老 .xls OLE
-    if (!isZip && !isOle) {
-      return fail(400, '文件内容不是有效的 Excel 文件(缺少 ZIP/OLE 文件头), 可能伪造了扩展名');
+    if (!isZip) {
+      return fail(400, '文件内容不是有效的 .xlsx 文件(缺少 ZIP 文件头), 可能伪造了扩展名');
     }
 
     // 显式校验 service role key: 缺失时 admin.createUser 必崩, 提前 fail 避免每条学员都静默 skipped
@@ -78,7 +77,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 解析 Excel(fileBuffer 已在 magic number 校验时读取)
-    const parsed = parseRoster(fileBuffer);
+    const parsed = await parseRoster(fileBuffer);
     const cohortName = customCohortName.trim() || parsed.cohortName;
 
     // 确定组织 ID
@@ -92,12 +91,23 @@ export async function POST(req: NextRequest) {
 
     // 确定班级：优先用传入的 cohortId，否则按名称查找或创建
     let cohortId = existingCohortId;
+    let resolvedCohortName = cohortName;
+    if (cohortId) {
+      const selectedCohort = await dbOne<{ id: string; name: string }>(
+        'SELECT id,name FROM cohorts WHERE id=$1 AND organization_id=$2 AND deleted_at IS NULL',
+        cohortId,
+        orgId,
+      );
+      if (!selectedCohort) return fail(404, '所选班级不存在或不属于当前学校');
+      resolvedCohortName = selectedCohort.name;
+    }
     if (!cohortId) {
-      const existing = await dbOne<{ id: string }>(
-        'SELECT id FROM cohorts WHERE organization_id=$1 AND name=$2 AND deleted_at IS NULL',
+      const existing = await dbOne<{ id: string; name: string }>(
+        'SELECT id,name FROM cohorts WHERE organization_id=$1 AND name=$2 AND deleted_at IS NULL',
         orgId, cohortName,
       );
       cohortId = existing?.id ?? '';
+      resolvedCohortName = existing?.name ?? cohortName;
     }
     if (!cohortId) {
       const created = await dbOne<{ id: string }>(
@@ -107,11 +117,11 @@ export async function POST(req: NextRequest) {
       cohortId = created!.id;
     }
 
-    const passwordSuffix = await getOrCreatePasswordSuffix();
+    const passwordSuffix = await getOrCreatePasswordSuffix(orgId);
     const supabase = getSupabaseClient();
     const result: ImportResult = {
       cohortId,
-      cohortName,
+      cohortName: resolvedCohortName,
       total: parsed.students.length,
       created: 0,
       skipped: 0,
@@ -125,11 +135,34 @@ export async function POST(req: NextRequest) {
 
       try {
         // 检查是否已存在（按邮箱查 profiles）
-        const existingProfile = await dbOne<{ id: string }>(
-          'SELECT id FROM profiles WHERE email=$1', email,
+        const existingProfile: { id: string; organization_id: string | null; is_student: boolean } | null = await dbOne<{
+          id: string;
+          organization_id: string | null;
+          is_student: boolean;
+        }>(
+          `SELECT p.id,p.organization_id,
+                  EXISTS(
+                    SELECT 1 FROM user_roles ur
+                    WHERE ur.user_id=p.id AND ur.role='student' AND ur.organization_id=$2
+                  ) AS is_student
+             FROM profiles p WHERE p.email=$1`,
+          email,
+          orgId,
         );
 
         if (existingProfile) {
+          if (existingProfile.organization_id !== orgId) {
+            const message = '账号已属于其他机构，已拒绝跨机构关联';
+            result.errors.push(`${student.name}(${student.idCard}): ${message}`);
+            result.students.push({ name: student.name, idCard: student.idCard, email, status: 'error', message });
+            continue;
+          }
+          if (!existingProfile.is_student) {
+            const message = '同邮箱账号不是当前机构学员，已拒绝加入班级';
+            result.errors.push(`${student.name}(${student.idCard}): ${message}`);
+            result.students.push({ name: student.name, idCard: student.idCard, email, status: 'error', message });
+            continue;
+          }
           // 已存在：确保已注册到当前班级
           await dbTx(async (tx) => {
             await tx.query(
@@ -242,7 +275,7 @@ export async function POST(req: NextRequest) {
       action: 'cohort.import_roster',
       entityType: 'cohort',
       entityId: cohortId,
-      details: `导入名册"${file.name}"到班级"${cohortName}"：共${result.total}人，新建${result.created}人，跳过${result.skipped}人${result.errors.length ? `，失败${result.errors.length}人` : ''}`,
+      details: `导入名册"${file.name}"到班级"${resolvedCohortName}"：共${result.total}人，新建${result.created}人，跳过${result.skipped}人${result.errors.length ? `，失败${result.errors.length}人` : ''}`,
       organizationId: orgId,
     });
 

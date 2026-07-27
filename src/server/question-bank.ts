@@ -9,6 +9,8 @@
  */
 import { dbQuery, dbOne, dbExec } from './db';
 import type { Role } from '@/lib/constants';
+import { ApiError } from '@/server/auth';
+import { allowedStatusesFor, reviewTargetStatus } from '@/server/content-workflow';
 
 // ============================================================
 // 类型定义
@@ -52,10 +54,12 @@ export interface QuestionSearchParams {
   organizationId?: string | null;
   page?: number;
   pageSize?: number;
+  includeAnswerKey?: boolean;
 }
 
+export type QuestionListItem = Omit<QuestionRow, 'answer_key'> & { answer_key?: unknown };
 export interface QuestionListResult {
-  items: QuestionRow[];
+  items: QuestionListItem[];
   total: number;
   page: number;
   pageSize: number;
@@ -147,12 +151,15 @@ export async function searchQuestions(params: QuestionSearchParams): Promise<Que
   );
   const total = parseInt(countRes?.count ?? '0', 10);
 
-  const items = await dbQuery<QuestionRow>(
+  const rows = await dbQuery<QuestionRow>(
     `SELECT * FROM question_items ${softDeleteGuard} ORDER BY created_at DESC LIMIT $${argIdx++} OFFSET $${argIdx++}`,
     ...args,
     pageSize,
     offset,
   );
+  const items: QuestionListItem[] = params.includeAnswerKey
+    ? rows
+    : rows.map(({ answer_key: _answerKey, ...question }) => question);
 
   return { items, total, page, pageSize };
 }
@@ -282,10 +289,19 @@ export async function updateQuestion(
   if (fields.length === 0) return getQuestionById(id);
 
   args.push(id);
-  await dbExec(
-    `UPDATE ${table} SET ${fields.join(', ')} WHERE id = $${idx}`,
+  const updatedCount = await dbExec(
+    `UPDATE ${table}
+        SET ${fields.join(', ')},
+            review_status = CASE
+              WHEN review_status IN ('reviewed','published') THEN 'needs_revision'
+              ELSE review_status
+            END,
+            reviewer_id = NULL,
+            updated_at = now()
+      WHERE id = $${idx} AND review_status <> 'retired'`,
     ...args,
   );
+  if (updatedCount === 0) throw new ApiError(409, '已退役题目不能编辑，或题目状态已发生变化');
 
   // 审计日志
   await dbExec(
@@ -313,35 +329,28 @@ export async function reviewQuestion(
   if (!bankType) return null;
 
   const table = tableNameFor(bankType);
-  const statusMap: Record<string, string> = {
-    approve: 'reviewed',
-    reject: 'needs_revision',
-    publish: 'published',
-    retire: 'retired',
-  };
-
-  const newStatus = statusMap[action];
-  const newVersion = action === 'publish' ? 1 : undefined;
-
-  if (newVersion !== undefined) {
-    await dbExec(
-      `UPDATE ${table}
-       SET review_status = $1, reviewer_id = $2, published_version = $3, updated_at = now()
-       WHERE id = $4`,
-      newStatus,
-      reviewerId,
-      newVersion,
-      id,
-    );
-  } else {
-    await dbExec(
-      `UPDATE ${table}
-       SET review_status = $1, reviewer_id = $2, updated_at = now()
-       WHERE id = $3`,
-      newStatus,
-      reviewerId,
-      id,
-    );
+  const newStatus = reviewTargetStatus(action);
+  const allowedStatuses = allowedStatusesFor(action);
+  const placeholders = allowedStatuses.map((_, index) => `$${index + 4}`).join(', ');
+  const updatedCount = await dbExec(
+    `UPDATE ${table}
+        SET review_status = $1,
+            reviewer_id = $2,
+            published_version = CASE
+              WHEN $3::boolean THEN COALESCE(published_version, 0) + 1
+              ELSE published_version
+            END,
+            updated_at = now()
+      WHERE id = $${allowedStatuses.length + 4}
+        AND review_status IN (${placeholders})`,
+    newStatus,
+    reviewerId,
+    action === 'publish',
+    ...allowedStatuses,
+    id,
+  );
+  if (updatedCount === 0) {
+    throw new ApiError(409, `题目当前状态不允许执行 ${action}，请刷新后重试`);
   }
 
   // 审计日志
@@ -443,6 +452,7 @@ export async function listQuestions(params: {
   page?: number;
   pageSize?: number;
   organizationId?: string | null;
+  includeAnswerKey?: boolean;
 }): Promise<QuestionListResult> {
   return searchQuestions({
     bankType: params.bankType,
@@ -452,6 +462,7 @@ export async function listQuestions(params: {
     page: params.page,
     pageSize: params.pageSize,
     organizationId: params.organizationId,
+    includeAnswerKey: params.includeAnswerKey,
   });
 }
 
@@ -477,10 +488,13 @@ export function canReviewQuestions(role: Role | string): boolean {
 export async function deleteQuestion(questionId: string): Promise<void> {
   const bankType = await findQuestionBankType(questionId);
   if (!bankType) return;
-  await dbExec(
-    `UPDATE ${tableNameFor(bankType)} SET review_status = 'retired', updated_at = now() WHERE id = $1`,
+  const updatedCount = await dbExec(
+    `UPDATE ${tableNameFor(bankType)}
+        SET review_status = 'retired', updated_at = now()
+      WHERE id = $1 AND review_status = 'published'`,
     questionId,
   );
+  if (updatedCount === 0) throw new ApiError(409, '只有已发布题目可以退役');
 }
 
 /**
@@ -489,10 +503,13 @@ export async function deleteQuestion(questionId: string): Promise<void> {
 export async function retireQuestion(questionId: string): Promise<void> {
   const bankType = await findQuestionBankType(questionId);
   if (!bankType) return;
-  await dbExec(
-    `UPDATE ${tableNameFor(bankType)} SET review_status = 'retired', updated_at = now() WHERE id = $1`,
+  const updatedCount = await dbExec(
+    `UPDATE ${tableNameFor(bankType)}
+        SET review_status = 'retired', updated_at = now()
+      WHERE id = $1 AND review_status = 'published'`,
     questionId,
   );
+  if (updatedCount === 0) throw new ApiError(409, '只有已发布题目可以退役');
 }
 
 // ============================================================

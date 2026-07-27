@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireRole } from '@/server/auth';
+import { organizationScope, requireRole } from '@/server/auth';
 import { dbQuery } from '@/server/db';
 import {ok, fail, catchError} from '@/lib/api';
 
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     const user = await requireRole(request as unknown as Request, ['super_admin', 'school_admin', 'auditor']);
     // 租户隔离: school_admin 只看本机构; super_admin/auditor 看全平台。
     // 统一用 ($1::varchar IS NULL OR <表>.organization_id = $1) 注入每条 SQL。
-    const scopedOrg = user.roles.includes('school_admin') && !user.roles.includes('super_admin') ? user.organizationId : null;
+    const scopedOrg = organizationScope(user, ['super_admin', 'auditor']);
     const params: unknown[] = [scopedOrg];
 
     // 1. 成绩分布（按分数段统计）

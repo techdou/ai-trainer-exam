@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { requireRole } from '@/server/auth';
-import { dbQuery } from '@/server/db';
+import { organizationScope, requireRole } from '@/server/auth';
+import { dbOne, dbQuery } from '@/server/db';
 import { ok, fail, catchError, parseBody, genInitialPassword } from '@/lib/api';
 import { createUserWithRoles } from '@/server/users';
 import { insertAudit } from '@/server/audit';
@@ -28,7 +28,8 @@ export async function GET(request: NextRequest) {
     // profiles 表没有 deleted_at 列(软停用走 status='disabled'), 曾经照抄 cohorts 的
     // 软删条件导致整接口 500。停用账号仍列出, 由前端按 status 标识。
     const clauses: string[] = []; const args: unknown[] = [];
-    if (!user.roles.includes('super_admin')) { args.push(user.organizationId); clauses.push(`p.organization_id=$${args.length}`); }
+    const scopedOrg = organizationScope(user);
+    if (scopedOrg) { args.push(scopedOrg); clauses.push(`p.organization_id=$${args.length}`); }
     if (role) { args.push(role); clauses.push(`EXISTS(SELECT 1 FROM user_roles x WHERE x.user_id=p.id AND x.role=$${args.length})`); }
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const users = await dbQuery<{ id:string;email:string;display_name:string;created_at:string;status:string;organization_id:string|null;organization_name:string|null;roles:string[] }>(
@@ -52,7 +53,25 @@ export async function POST(request: NextRequest) {
       if (bad.length > 0) return fail(403, `学校管理员不能分配这些角色：${bad.join('、')}`);
       if (!user.organizationId) return fail(403, '账号未绑定机构');
     }
-    const organizationId = isSuper ? (body.organizationId ?? null) : user.organizationId;
+    const organizationId = isSuper ? (body.organizationId ?? null) : organizationScope(user);
+    const tenantRoles = body.roles.filter(role => role !== 'super_admin' && role !== 'auditor');
+    const globalRoles = body.roles.filter(role => role === 'super_admin' || role === 'auditor');
+    if (tenantRoles.length > 0 && globalRoles.length > 0) {
+      return fail(400, '全局角色与机构角色不能分配给同一账号');
+    }
+    if (globalRoles.length > 0 && organizationId) {
+      return fail(400, '全局角色账号不能绑定所属学校');
+    }
+    if (tenantRoles.length > 0 && !organizationId) {
+      return fail(400, '机构级角色必须选择所属学校');
+    }
+    if (organizationId) {
+      const organization = await dbOne<{ id: string }>(
+        "SELECT id FROM organizations WHERE id=$1 AND status='active' AND deleted_at IS NULL",
+        organizationId,
+      );
+      if (!organization) return fail(404, '所属学校不存在或已停用');
+    }
     // 初始密码只在本次响应中返回一次, 不落日志; 用户首次登录强制改密。
     const initialPassword = genInitialPassword();
     const { userId } = await createUserWithRoles({

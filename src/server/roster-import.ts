@@ -9,7 +9,7 @@
  * - 第 4 行起：学员数据
  * - 最后一行：备注说明（自动跳过）
  */
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 export interface RosterStudent {
   name: string;
@@ -59,12 +59,23 @@ function findColumnIndex(headers: unknown[], keywords: string[]): number {
  * 解析 Excel 名册文件 Buffer。
  * 自动识别表头行并提取学员数据，容错处理合并单元格/空行。
  */
-export function parseRoster(fileBuffer: ArrayBuffer): ParsedRoster {
-  const wb = XLSX.read(fileBuffer, { type: 'array' });
-  const sheetName = wb.SheetNames[0];
-  if (!sheetName) throw new Error('Excel 文件中没有工作表');
-  const ws = wb.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, blankrows: false });
+export async function parseRoster(fileBuffer: ArrayBuffer): Promise<ParsedRoster> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(fileBuffer);
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) throw new Error('Excel 文件中没有工作表');
+  if (worksheet.rowCount > 5000 || worksheet.columnCount > 100) {
+    throw new Error('名册规模超过限制（最多 5000 行、100 列）');
+  }
+
+  const rows: string[][] = [];
+  worksheet.eachRow({ includeEmpty: false }, row => {
+    const values: string[] = [];
+    for (let column = 1; column <= worksheet.columnCount; column++) {
+      values[column - 1] = row.getCell(column).text.trim();
+    }
+    rows.push(values);
+  });
 
   if (rows.length < 3) throw new Error('名册文件内容不足，至少需要标题行、表头行和 1 条学员数据');
 
@@ -76,7 +87,6 @@ export function parseRoster(fileBuffer: ArrayBuffer): ParsedRoster {
   let headerRowIndex = -1;
   for (let i = 0; i < Math.min(rows.length, 10); i++) {
     const row = rows[i];
-    if (!Array.isArray(row)) continue;
     const cells = row.map(c => String(c ?? '').trim());
     if (cells.some(c => c.includes('姓名')) && cells.some(c => c.includes('身份') || c.includes('身份证'))) {
       headerRowIndex = i;
@@ -85,7 +95,7 @@ export function parseRoster(fileBuffer: ArrayBuffer): ParsedRoster {
   }
   if (headerRowIndex === -1) throw new Error('无法识别表头行，请确保名册包含"姓名"和"公民身份号码"列');
 
-  const headers = rows[headerRowIndex] as unknown[];
+  const headers = rows[headerRowIndex];
 
   const colName = findColumnIndex(headers, ['姓名']);
   const colGender = findColumnIndex(headers, ['性别']);
@@ -104,8 +114,7 @@ export function parseRoster(fileBuffer: ArrayBuffer): ParsedRoster {
 
   const students: RosterStudent[] = [];
   for (let i = headerRowIndex + 1; i < rows.length; i++) {
-    const row = rows[i] as unknown[];
-    if (!Array.isArray(row)) continue;
+    const row = rows[i];
     const idCard = String(row[colIdCard] ?? '').trim();
     const name = String(row[colName] ?? '').trim();
 

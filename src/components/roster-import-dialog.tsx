@@ -71,8 +71,8 @@ export function RosterImportDialog({
 
   const handleFileSelect = async (selectedFile: File | null) => {
     if (!selectedFile) return;
-    if (!selectedFile.name.match(/\.xlsx?$/i)) {
-      toast.error('仅支持 .xlsx 或 .xls 格式');
+    if (!selectedFile.name.match(/\.xlsx$/i)) {
+      toast.error('仅支持 .xlsx 格式');
       return;
     }
     setFile(selectedFile);
@@ -241,7 +241,7 @@ export function RosterImportDialog({
               <input
                 ref={fileRef}
                 type="file"
-                accept=".xlsx,.xls"
+                accept=".xlsx"
                 className="hidden"
                 onChange={e => handleFileSelect(e.target.files?.[0] ?? null)}
               />
@@ -259,7 +259,7 @@ export function RosterImportDialog({
                   <div className="text-base">
                     {previewing ? <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> 正在解析...</span> : '点击或拖拽名册文件到此处'}
                   </div>
-                  <div className="text-sm text-muted-foreground">支持 .xlsx / .xls 格式</div>
+                  <div className="text-sm text-muted-foreground">支持 .xlsx 格式</div>
                 </div>
               )}
             </div>

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireRole } from '@/server/auth';
+import { organizationScope, requireRole } from '@/server/auth';
 import { dbQuery } from '@/server/db';
 import { ok, catchError } from '@/lib/api';
 
@@ -28,9 +28,10 @@ export async function GET(req: NextRequest) {
       params.push(cohortId);
     }
 
-    if (user.organizationId && !user.roles.includes('super_admin')) {
+    const scopedOrg = organizationScope(user);
+    if (scopedOrg) {
       whereClause += ` AND s.organization_id = $${paramIdx++}`;
-      params.push(user.organizationId);
+      params.push(scopedOrg);
     }
 
     type ScoreRow = {

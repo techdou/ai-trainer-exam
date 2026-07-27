@@ -2,6 +2,8 @@ import type { PoolClient } from 'pg';
 import { ApiError, type SessionUser } from '@/server/auth';
 import { dbOne, dbQuery } from '@/server/db';
 import type { ExamStatus } from '@/lib/constants';
+import { isScheduleStartableStatus } from './exam-status';
+export { isScheduleStartableStatus } from './exam-status';
 
 export interface ScheduleAccessRow {
   id: string;
@@ -20,10 +22,6 @@ export interface ScheduleAccessRow {
   pass_score: number;
   paper_version: number;
 }
-
-const ACTIVE_EXAM_STATUSES = new Set<ExamStatus>([
-  'published', 'waiting', 'practice_locked', 'exam_open', 'exam_closed', 'grading', 'results_pending', 'results_released',
-]);
 
 export async function assertPracticeUnlocked(user: SessionUser): Promise<void> {
   if (!user.roles.includes('student')) return;
@@ -64,7 +62,7 @@ export async function getScheduleForStudent(scheduleId: string, userId: string):
  * 进程时间(Date.now())在多实例部署或时钟漂移时会破坏考试公平性。
  */
 export function assertScheduleCanStart(schedule: ScheduleAccessRow, now: number): void {
-  if (!ACTIVE_EXAM_STATUSES.has(schedule.status)) throw new ApiError(403, '考试尚未发布');
+  if (!isScheduleStartableStatus(schedule.status)) throw new ApiError(403, '当前考试状态不允许开始考试');
   const start = new Date(schedule.exam_start_at).getTime();
   const end = new Date(schedule.exam_end_at).getTime();
   const latestEntry = Math.min(end, start + schedule.late_entry_minutes * 60_000);

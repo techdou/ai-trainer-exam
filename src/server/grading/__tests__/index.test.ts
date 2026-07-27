@@ -4,6 +4,7 @@ import {
   imageCleanGrader, imageAnnotationGrader, pointAnnotationGrader,
   polylineAnnotationGrader, polygonAnnotationGrader, textSentimentGrader,
   audioTranscriptionGrader, gradeTaskByType,
+  excelComprehensiveGrader,
 } from '../index';
 
 describe('确定性评分引擎安全回归', () => {
@@ -16,6 +17,13 @@ describe('确定性评分引擎安全回归', () => {
     expect(deletedGood.feedback).toContain('误删');
   });
   it('统计表拒绝 parseFloat 式脏数字', () => expect(statsTableGrader.grade({cells:{A1:'123abc'}},{correctCells:{A1:123}}).score).toBe(0));
+  it('Excel 综合评分拒绝夹带文字的伪数字', () => {
+    const result = excelComprehensiveGrader.grade(
+      { summaryGroups: [{ key: '一班', averages: { score: 'abc85xyz' } }] },
+      { summaryAverages: [{ key: '一班', averages: { score: 85 } }] },
+    );
+    expect(result.score).toBe(0);
+  });
   it('文件分类使用稳定 ID 并拒绝未知文件', () => expect(fileClassifyGrader.grade({classifications:{f1:'中文',evil:'中文'}},{correctClassifications:{f1:'中文'}}).correct).toBe(false));
   it('图片清洗区分漏删与误删', () => {
     const r=imageCleanGrader.grade({decisions:{b:'discard',f:'keep'}},{correctDecisions:{b:'keep',f:'discard'}});

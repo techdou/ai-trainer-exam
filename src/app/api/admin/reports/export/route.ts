@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import ExcelJS from 'exceljs';
-import { requireRole } from '@/server/auth';
+import { organizationScope, requireRole } from '@/server/auth';
 import { dbQuery } from '@/server/db';
 import { fail, catchError } from '@/lib/api';
 import { insertAudit } from '@/server/audit';
@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
     if (type !== 'scores' && type !== 'progress') return fail(400, 'type 必须是 scores 或 progress');
     if (format !== 'csv' && format !== 'xlsx') return fail(400, 'format 必须是 csv 或 xlsx');
 
-    const scopedOrg = user.roles.includes('school_admin') && !user.roles.includes('super_admin') ? user.organizationId : null;
+    const scopedOrg = organizationScope(user, ['super_admin', 'auditor']);
     const data = type === 'scores' ? await buildScores(scopedOrg) : await buildProgress(scopedOrg);
 
     // 同步导出全量进内存, 设软上限防止数据增长后 OOM; 超限时引导走筛选/异步导出。

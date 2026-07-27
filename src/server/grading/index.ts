@@ -553,11 +553,7 @@ export interface ExcelComprehensiveAnswerKey {
 }
 /** 将字符串安全解析为数字，解析失败返回 null。 */
 function safeNumber(value: unknown): number | null {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value !== 'string') return null;
-  const text = value.trim().replace(/，/g, ',');
-  const n = Number(text.replace(/[^\d.\-]/g, ''));
-  return Number.isFinite(n) && text.length > 0 ? n : null;
+  return parseStrictNumber(value);
 }
 export const excelComprehensiveGrader: Grader<ExcelComprehensiveSubmission, ExcelComprehensiveAnswerKey> = {
   id: 'excel_comprehensive', version: '1.0.0',

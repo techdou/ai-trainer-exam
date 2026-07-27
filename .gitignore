@@ -1,6 +1,4 @@
-# ================================
 # 依赖与构建产物
-# ================================
 node_modules/
 .next/
 out/
@@ -8,66 +6,86 @@ dist/
 build/
 *.tsbuildinfo
 
-# ================================
-# 环境变量与密钥（仅保留 .env.example）
-# ================================
+# 环境变量与本地配置（仅提交无真实值的模板）
 .env
 .env.*
 !.env.example
+.npmrc.local
+*.local
 
-# 证书与私钥
+# 凭据、私钥、证书与本地数据库
 *.pem
 *.key
 *.p12
+*.pfx
+*.p8
+*.pkcs12
+*.jks
+*.keystore
 *.crt
+*.cer
+*.der
+*.csr
+credentials*.json
+service-account*.json
+*.secrets.json
+secrets/
+*.sqlite
+*.sqlite3
+*.db
 
-# ================================
 # 用户上传文件与原始素材（含隐私，不上传）
-# ================================
 assets/
+uploads/
 
-# ================================
-# 编辑器与 IDE 配置（每人不同，不上传）
-# ================================
+# 编辑器、AI 助手与开发平台配置
 .idea/
 .vscode/
 .cursor/
 .claude/
+.codex/
+.agents/
+.fleet/
+.zed/
+.windsurf/
+.coze
+.coze/
+.cozeproj/
+.codegraph/
 *.swp
 *.swo
 *~
 
-# ================================
 # 操作系统文件
-# ================================
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# ================================
-# 平台临时文件
-# ================================
+# 平台与预览临时文件
 .preview
-.cozeproj/
-.codegraph/
+.vercel/
 
-# ================================
 # 测试与覆盖率
-# ================================
 coverage/
 .nyc_output/
+test-results/
+playwright-report/
+blob-report/
 
-# ================================
 # 工具缓存
-# ================================
 .turbo/
-.vercel/
 .pnpm-store/
+.cache/
+.eslintcache
+.stylelintcache
 
-# ================================
 # 日志与临时输出
-# ================================
 *.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.pid
+*.pid.lock
 tmp/
-.cozeproj/reduction
-.codegraph
+temp/
