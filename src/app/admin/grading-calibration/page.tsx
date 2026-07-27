@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/session-client';
 import { AnnotationCanvas, type AnnotationData, type AnnotationTool } from '@/components/annotation-canvas';
-import { SlidersHorizontal, Save, Eye, Loader2, Image as ImageIcon, RefreshCw } from 'lucide-react';
+import { SlidersHorizontal, Save, Eye, Loader2, Image as ImageIcon, RefreshCw, Upload } from 'lucide-react';
 
 interface TaskTemplate {
   id: string;
@@ -98,6 +98,7 @@ export default function GradingCalibrationPage() {
   const [loadingImages, setLoadingImages] = useState(false);
   const [savingImage, setSavingImage] = useState(false);
   const [showImagePanel, setShowImagePanel] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const fetchTasks = useCallback(async (bank: 'practice' | 'exam') => {
     setLoading(true);
@@ -194,6 +195,33 @@ export default function GradingCalibrationPage() {
       toast.error('failed to update image');
     } finally {
       setSavingImage(false);
+    }
+  };
+
+  const handleUploadImage = async (file: File) => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('category', 'calibration');
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('access_token') : null;
+      const res = await fetch('/api/admin/media/upload-image', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      const json = await res.json();
+      if (json.success && json.data?.url) {
+        setImageUrlInput(json.data.url);
+        toast.success(`Uploaded: ${json.data.fileName ?? file.name}`);
+        await fetchImages();
+      } else {
+        toast.error(json.error ?? 'upload failed');
+      }
+    } catch {
+      toast.error('upload failed');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -314,9 +342,30 @@ export default function GradingCalibrationPage() {
                 </div>
                 {availableImages.length === 0 && !loadingImages && (
                   <p className="text-xs text-muted-foreground">
-                    No additional images found. Upload images to <code>public/training/gen/</code> or generate via Media Studio.
+                    No images found yet. Upload a file below or generate via Media Studio.
                   </p>
                 )}
+                {/* Upload new image */}
+                <div className="flex items-center gap-2 border-t pt-3">
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                    {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    {uploading ? 'Uploading...' : 'Upload Image'}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      disabled={uploading}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) handleUploadImage(f);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                  <span className="text-xs text-muted-foreground">
+                    JPG / PNG / WebP, max 10MB. Uploaded to cloud storage, available immediately.
+                  </span>
+                </div>
                 {imageUrlInput.trim() !== imageUrl && imageUrlInput.trim() && (
                   <p className="text-xs text-amber-600">
                     Changing image will clear existing annotations — please re-calibrate after applying.

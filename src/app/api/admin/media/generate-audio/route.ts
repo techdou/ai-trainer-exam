@@ -12,10 +12,10 @@ export async function POST(request:Request){
   const job=await dbOne<{id:string}>(`INSERT INTO media_generation_jobs(organization_id,media_kind,provider,status,prompt,params,created_by,created_at,updated_at)
    VALUES($1,'audio','pending','processing',$2,$3,$4,NOW(),NOW()) RETURNING id`,organizationId,body.text,{speaker:body.speaker,category:body.category,targetBank:body.targetBank},user.id);
   try{
-   const generated=await generateAudio(body.text,body.speaker,request.headers);const key=mediaObjectKey(organizationId,'audio',generated.extension);await uploadObject(key,generated.buffer,generated.contentType);const checksum=sha256(generated.buffer);
+   const generated=await generateAudio(body.text,body.speaker,request.headers);const key=mediaObjectKey(organizationId,'audio',generated.extension);const objectKey=await uploadObject(key,generated.buffer,generated.contentType);const checksum=sha256(generated.buffer);
    const asset=await dbOne<{id:string}>(`INSERT INTO asset_manifests(organization_id,media_kind,object_key,checksum,version,status,category,transcript,meta,job_id,created_at,updated_at)
-    VALUES($1,'audio',$2,$3,1,'draft',$4,$5,$6,$7,NOW(),NOW()) RETURNING id`,organizationId,key,checksum,body.category,body.text,{targetBank:body.targetBank,contentType:generated.contentType,provider:generated.provider,...generated.metadata},job!.id);
-   await dbExec(`UPDATE media_generation_jobs SET provider=$1,status='succeeded',result_object_key=$2,checksum=$3,updated_at=NOW() WHERE id=$4`,generated.provider,key,checksum,job!.id);
+    VALUES($1,'audio',$2,$3,1,'draft',$4,$5,$6,$7,NOW(),NOW()) RETURNING id`,organizationId,objectKey,checksum,body.category,body.text,{targetBank:body.targetBank,contentType:generated.contentType,provider:generated.provider,...generated.metadata},job!.id);
+   await dbExec(`UPDATE media_generation_jobs SET provider=$1,status='succeeded',result_object_key=$2,checksum=$3,updated_at=NOW() WHERE id=$4`,generated.provider,objectKey,checksum,job!.id);
    return ok({assetId:asset!.id,jobId:job!.id,previewUrl:`/api/admin/media/assets?id=${asset!.id}`,checksum,status:'draft',provider:generated.provider});
   }catch(error){await dbExec(`UPDATE media_generation_jobs SET status='failed',error=$1,updated_at=NOW() WHERE id=$2`,error instanceof Error?error.message:'生成失败',job!.id);throw error}
  }catch(error){return catchError(error)}

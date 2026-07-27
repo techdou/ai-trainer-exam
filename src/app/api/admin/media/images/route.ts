@@ -1,5 +1,6 @@
-import { readdir, stat } from 'fs/promises';
+import { readdir } from 'fs/promises';
 import { join } from 'path';
+import { S3Storage } from 'coze-coding-dev-sdk';
 import { requireRole } from '@/server/auth';
 import { dbQuery } from '@/server/db';
 import { ok, catchError } from '@/lib/api';
@@ -7,7 +8,10 @@ import { ok, catchError } from '@/lib/api';
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'];
 
 /** Recursively scan a public subdirectory for image files. */
-async function scanLocalImages(baseDir: string, urlPrefix: string): Promise<Array<{ url: string; label: string; source: 'local' }>> {
+async function scanLocalImages(
+  baseDir: string,
+  urlPrefix: string,
+): Promise<Array<{ url: string; label: string; source: 'local' }>> {
   const results: Array<{ url: string; label: string; source: 'local' }> = [];
   try {
     const entries = await readdir(baseDir, { withFileTypes: true });
@@ -15,7 +19,7 @@ async function scanLocalImages(baseDir: string, urlPrefix: string): Promise<Arra
       const fullPath = join(baseDir, entry.name);
       if (entry.isDirectory()) {
         results.push(...await scanLocalImages(fullPath, `${urlPrefix}/${entry.name}`));
-      } else if (IMAGE_EXTENSIONS.some(ext => entry.name.toLowerCase().endsWith(ext))) {
+      } else if (IMAGE_EXTENSIONS.some((ext) => entry.name.toLowerCase().endsWith(ext))) {
         results.push({
           url: `${urlPrefix}/${entry.name}`,
           label: entry.name,
@@ -29,6 +33,19 @@ async function scanLocalImages(baseDir: string, urlPrefix: string): Promise<Arra
   return results;
 }
 
+let storageInstance: S3Storage | null = null;
+function getStorage(): S3Storage {
+  if (storageInstance) return storageInstance;
+  storageInstance = new S3Storage({
+    endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
+    accessKey: '',
+    secretKey: '',
+    bucketName: process.env.COZE_BUCKET_NAME,
+    region: 'cn-beijing',
+  });
+  return storageInstance;
+}
+
 export async function GET(request: Request) {
   try {
     await requireRole(request, ['super_admin', 'school_admin', 'question_editor', 'question_reviewer', 'teacher']);
@@ -40,20 +57,35 @@ export async function GET(request: Request) {
       scanLocalImages(join(workspacePath, 'public', 'training'), '/training'),
       scanLocalImages(join(workspacePath, 'public', 'task-images'), '/task-images'),
     ]);
-    const localImages = [...trainingImages, ...taskImages]
-      .map(({ url, label }) => ({ url, label, source: 'local' as const }));
+    const localImages = [...trainingImages, ...taskImages].map(({ url, label }) => ({
+      url,
+      label,
+      source: 'local' as const,
+    }));
 
-    // Scan media studio assets (published images only)
-    const studioAssets = await dbQuery<{ id: string; category: string | null; meta: Record<string, unknown> }>(
-      `SELECT id, category, meta FROM asset_manifests
-        WHERE media_kind = 'image' AND status = 'published'
+    // Scan media studio assets (published images only) — generate presigned URLs
+    const studioAssets = await dbQuery<{ id: string; object_key: string; category: string | null; meta: Record<string, unknown> }>(
+      `SELECT id, object_key, category, meta FROM asset_manifests
+        WHERE media_kind = 'image' AND status IN ('published','draft')
         ORDER BY created_at DESC LIMIT 200`,
     );
-    const studioImages = studioAssets.map(a => ({
-      url: `/api/admin/media/assets?id=${a.id}`,
-      label: `${a.category ?? 'studio'} - ${a.meta?.prompt?.toString().slice(0, 30) ?? a.id.slice(0, 8)}`,
-      source: 'studio' as const,
-    }));
+
+    const storage = getStorage();
+    const studioImages: Array<{ url: string; label: string; source: 'studio'; assetId: string }> = [];
+    for (const a of studioAssets) {
+      try {
+        const presignedUrl = await storage.generatePresignedUrl({ key: a.object_key, expireTime: 86400 });
+        const labelText = a.meta?.prompt?.toString().slice(0, 30) ?? (a.meta?.originalFileName as string | undefined)?.slice(0, 30) ?? a.id.slice(0, 8);
+        studioImages.push({
+          url: presignedUrl,
+          label: `${a.category ?? 'studio'} - ${labelText}`,
+          source: 'studio' as const,
+          assetId: a.id,
+        });
+      } catch {
+        // skip assets that can't generate URL
+      }
+    }
 
     return ok([...localImages, ...studioImages]);
   } catch (error) {

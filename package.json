@@ -18,7 +18,8 @@
     "db:migrate": "tsx scripts/db/migrate.mts",
     "db:seed-core": "tsx scripts/db/seed-core.mts",
     "db:seed-tasks": "tsx scripts/db/seed-tasks.mts",
-    "db:seed-questions": "tsx scripts/db/seed-questions.mts"
+    "db:seed-questions": "tsx scripts/db/seed-questions.mts",
+    "db:migrate-assets": "tsx scripts/db/migrate-assets.mts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1095.0",
