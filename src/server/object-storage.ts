@@ -1,6 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { S3Storage } from 'coze-coding-dev-sdk';
-import { dbOne } from './db';
 
 let storage: S3Storage | null = null;
 
@@ -58,28 +57,39 @@ export async function presignedUrl(objectKey: string, expireTime = 604800): Prom
 }
 
 /**
- * Resolve an imageUrl value that may be:
- *  1. A local path like "/training/xxx.jpg" → returned as-is (served from public/)
- *  2. An asset reference like "asset:UUID" → resolved to presigned URL via DB lookup
- *  3. A full https URL → returned as-is (already a presigned URL or external)
+ * Resolve an imageUrl value:
+ *  1. Local path "/training/xxx.jpg" → as-is (served from public/)
+ *  2. Asset reference "asset:UUID" → convert to public proxy URL "/api/media/asset/UUID"
+ *  3. Full https URL → as-is
+ *
+ * No DB lookup, no presigned URL generation — the proxy endpoint streams from object storage.
+ * This is synchronous and never expires.
  */
-export async function resolveImageUrl(imageUrl: string): Promise<string> {
+export function resolveImageUrl(imageUrl: string): string {
   if (!imageUrl) return '';
-  // Local path
   if (imageUrl.startsWith('/')) return imageUrl;
-  // Full URL
   if (imageUrl.startsWith('http')) return imageUrl;
-  // Asset reference: asset:UUID
   if (imageUrl.startsWith('asset:')) {
     const assetId = imageUrl.slice(6);
-    const row = await dbOne<{ object_key: string }>(
-      'SELECT object_key FROM asset_manifests WHERE id = $1 AND deleted_at IS NULL',
-      assetId,
-    );
-    if (!row) return '';
-    return presignedUrl(row.object_key);
+    return `/api/media/asset/${assetId}`;
   }
   return imageUrl;
+}
+
+/** Batch-resolve imageUrls in a list of objects (mutates in place for efficiency). */
+export function resolveImageUrls<T extends Record<string, unknown>>(
+  items: T[],
+  configField: string,
+): void {
+  for (const item of items) {
+    const config = item[configField];
+    if (config && typeof config === 'object') {
+      const cfg = config as Record<string, unknown>;
+      if (typeof cfg.imageUrl === 'string') {
+        cfg.imageUrl = resolveImageUrl(cfg.imageUrl);
+      }
+    }
+  }
 }
 
 function guessContentType(key: string): string {

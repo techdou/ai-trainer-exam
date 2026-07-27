@@ -55,11 +55,11 @@ export const GET = handler(async (request: Request) => {
       ORDER BY difficulty, title`,
     ...params,
   );
-  // Resolve asset:UUID references in config.imageUrl to presigned URLs
+  // Resolve asset:UUID references in config.imageUrl to proxy URLs (synchronous)
   for (const row of rows) {
     const config = (row as Record<string, unknown>).config as Record<string, unknown> | undefined;
     if (config?.imageUrl && typeof config.imageUrl === 'string') {
-      config.imageUrl = await resolveImageUrl(config.imageUrl);
+      config.imageUrl = resolveImageUrl(config.imageUrl);
     }
   }
   return ok(rows);

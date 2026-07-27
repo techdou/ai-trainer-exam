@@ -46,9 +46,9 @@ export async function GET(req: NextRequest) {
       `, user.id, t.id);
 
       const config = typeof t.config === 'string' ? JSON.parse(t.config) : t.config;
-      // Resolve asset:UUID references to presigned URLs
+      // Resolve asset:UUID references to proxy URLs (synchronous)
       if (config.imageUrl) {
-        config.imageUrl = await resolveImageUrl(config.imageUrl);
+        config.imageUrl = resolveImageUrl(config.imageUrl);
       }
 
       return {
