@@ -18,10 +18,10 @@ export interface QuestionRow {
   id: string;
   bank_type: 'practice' | 'exam';
   organization_id: string | null;
-  question_type: 'single_choice' | 'true_false';
+  question_type: 'single_choice' | 'true_false' | 'fill_in_blank';
   stem: string;
   options: Record<string, string> | null;  // JSONB → JS object
-  answer_key: string;                      // JSONB → string (single_choice) or boolean (true_false)
+  answer_key: unknown;                     // JSONB → string (single_choice) / boolean (true_false) / object (fill_in_blank)
   explanation: string | null;
   knowledge_point: string | null;
   difficulty: number;
@@ -170,10 +170,10 @@ export async function getQuestionById(id: string): Promise<QuestionRow | null> {
 
 /** bulkInsertQuestions 的输入行类型，仅包含 INSERT 语句实际使用的字段 */
 export interface QuestionInsertRow {
-  question_type: 'single_choice' | 'true_false';
+  question_type: 'single_choice' | 'true_false' | 'fill_in_blank';
   stem: string;
   options: string[] | Record<string, string> | null;
-  answer_key: string;  // Raw answer: 'A'/'B'/'C'/'D' for single_choice, 'true'/'false' for true_false
+  answer_key: string;  // Raw answer: 'A'/'B'/'C'/'D' for single_choice, 'true'/'false' for true_false, JSON for fill_in_blank
   explanation: string | null;
   knowledge_point: string | null;
   difficulty: number;

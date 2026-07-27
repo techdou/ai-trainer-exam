@@ -64,6 +64,30 @@ export const trueFalseGrader: Grader<TrueFalseSubmission, TrueFalseAnswerKey> = 
   },
 };
 
+// 2b. 填空题。文本模糊匹配，支持多个可接受答案。
+export interface FillInBlankSubmission { text: string }
+export interface FillInBlankAnswerKey { acceptable: string[]; caseSensitive?: boolean }
+/** 归一化中文文本：去首尾空格、全角空格转半角、合并连续空格。 */
+function normalizeText(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value.trim().replace(/\u3000/g, ' ').replace(/\s+/g, ' ');
+}
+export const fillInBlankGrader: Grader<FillInBlankSubmission, FillInBlankAnswerKey> = {
+  id: 'fill_in_blank', version: '1.0.0',
+  grade(submission, answerKey) {
+    const submitted = normalizeText(submission?.text);
+    const acceptable = Array.isArray(answerKey?.acceptable) ? answerKey.acceptable : [];
+    if (!submitted) return invalid(fillInBlankGrader, '请填写答案');
+    if (!acceptable.length) return invalid(fillInBlankGrader, '标准答案未配置');
+    const caseSensitive = answerKey.caseSensitive === true;
+    const normalizedAcceptable = acceptable.map(a => caseSensitive ? normalizeText(a) : normalizeText(a).toLowerCase());
+    const normalizedSubmitted = caseSensitive ? submitted : submitted.toLowerCase();
+    const correct = normalizedAcceptable.includes(normalizedSubmitted);
+    const displayAnswer = acceptable[0];
+    return { correct, score: correct ? 1 : 0, feedback: correct ? '做对了！' : `答案不正确，参考答案是"${displayAnswer}"`, graderVersion: versionOf(fillInBlankGrader) };
+  },
+};
+
 // 3. Excel 删除行。优先稳定 row_id，兼容旧索引数据。
 export interface ExcelDeleteRowsSubmission { retainedRowIds?: string[]; retainedRowIndexes?: number[]; modifiedCells?: Record<string, unknown> }
 export interface ExcelDeleteRowsAnswerKey { correctRetainedRowIds?: string[]; correctRetainedRowIndexes?: number[]; forbiddenCellChanges?: boolean }
@@ -458,7 +482,7 @@ export const compositeTaskGrader: Grader<CompositeTaskSubmission, CompositeTaskA
   },
 };
 
-const graders = [singleChoiceGrader, trueFalseGrader, excelDeleteRowsGrader, statsTableGrader, fileClassifyGrader, imageCleanGrader, imageAnnotationGrader, pointAnnotationGrader, polylineAnnotationGrader, polygonAnnotationGrader, textSentimentGrader, audioTranscriptionGrader, dataLabelingGrader, datasetQualityGrader, compositeTaskGrader] as Array<Grader<unknown, unknown>>;
+const graders = [singleChoiceGrader, trueFalseGrader, fillInBlankGrader, excelDeleteRowsGrader, statsTableGrader, fileClassifyGrader, imageCleanGrader, imageAnnotationGrader, pointAnnotationGrader, polylineAnnotationGrader, polygonAnnotationGrader, textSentimentGrader, audioTranscriptionGrader, dataLabelingGrader, datasetQualityGrader, compositeTaskGrader] as Array<Grader<unknown, unknown>>;
 const graderRegistry = new Map(graders.map(g => [g.id, g]));
 
 export const TASK_GRADER_MAP: Readonly<Record<string, string>> = Object.freeze({
@@ -526,4 +550,12 @@ export function parseSingleChoiceAnswerKey(raw: unknown): string | null {
   if (typeof value !== 'string') return null;
   const text = value.trim().replace(/^["']|["']$/g, '').toUpperCase();
   return OPTION_KEY.test(text) ? text : null;
+}
+
+/** 从题库 answer_key 解析填空题可接受答案列表,无法解析返回 null。 */
+export function parseFillInBlankAnswerKey(raw: unknown): string[] | null {
+  if (isRecord(raw) && Array.isArray(raw.acceptable)) return raw.acceptable.filter((v): v is string => typeof v === 'string');
+  if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === 'string');
+  if (typeof raw === 'string' && raw.trim()) return [raw.trim()];
+  return null;
 }

@@ -112,6 +112,7 @@ export default function TheoryPracticePage() {
 
   const q = questions[currentIdx];
   const isTrueFalse = q.question_type === 'true_false';
+  const isFillInBlank = q.question_type === 'fill_in_blank';
   const optionKeys = isTrueFalse ? ['A', 'B'] : ['A', 'B', 'C', 'D'];
 
   return (
@@ -138,7 +139,7 @@ export default function TheoryPracticePage() {
       <Card className="p-6 mb-4">
         <div className="mb-2 flex items-center gap-2">
           <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-            {isTrueFalse ? '判断题' : '单选题'}
+            {isFillInBlank ? '填空题' : isTrueFalse ? '判断题' : '单选题'}
           </span>
           <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
             难度：{q.difficulty}
@@ -146,6 +147,25 @@ export default function TheoryPracticePage() {
         </div>
         <p className="mb-4 text-lg leading-relaxed whitespace-pre-wrap">{q.stem}</p>
 
+        {isFillInBlank ? (
+          <div className="space-y-3">
+            <input
+              type="text"
+              value={selectedAnswer}
+              onChange={e => !result && setSelectedAnswer(e.target.value)}
+              disabled={!!result}
+              placeholder="请在此输入你的答案"
+              className="w-full rounded-lg border-2 border-border p-4 text-lg focus:border-primary focus:outline-none disabled:opacity-60"
+            />
+            {result && (
+              <div className={`rounded-lg border-2 p-4 ${result.correct ? 'border-success bg-success/10' : 'border-destructive bg-destructive/10'}`}>
+                <span className="text-base">
+                  {result.correct ? '✓ 回答正确' : `✗ 参考答案：${result.correctAnswer}`}
+                </span>
+              </div>
+            )}
+          </div>
+        ) : (
         <div className="space-y-3">
           {optionKeys.map(key => {
             const optionText = isTrueFalse
@@ -188,6 +208,7 @@ export default function TheoryPracticePage() {
             );
           })}
         </div>
+        )}
       </Card>
 
       {/* Feedback */}

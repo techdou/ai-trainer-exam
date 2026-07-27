@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { apiFetch } from '@/lib/session-client';
+import Link from 'next/link';
+import { apiFetch, getStoredUser } from '@/lib/session-client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { UsersRound, Plus } from 'lucide-react';
+import { UsersRound, Plus, UploadCloud, ChevronRight } from 'lucide-react';
+import { RosterImportDialog } from '@/components/roster-import-dialog';
 
 interface Cohort {
   id: string;
@@ -27,8 +29,12 @@ export default function CohortsPage() {
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [newName, setNewName] = useState('');
   const [selectedOrgId, setSelectedOrgId] = useState('');
+
+  const me = getStoredUser();
+  const isSuper = me?.roles.includes('super_admin') ?? false;
 
   const fetchData = async () => {
     const [cohortsRes, orgsRes] = await Promise.all([
@@ -73,9 +79,22 @@ export default function CohortsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">班级管理</h1>
-        <Button onClick={() => setShowCreate(true)} size="lg" className="text-base">
-          <Plus className="w-5 h-5 mr-2" /> 添加班级
-        </Button>
+        <div className="flex gap-3">
+          <Button onClick={() => setShowImport(true)} size="lg" className="text-base">
+            <UploadCloud className="w-5 h-5 mr-2" /> 导入名册
+          </Button>
+          <Button onClick={() => setShowCreate(true)} variant="outline" size="lg" className="text-base">
+            <Plus className="w-5 h-5 mr-2" /> 添加班级
+          </Button>
+        </div>
+      </div>
+
+      {/* 导入提示 */}
+      <div className="mb-4 rounded-lg border border-primary/15 bg-primary/5 px-4 py-3 text-sm">
+        <span className="font-medium text-primary">名册导入</span>
+        <span className="text-muted-foreground">
+          {' '}：上传标准格式 Excel 名册，系统自动识别班级名称并批量注册学员。账号为身份证号，密码为身份证号后六位。
+        </span>
       </div>
 
       {showCreate && (
@@ -110,23 +129,41 @@ export default function CohortsPage() {
       <div className="space-y-3">
         {cohorts.length === 0 && <div className="text-center py-12 text-muted-foreground">暂无班级数据</div>}
         {cohorts.map(c => (
-          <Card key={c.id}>
-            <CardContent className="py-4 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <UsersRound className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <div className="text-lg font-medium">{c.name}</div>
-                  <div className="text-base text-muted-foreground">
-                    {c.organizationName} · {c.studentCount} 名学员
+          <Link key={c.id} href={`/admin/cohorts/${c.id}`}>
+            <Card className="hover:border-primary/40 hover:shadow-sm transition-all cursor-pointer">
+              <CardContent className="py-4 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <UsersRound className="w-6 h-6 text-primary" />
+                  </div>
+                  <div>
+                    <div className="text-lg font-medium">{c.name}</div>
+                    <div className="text-base text-muted-foreground">
+                      {c.organizationName} · {c.studentCount} 名学员
+                    </div>
                   </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+                <div className="flex items-center gap-3">
+                  {c.studentCount > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+                      {c.studentCount} 人在册
+                    </span>
+                  )}
+                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
         ))}
       </div>
+
+      <RosterImportDialog
+        open={showImport}
+        onOpenChange={setShowImport}
+        orgs={orgs}
+        defaultOrgId={me?.organizationId ?? ''}
+        isSuperAdmin={isSuper}
+      />
     </div>
   );
 }
