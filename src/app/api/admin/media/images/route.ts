@@ -1,6 +1,5 @@
 import { readdir } from 'fs/promises';
 import { join } from 'path';
-import { S3Storage } from 'coze-coding-dev-sdk';
 import { requireRole } from '@/server/auth';
 import { dbQuery } from '@/server/db';
 import { ok, catchError } from '@/lib/api';
@@ -33,18 +32,6 @@ async function scanLocalImages(
   return results;
 }
 
-let storageInstance: S3Storage | null = null;
-function getStorage(): S3Storage {
-  if (storageInstance) return storageInstance;
-  storageInstance = new S3Storage({
-    endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
-    accessKey: '',
-    secretKey: '',
-    bucketName: process.env.COZE_BUCKET_NAME,
-    region: 'cn-beijing',
-  });
-  return storageInstance;
-}
 
 export async function GET(request: Request) {
   try {
@@ -63,28 +50,22 @@ export async function GET(request: Request) {
       source: 'local' as const,
     }));
 
-    // Scan media studio assets (published images only) — generate presigned URLs
+    // Scan media studio assets (published images only) — return asset:UUID format
     const studioAssets = await dbQuery<{ id: string; object_key: string; category: string | null; meta: Record<string, unknown> }>(
       `SELECT id, object_key, category, meta FROM asset_manifests
         WHERE media_kind = 'image' AND status IN ('published','draft')
         ORDER BY created_at DESC LIMIT 200`,
     );
 
-    const storage = getStorage();
     const studioImages: Array<{ url: string; label: string; source: 'studio'; assetId: string }> = [];
     for (const a of studioAssets) {
-      try {
-        const presignedUrl = await storage.generatePresignedUrl({ key: a.object_key, expireTime: 86400 });
-        const labelText = a.meta?.prompt?.toString().slice(0, 30) ?? (a.meta?.originalFileName as string | undefined)?.slice(0, 30) ?? a.id.slice(0, 8);
-        studioImages.push({
-          url: presignedUrl,
-          label: `${a.category ?? 'studio'} - ${labelText}`,
-          source: 'studio' as const,
-          assetId: a.id,
-        });
-      } catch {
-        // skip assets that can't generate URL
-      }
+      const labelText = a.meta?.prompt?.toString().slice(0, 30) ?? (a.meta?.originalFileName as string | undefined)?.slice(0, 30) ?? a.id.slice(0, 8);
+      studioImages.push({
+        url: `asset:${a.id}`,
+        label: `${a.category ?? 'studio'} - ${labelText}`,
+        source: 'studio' as const,
+        assetId: a.id,
+      });
     }
 
     return ok([...localImages, ...studioImages]);

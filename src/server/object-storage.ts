@@ -1,5 +1,6 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { S3Storage } from 'coze-coding-dev-sdk';
+import { dbOne } from './db';
 
 let storage: S3Storage | null = null;
 
@@ -46,6 +47,39 @@ export async function readObject(key: string): Promise<{ body: Uint8Array; conte
     contentType: guessContentType(key),
     length: buffer.length,
   };
+}
+
+/**
+ * Generate a presigned URL for an object key.
+ * expireTime defaults to 7 days (604800 seconds) for task images.
+ */
+export async function presignedUrl(objectKey: string, expireTime = 604800): Promise<string> {
+  return getStorage().generatePresignedUrl({ key: objectKey, expireTime });
+}
+
+/**
+ * Resolve an imageUrl value that may be:
+ *  1. A local path like "/training/xxx.jpg" → returned as-is (served from public/)
+ *  2. An asset reference like "asset:UUID" → resolved to presigned URL via DB lookup
+ *  3. A full https URL → returned as-is (already a presigned URL or external)
+ */
+export async function resolveImageUrl(imageUrl: string): Promise<string> {
+  if (!imageUrl) return '';
+  // Local path
+  if (imageUrl.startsWith('/')) return imageUrl;
+  // Full URL
+  if (imageUrl.startsWith('http')) return imageUrl;
+  // Asset reference: asset:UUID
+  if (imageUrl.startsWith('asset:')) {
+    const assetId = imageUrl.slice(6);
+    const row = await dbOne<{ object_key: string }>(
+      'SELECT object_key FROM asset_manifests WHERE id = $1 AND deleted_at IS NULL',
+      assetId,
+    );
+    if (!row) return '';
+    return presignedUrl(row.object_key);
+  }
+  return imageUrl;
 }
 
 function guessContentType(key: string): string {

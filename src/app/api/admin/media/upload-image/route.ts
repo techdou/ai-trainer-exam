@@ -83,12 +83,10 @@ export async function POST(request: Request) {
       },
     );
 
-    // Generate a presigned URL so <img> tags can load it directly (no auth header needed)
-    const presignedUrl = await getStorage().generatePresignedUrl({ key: objectKey, expireTime: 86400 });
-
+    // Return asset:UUID format for persistent storage (presigned URL is generated on-demand)
     return ok({
       assetId: asset!.id,
-      url: presignedUrl,
+      imageUrl: `asset:${asset!.id}`,
       fileName: file.name,
       size: file.size,
     });

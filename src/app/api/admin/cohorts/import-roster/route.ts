@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server';
-import { randomBytes } from 'node:crypto';
 import { requireRole } from '@/server/auth';
 import { dbOne, dbTx } from '@/server/db';
 import { ok, fail, catchError } from '@/lib/api';
@@ -16,31 +15,7 @@ interface ImportResult {
   created: number;
   skipped: number;
   errors: string[];
-  /** 机构后缀(首次导入时生成), 管理员需告知学员作为密码组成部分 */
-  passwordSuffix?: string;
   students: Array<{ name: string; idCard: string; email: string; status: 'created' | 'skipped' | 'error'; message?: string }>;
-}
-
-/**
- * 读取或生成机构名册密码后缀。
- * 每个机构独立存于 system_settings(roster_password_suffix:<organizationId>)。
- * 学员初始密码 = 身份证后六位 + 此后缀, 避免名册即密码本的安全漏洞。
- */
-async function getOrCreatePasswordSuffix(organizationId: string): Promise<string> {
-  const settingKey = `roster_password_suffix:${organizationId}`;
-  // 8 位字母数字, 排除易混字符
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  const bytes = randomBytes(8);
-  const suffix = Array.from(bytes, b => alphabet[b % alphabet.length]).join('');
-  const row = await dbOne<{ value: string }>(
-    `INSERT INTO system_settings(key, value, updated_at) VALUES($1, $2, NOW())
-     ON CONFLICT(key) DO UPDATE SET key=EXCLUDED.key
-     RETURNING value`,
-    settingKey,
-    suffix,
-  );
-  if (!row?.value || row.value.length < 6) throw new Error('机构名册密码后缀配置无效');
-  return row.value;
 }
 
 export async function POST(req: NextRequest) {
@@ -117,7 +92,6 @@ export async function POST(req: NextRequest) {
       cohortId = created!.id;
     }
 
-    const passwordSuffix = await getOrCreatePasswordSuffix(orgId);
     const supabase = getSupabaseClient();
     const result: ImportResult = {
       cohortId,
@@ -131,7 +105,7 @@ export async function POST(req: NextRequest) {
 
     for (const student of parsed.students) {
       const email = idCardToEmail(student.idCard);
-      const password = idCardToPassword(student.idCard, passwordSuffix);
+      const password = idCardToPassword(student.idCard);
 
       try {
         // 检查是否已存在（按邮箱查 profiles）
@@ -264,9 +238,6 @@ export async function POST(req: NextRequest) {
         result.students.push({ name: student.name, idCard: student.idCard, email, status: 'error', message: msg });
       }
     }
-
-    // 仅当本次有新建学员时回传后缀, 提示管理员告知学员
-    if (result.created > 0) result.passwordSuffix = passwordSuffix;
 
     // 审计日志(密码相关不写详情)
     await insertAudit({

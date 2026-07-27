@@ -3,6 +3,7 @@ import { requireRole } from '@/server/auth';
 import { assertPracticeUnlocked } from '@/server/exam-security';
 import { dbQuery } from '@/server/db';
 import {ok, fail, catchError } from '@/lib/api';
+import { resolveImageUrl } from '@/server/object-storage';
 
 /** GET /api/student/practice/task - 列出学员可做的实操任务 */
 export async function GET(req: NextRequest) {
@@ -45,6 +46,10 @@ export async function GET(req: NextRequest) {
       `, user.id, t.id);
 
       const config = typeof t.config === 'string' ? JSON.parse(t.config) : t.config;
+      // Resolve asset:UUID references to presigned URLs
+      if (config.imageUrl) {
+        config.imageUrl = await resolveImageUrl(config.imageUrl);
+      }
 
       return {
         id: t.id,

@@ -159,16 +159,11 @@ export function idCardToEmail(idCard: string): string {
 }
 
 /**
- * 身份证号 + 机构后缀 → 初始密码。
+ * 身份证号 → 初始密码 = 身份证号后六位。
  *
- * 安全设计(2026-07-27 修正): 单纯"身份证后六位"等于把名册当密码本,
- * 任何拿到名册的人(老师/同学/打印件/拍照)都能登录任意学员账号。
- * 改为"身份证后六位 + 机构级随机后缀": 学员需要同时知道身份证号和机构后缀才能登录,
- * 后缀由管理员通过 system_settings(roster_password_suffix) 配置并安全渠道告知学员。
- *
- * @param idCard 学员身份证号
- * @param orgSuffix 机构级随机后缀(8 位字母数字), 调用方从 system_settings 读取
+ * 注意: 末位若为 X, 取后六位即含 X(如 ...238X49 → "38X49" 不足六位时取全部数字位)。
+ * 身份证号最后 6 位本身包含出生日期序列, 作为初始密码 + 首次登录强制改密。
  */
-export function idCardToPassword(idCard: string, orgSuffix: string): string {
-  return `${idCard.slice(-6)}${orgSuffix}`;
+export function idCardToPassword(idCard: string): string {
+  return idCard.slice(-6);
 }

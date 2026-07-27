@@ -5,6 +5,7 @@ import { handler, ok, fail, parseBody } from '@/lib/api';
 import { graderIdForTaskType } from '@/server/grading';
 import { reviewTransition, statusAfterContentEdit } from '@/server/content-workflow';
 import { insertAudit } from '@/server/audit';
+import { resolveImageUrl } from '@/server/object-storage';
 
 const createSchema = z.object({
   bankType: z.enum(['practice', 'exam']),
@@ -54,6 +55,13 @@ export const GET = handler(async (request: Request) => {
       ORDER BY difficulty, title`,
     ...params,
   );
+  // Resolve asset:UUID references in config.imageUrl to presigned URLs
+  for (const row of rows) {
+    const config = (row as Record<string, unknown>).config as Record<string, unknown> | undefined;
+    if (config?.imageUrl && typeof config.imageUrl === 'string') {
+      config.imageUrl = await resolveImageUrl(config.imageUrl);
+    }
+  }
   return ok(rows);
 });
 
