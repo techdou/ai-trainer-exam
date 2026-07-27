@@ -6,10 +6,10 @@ import { catchError, fail, ok, parseBody } from '@/lib/api';
 
 const createSchema = z.object({
   bankType: z.enum(['practice','exam']).default('practice'),
-  questionType: z.enum(['single_choice','true_false']),
+  questionType: z.enum(['single_choice','true_false','fill_in_blank','prompt_description']),
   stem: z.string().trim().min(2).max(5000),
   options: z.record(z.string(), z.string()).default({}),
-  answerKey: z.union([z.string(), z.boolean()]),
+  answerKey: z.union([z.string(), z.boolean(), z.record(z.string(), z.unknown())]),
   explanation: z.string().max(5000).optional(),
   knowledgePoint: z.string().max(200).optional(),
   difficulty: z.number().int().min(1).max(5).default(1),

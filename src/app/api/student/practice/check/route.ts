@@ -4,7 +4,7 @@ import { assertPracticeUnlocked } from '@/server/exam-security';
 import { dbExec, dbOne } from '@/server/db';
 import { insertAudit } from '@/server/audit';
 import { catchError, fail, ok, parseBody } from '@/lib/api';
-import { gradeByType, normalizeTrueFalseAnswer, parseSingleChoiceAnswerKey, parseTrueFalseAnswerKey, parseFillInBlankAnswerKey } from '@/server/grading';
+import { gradeByType, normalizeTrueFalseAnswer, parseSingleChoiceAnswerKey, parseTrueFalseAnswerKey, parseFillInBlankAnswerKey, parsePromptDescriptionAnswerKey } from '@/server/grading';
 const schema=z.object({questionId:z.string().uuid(),answer:z.union([z.string(),z.boolean()]).optional(),userAnswer:z.union([z.string(),z.boolean()]).optional()});
 export async function POST(request:Request){
  try{
@@ -22,18 +22,22 @@ export async function POST(request:Request){
    const acceptable=parseFillInBlankAnswerKey(q.answer_key);
    if(!acceptable)return fail(500,'题目答案配置异常，请联系老师');
    answerKey={acceptable};submission={text:String(finalAnswer)};
+  }else if(q.question_type==='prompt_description'){
+   const parsed=parsePromptDescriptionAnswerKey(q.answer_key);
+   if(!parsed)return fail(500,'题目答案配置异常，请联系老师');
+   answerKey=parsed;submission={text:String(finalAnswer)};
   }else{
    const key=parseSingleChoiceAnswerKey(q.answer_key);
    if(!key)return fail(500,'题目答案配置异常，请联系老师');
    answerKey={correctOption:key};submission={selectedOption:String(finalAnswer).trim().toUpperCase()};
   }
-  const graded=gradeByType(q.question_type==='true_false'?'true_false':q.question_type==='fill_in_blank'?'fill_in_blank':'single_choice',submission,answerKey); const score=graded.correct?1:0;
+  const graded=gradeByType(q.question_type==='true_false'?'true_false':q.question_type==='fill_in_blank'?'fill_in_blank':q.question_type==='prompt_description'?'prompt_description':'single_choice',submission,answerKey); const score=graded.correct?1:0;
   await dbExec(`INSERT INTO practice_attempts(user_id,item_type,item_id,status,score,max_score,passed,feedback,workspace_snapshot,operation_log,engine_version,submitted_at,created_at,updated_at)
     VALUES($1,'theory_question',$2,'completed',$3,1,$4,$5,$6,'[]'::jsonb,$7,NOW(),NOW(),NOW())`,user.id,body.questionId,score,graded.correct,{feedback:graded.feedback},{answer:finalAnswer},graded.graderVersion);
   if(graded.correct)await dbExec(`UPDATE practice_wrong_items SET resolved=true,updated_at=NOW() WHERE user_id=$1 AND item_type='theory_question' AND item_id=$2`,user.id,body.questionId);
   else await dbExec(`INSERT INTO practice_wrong_items(user_id,item_type,item_id,wrong_count,resolved,last_wrong_at,created_at,updated_at)
    VALUES($1,'theory_question',$2,1,false,NOW(),NOW(),NOW()) ON CONFLICT(user_id,item_type,item_id) DO UPDATE SET wrong_count=practice_wrong_items.wrong_count+1,resolved=false,last_wrong_at=NOW(),updated_at=NOW()`,user.id,body.questionId);
   await insertAudit({actorId:user.id,actorRole:'student',organizationId:user.organizationId,action:'practice_answer',entityType:'question',entityId:body.questionId});
-  return ok({correct:graded.correct,correctAnswer:q.question_type==='true_false'?((answerKey as {correctAnswer:boolean}).correctAnswer?'A':'B'):q.question_type==='fill_in_blank'?((answerKey as {acceptable:string[]}).acceptable[0]??''):(answerKey as {correctOption:string}).correctOption,explanation:q.explanation,knowledgePoint:q.knowledge_point});
+  return ok({correct:graded.correct,correctAnswer:q.question_type==='true_false'?((answerKey as {correctAnswer:boolean}).correctAnswer?'A':'B'):q.question_type==='fill_in_blank'?((answerKey as {acceptable:string[]}).acceptable[0]??''):q.question_type==='prompt_description'?((answerKey as {referencePrompt?:string}).referencePrompt??''):(answerKey as {correctOption:string}).correctOption,feedback:graded.feedback,explanation:q.explanation,knowledgePoint:q.knowledge_point});
  }catch(error){return catchError(error)}
 }

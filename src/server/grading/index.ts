@@ -526,7 +526,7 @@ export const compositeTaskGrader: Grader<CompositeTaskSubmission, CompositeTaskA
   },
 };
 
-const graders = [singleChoiceGrader, trueFalseGrader, fillInBlankGrader, excelDeleteRowsGrader, statsTableGrader, fileClassifyGrader, imageCleanGrader, imageAnnotationGrader, pointAnnotationGrader, polylineAnnotationGrader, polygonAnnotationGrader, textSentimentGrader, audioTranscriptionGrader, dataLabelingGrader, datasetQualityGrader, compositeTaskGrader] as Array<Grader<unknown, unknown>>;
+const graders = [singleChoiceGrader, trueFalseGrader, fillInBlankGrader, excelDeleteRowsGrader, statsTableGrader, fileClassifyGrader, imageCleanGrader, imageAnnotationGrader, pointAnnotationGrader, polylineAnnotationGrader, polygonAnnotationGrader, textSentimentGrader, audioTranscriptionGrader, dataLabelingGrader, datasetQualityGrader, promptDescriptionGrader, compositeTaskGrader] as Array<Grader<unknown, unknown>>;
 const graderRegistry = new Map(graders.map(g => [g.id, g]));
 
 export const TASK_GRADER_MAP: Readonly<Record<string, string>> = Object.freeze({
@@ -602,4 +602,15 @@ export function parseFillInBlankAnswerKey(raw: unknown): string[] | null {
   if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === 'string');
   if (typeof raw === 'string' && raw.trim()) return [raw.trim()];
   return null;
+}
+
+/** 从题库 answer_key 解析提示词描述题标准答案（关键词 + 参考答案 + 通过阈值），无法解析返回 null。 */
+export function parsePromptDescriptionAnswerKey(raw: unknown): PromptDescriptionAnswerKey | null {
+  if (!isRecord(raw)) return null;
+  const keywords = Array.isArray(raw.keywords) ? raw.keywords.filter((v): v is string => typeof v === 'string' && v.trim().length > 0) : [];
+  if (!keywords.length) return null;
+  const answerKey: PromptDescriptionAnswerKey = { keywords };
+  if (typeof raw.referencePrompt === 'string' && raw.referencePrompt.trim()) answerKey.referencePrompt = raw.referencePrompt.trim();
+  if (typeof raw.passThreshold === 'number' && Number.isFinite(raw.passThreshold)) answerKey.passThreshold = raw.passThreshold;
+  return answerKey;
 }

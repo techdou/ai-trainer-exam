@@ -25,6 +25,7 @@ function normalizeQuestionResponse(graderId: string, response: unknown): unknown
   const raw = typeof response === 'string' ? response : (response as { answer?: unknown; selectedOption?: unknown; text?: unknown } | null)?.answer ?? (response as { selectedOption?: unknown } | null)?.selectedOption;
   if (graderId === 'true_false') return { answer: normalizeTrueFalseAnswer(raw) };
   if (graderId === 'fill_in_blank') return { text: String(typeof response === 'string' ? response : raw ?? '').trim() };
+  if (graderId === 'prompt_description') return { text: String(typeof response === 'string' ? response : raw ?? '').trim() };
   if (graderId === 'single_choice') return { selectedOption: String(raw ?? '').trim().toUpperCase() };
   // 未知题型不归一,原样交给评分器判 invalid,绝不默认按单选处理。
   return response ?? {};
