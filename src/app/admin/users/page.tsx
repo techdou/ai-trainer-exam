@@ -13,6 +13,7 @@ import {
 import { toast } from 'sonner';
 import { apiFetch, getStoredUser } from '@/lib/session-client';
 import { ROLE_LABELS, ROLES, type Role } from '@/lib/constants';
+import { displayAccount } from '@/lib/utils';
 import { UserPlus, KeyRound, UserX, UserCheck, ShieldCheck, Copy } from 'lucide-react';
 
 interface UserItem {
@@ -125,7 +126,7 @@ export default function AdminUsersPage() {
         method: 'PATCH', body: { action: 'reset_password' },
       });
       if (res.ok && res.data) {
-        setPasswordInfo({ email: u.email, password: res.data.newPassword });
+        setPasswordInfo({ email: displayAccount(u.email), password: res.data.newPassword });
       } else {
         toast.error('重置密码失败', { description: res.error });
       }
@@ -208,7 +209,7 @@ export default function AdminUsersPage() {
           <thead className="bg-muted/50 border-b">
             <tr>
               <th className="text-left p-3 font-medium">姓名</th>
-              <th className="text-left p-3 font-medium">邮箱</th>
+              <th className="text-left p-3 font-medium">账号</th>
               <th className="text-left p-3 font-medium">角色</th>
               <th className="text-left p-3 font-medium">状态</th>
               <th className="text-left p-3 font-medium">所属机构</th>
@@ -225,7 +226,7 @@ export default function AdminUsersPage() {
               users.map((u) => (
                 <tr key={u.id} className="border-b last:border-0 hover:bg-muted/30">
                   <td className="p-3">{u.displayName || '-'}</td>
-                  <td className="p-3 text-muted-foreground">{u.email}</td>
+                  <td className="p-3 text-muted-foreground">{displayAccount(u.email)}</td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-1">
                       {u.roles.map(r => (

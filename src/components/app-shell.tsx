@@ -11,7 +11,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { apiFetch, clearSession, type ClientUser } from '@/lib/session-client';
-import { cn } from '@/lib/utils';
+import { cn, displayAccount } from '@/lib/utils';
 
 export interface NavItem {
   href: string;
@@ -86,7 +86,7 @@ export function AppShell({ user, navItems, title, children }: AppShellProps) {
         <div className="flex-1 overflow-y-auto py-2">{nav}</div>
         <div className="border-t border-border p-4">
           <div className="text-base font-medium truncate mb-1">{user.displayName}</div>
-          <div className="text-sm text-muted-foreground truncate mb-3">{user.email}</div>
+          <div className="text-sm text-muted-foreground truncate mb-3">{displayAccount(user.email)}</div>
           <button
             onClick={handleLogout}
             className="flex items-center gap-2 w-full rounded-lg px-4 py-2.5 text-base text-destructive hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-ring"
