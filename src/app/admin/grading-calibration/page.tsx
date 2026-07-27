@@ -4,11 +4,12 @@ import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/session-client';
 import { AnnotationCanvas, type AnnotationData, type AnnotationTool } from '@/components/annotation-canvas';
-import { SlidersHorizontal, Save, Eye, Loader2, Image as ImageIcon } from 'lucide-react';
+import { SlidersHorizontal, Save, Eye, Loader2, Image as ImageIcon, RefreshCw } from 'lucide-react';
 
 interface TaskTemplate {
   id: string;
@@ -20,6 +21,12 @@ interface TaskTemplate {
   gradingConfig?: Record<string, unknown>;
   answerKey?: unknown;
   reviewStatus?: string;
+}
+
+interface AvailableImage {
+  url: string;
+  label: string;
+  source: 'local' | 'studio';
 }
 
 const TOOL_FROM_TYPE: Record<string, AnnotationTool> = {
@@ -37,8 +44,6 @@ const TYPE_LABELS: Record<string, string> = {
   polyline_annotation: 'polyline annotation (Chamfer)',
   polygon_annotation: 'contour annotation (IoU)',
 };
-
-const ANNOTATION_TYPES = ['image_annotation', 'bounding_box', 'point_annotation', 'polyline_annotation', 'polygon_annotation'];
 
 function extractImageUrl(config: Record<string, unknown>): string | undefined {
   return typeof config.imageUrl === 'string' ? config.imageUrl : undefined;
@@ -87,7 +92,13 @@ export default function GradingCalibrationPage() {
   const [saving, setSaving] = useState(false);
   const [showJson, setShowJson] = useState(false);
 
-  // --- placeholder for next sections ---
+  // Image management
+  const [imageUrlInput, setImageUrlInput] = useState('');
+  const [availableImages, setAvailableImages] = useState<AvailableImage[]>([]);
+  const [loadingImages, setLoadingImages] = useState(false);
+  const [savingImage, setSavingImage] = useState(false);
+  const [showImagePanel, setShowImagePanel] = useState(false);
+
   const fetchTasks = useCallback(async (bank: 'practice' | 'exam') => {
     setLoading(true);
     try {
@@ -108,16 +119,33 @@ export default function GradingCalibrationPage() {
     }
   }, []);
 
+  const fetchImages = useCallback(async () => {
+    setLoadingImages(true);
+    try {
+      const res = await apiFetch<AvailableImage[]>('/api/admin/media/images');
+      if (res.ok && res.data) {
+        setAvailableImages(res.data);
+      }
+    } catch {
+      // Silent fail — not critical
+    } finally {
+      setLoadingImages(false);
+    }
+  }, []);
+
   useEffect(() => { fetchTasks(bankType); }, [bankType, fetchTasks]);
+  useEffect(() => { fetchImages(); }, [fetchImages]);
 
   // load answer_key into canvas when task selected
   useEffect(() => {
     const task = tasks.find((t) => t.id === selectedId) ?? null;
     setCurrentTask(task);
     setAnnotation(answerKeyToCanvas(task?.answerKey));
+    setImageUrlInput(extractImageUrl(task?.config ?? {}) ?? '');
+    setShowImagePanel(false);
   }, [selectedId, tasks]);
 
-  const handleSave = async () => {
+  const handleSaveAnswerKey = async () => {
     if (!currentTask) return;
     setSaving(true);
     try {
@@ -127,7 +155,10 @@ export default function GradingCalibrationPage() {
         body: { bankType, id: currentTask.id, answerKey },
       });
       if (res.ok) {
-        toast.success('answer key saved');
+        toast.success('Answer Key saved');
+        // Update local state
+        const updated = tasks.map(t => t.id === currentTask.id ? { ...t, answerKey } : t);
+        setTasks(updated);
       } else {
         toast.error(res.error ?? 'save failed');
       }
@@ -135,6 +166,34 @@ export default function GradingCalibrationPage() {
       toast.error('save failed');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveImage = async () => {
+    if (!currentTask || !imageUrlInput.trim()) return;
+    setSavingImage(true);
+    try {
+      const res = await apiFetch<{ id: string }>(`/api/admin/task-templates`, {
+        method: 'PUT',
+        body: { bankType, id: currentTask.id, config: { imageUrl: imageUrlInput.trim() } },
+      });
+      if (res.ok) {
+        toast.success('Image updated — please re-calibrate annotations for the new image');
+        // Update local state
+        const newConfig = { ...currentTask.config, imageUrl: imageUrlInput.trim() };
+        const updated = tasks.map(t => t.id === currentTask.id ? { ...t, config: newConfig } : t);
+        setTasks(updated);
+        setCurrentTask({ ...currentTask, config: newConfig });
+        // Clear annotations since they won't match the new image
+        setAnnotation({});
+        setShowImagePanel(false);
+      } else {
+        toast.error(res.error ?? 'failed to update image');
+      }
+    } catch {
+      toast.error('failed to update image');
+    } finally {
+      setSavingImage(false);
     }
   };
 
@@ -189,7 +248,7 @@ export default function GradingCalibrationPage() {
         </CardContent>
       </Card>
 
-      {/* Canvas area — appended in next edit */}
+      {/* Canvas area */}
       {currentTask && (
         <Card>
           <CardHeader>
@@ -199,6 +258,14 @@ export default function GradingCalibrationPage() {
                 <Badge variant="secondary">{TYPE_LABELS[currentTask.taskType] ?? currentTask.taskType}</Badge>
                 <Badge variant="outline">{tool}</Badge>
                 <Badge variant="outline">D{currentTask.difficulty}</Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowImagePanel(s => !s)}
+                >
+                  <ImageIcon className="mr-1 h-4 w-4" />
+                  Change Image
+                </Button>
               </div>
             </CardTitle>
             {currentTask.instructions && (
@@ -206,6 +273,66 @@ export default function GradingCalibrationPage() {
             )}
           </CardHeader>
           <CardContent>
+            {/* Image change panel */}
+            {showImagePanel && (
+              <div className="mb-4 rounded-lg border bg-muted/30 p-4 space-y-3">
+                <div className="text-sm font-medium">Change Image</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    value={imageUrlInput}
+                    onChange={(e) => setImageUrlInput(e.target.value)}
+                    placeholder="/training/gen/your-image.jpg"
+                    className="flex-1 min-w-[260px]"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleSaveImage}
+                    disabled={savingImage || !imageUrlInput.trim() || imageUrlInput.trim() === imageUrl}
+                  >
+                    {savingImage ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />}
+                    Apply Image
+                  </Button>
+                </div>
+                {/* Available images dropdown */}
+                <div className="flex items-center gap-2">
+                  <Select onValueChange={(v) => setImageUrlInput(v)}>
+                    <SelectTrigger className="min-w-[280px]">
+                      <SelectValue placeholder="Pick from available images" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {loadingImages && <SelectItem value="__loading" disabled>Loading...</SelectItem>}
+                      {availableImages.map((img) => (
+                        <SelectItem key={img.url} value={img.url}>
+                          {img.label} ({img.source === 'local' ? 'local' : 'studio'})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button variant="ghost" size="sm" onClick={fetchImages} disabled={loadingImages}>
+                    <RefreshCw className={`h-4 w-4 ${loadingImages ? 'animate-spin' : ''}`} />
+                  </Button>
+                </div>
+                {availableImages.length === 0 && !loadingImages && (
+                  <p className="text-xs text-muted-foreground">
+                    No additional images found. Upload images to <code>public/training/gen/</code> or generate via Media Studio.
+                  </p>
+                )}
+                {imageUrlInput.trim() !== imageUrl && imageUrlInput.trim() && (
+                  <p className="text-xs text-amber-600">
+                    Changing image will clear existing annotations — please re-calibrate after applying.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Current image preview */}
+            {imageUrl ? (
+              <div className="flex items-center gap-2 mb-3 text-xs text-muted-foreground">
+                <span>Current image:</span>
+                <code className="rounded bg-muted px-1.5 py-0.5">{imageUrl}</code>
+              </div>
+            ) : null}
+
             {imageUrl ? (
               <AnnotationCanvas
                 imageUrl={imageUrl}
@@ -217,8 +344,11 @@ export default function GradingCalibrationPage() {
                 minHeight={420}
               />
             ) : (
-              <div className="flex h-40 items-center justify-center rounded-lg border border-dashed text-muted-foreground">
-                This task has no image configured. Set imageUrl in config first.
+              <div className="flex h-40 flex-col items-center justify-center gap-3 rounded-lg border border-dashed text-muted-foreground">
+                <span>This task has no image configured.</span>
+                <Button variant="outline" size="sm" onClick={() => setShowImagePanel(true)}>
+                  <ImageIcon className="mr-1 h-4 w-4" /> Set Image URL
+                </Button>
               </div>
             )}
           </CardContent>
@@ -238,7 +368,7 @@ export default function GradingCalibrationPage() {
                 </Button>
                 <Button
                   size="sm"
-                  onClick={handleSave}
+                  onClick={handleSaveAnswerKey}
                   disabled={saving || totalAnnotations === 0}
                 >
                   {saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />}
