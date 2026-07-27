@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { FileText, Plus, Send, Archive } from 'lucide-react';
+import { FileText, Plus, Send, Archive, Sparkles } from 'lucide-react';
+import { AutoComposeDialog } from '@/components/auto-compose-dialog';
 
 interface Paper { id:string; title:string; paperKind:string; totalScore:number; passScore:number; durationMinutes:number; status:string; version:number; itemCount:number; createdAt:string }
 interface Question { id:string; question_type:string; stem:string; difficulty:number; knowledge_point:string|null }
@@ -27,6 +28,7 @@ export default function PapersPage() {
   const [papers,setPapers]=useState<Paper[]>([]); const [questions,setQuestions]=useState<Question[]>([]); const [tasks,setTasks]=useState<Task[]>([]);
   const [loading,setLoading]=useState(true); const [showCreate,setShowCreate]=useState(false); const [selected,setSelected]=useState<Set<string>>(new Set());
   const [form,setForm]=useState({title:'',durationMinutes:'90',totalScore:'100',passScore:'60'});
+  const [showAutoCompose,setShowAutoCompose]=useState(false);
 
   const load=useCallback(async()=>{
     setLoading(true);
@@ -62,7 +64,8 @@ export default function PapersPage() {
 
   if(loading)return <div className="py-12 text-center text-lg text-muted-foreground">正在加载试卷与题库…</div>;
   return <div className="space-y-6">
-    <div className="flex items-center justify-between"><div><h1 className="text-2xl font-bold">试卷管理</h1><p className="text-muted-foreground mt-1">仅可选用已审核发布的考试库题目；创建后会冻结答案与评分器版本。</p></div><Button size="lg" onClick={()=>setShowCreate(v=>!v)}><Plus className="w-5 h-5 mr-2"/>新建正式试卷</Button></div>
+    <div className="flex items-center justify-between"><div><h1 className="text-2xl font-bold">试卷管理</h1><p className="text-muted-foreground mt-1">仅可选用已审核发布的考试库题目；创建后会冻结答案与评分器版本。</p></div><div className="flex gap-2"><Button size="lg" variant="outline" onClick={()=>setShowAutoCompose(true)}><Sparkles className="w-5 h-5 mr-2"/>一键智能组卷</Button><Button size="lg" onClick={()=>setShowCreate(v=>!v)}><Plus className="w-5 h-5 mr-2"/>新建正式试卷</Button></div></div>
+    <AutoComposeDialog open={showAutoCompose} onOpenChange={setShowAutoCompose} onCreated={load} />
     {showCreate&&<Card><CardHeader><CardTitle>创建试卷</CardTitle></CardHeader><CardContent className="space-y-5">
       <div className="grid md:grid-cols-4 gap-4"><Input className="md:col-span-2" value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="试卷标题"/><Input type="number" value={form.durationMinutes} onChange={e=>setForm({...form,durationMinutes:e.target.value})} placeholder="时长（分钟）"/><Input type="number" value={form.totalScore} onChange={e=>setForm({...form,totalScore:e.target.value})} placeholder="总分"/><Input type="number" value={form.passScore} onChange={e=>setForm({...form,passScore:e.target.value})} placeholder="及格分"/></div>
       <div className="rounded-lg border max-h-[480px] overflow-auto divide-y">

@@ -526,7 +526,125 @@ export const compositeTaskGrader: Grader<CompositeTaskSubmission, CompositeTaskA
   },
 };
 
-const graders = [singleChoiceGrader, trueFalseGrader, fillInBlankGrader, excelDeleteRowsGrader, statsTableGrader, fileClassifyGrader, imageCleanGrader, imageAnnotationGrader, pointAnnotationGrader, polylineAnnotationGrader, polygonAnnotationGrader, textSentimentGrader, audioTranscriptionGrader, dataLabelingGrader, datasetQualityGrader, promptDescriptionGrader, compositeTaskGrader] as Array<Grader<unknown, unknown>>;
+// 14. Excel 综合操作题。学生需完成多项 Excel 操作（边框、公式、排序、分类汇总、填充色、小数格式），评分器逐项校验最终状态。
+export interface ExcelComprehensiveSubmission {
+  borderApplied?: boolean;
+  rows?: Array<{ id: string; cells: string[] }>;
+  rowOrder?: string[];
+  headerColor?: string;
+  decimalPlaces?: number;
+  summaryGroups?: Array<{ key: string; averages: Record<string, string | number> }>;
+}
+export interface ExcelComprehensiveAnswerKey {
+  // 班级列索引（用于校验公式结果）
+  classColumnIndex?: number;
+  // 公式结果：rowId -> 期望的班级值
+  formulaResults?: Record<string, string>;
+  // 排序后期望的行顺序（rowId 数组）
+  sortedRowOrder?: string[];
+  // 标题行期望填充色
+  headerColor?: string;
+  // 成绩列期望保留的小数位数
+  decimalPlaces?: number;
+  // 分类汇总期望的各组平均值
+  summaryAverages?: Array<{ key: string; averages: Record<string, number> }>;
+  // 数值比较容差（默认 0.01）
+  numericTolerance?: number;
+}
+/** 将字符串安全解析为数字，解析失败返回 null。 */
+function safeNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string') return null;
+  const text = value.trim().replace(/，/g, ',');
+  const n = Number(text.replace(/[^\d.\-]/g, ''));
+  return Number.isFinite(n) && text.length > 0 ? n : null;
+}
+export const excelComprehensiveGrader: Grader<ExcelComprehensiveSubmission, ExcelComprehensiveAnswerKey> = {
+  id: 'excel_comprehensive', version: '1.0.0',
+  grade(submission, answerKey) {
+    if (!isRecord(submission) || !isRecord(answerKey)) return invalid(excelComprehensiveGrader);
+    const tolerance = Number.isFinite(answerKey.numericTolerance) ? Math.max(0, answerKey.numericTolerance!) : 0.01;
+    const results: Array<{ label: string; passed: boolean; detail: string }> = [];
+
+    // ── 检查 1: 表格边框 ──
+    if (answerKey.headerColor !== undefined || 'borderRequired' in answerKey || answerKey.formulaResults || answerKey.sortedRowOrder) {
+      const borderPassed = submission.borderApplied === true;
+      results.push({ label: '设置表格边框', passed: borderPassed, detail: borderPassed ? '已设置边框' : '未设置表格边框' });
+    }
+
+    // ── 检查 2: 公式结果（班级列）──
+    if (isRecord(answerKey.formulaResults) && typeof answerKey.classColumnIndex === 'number') {
+      const colIdx = answerKey.classColumnIndex;
+      const rows = Array.isArray(submission.rows) ? submission.rows : [];
+      const rowMap = new Map(rows.map(r => [String(r.id), r]));
+      let formulaOk = 0;
+      const formulaTotal = Object.keys(answerKey.formulaResults).length;
+      const formulaWrong: string[] = [];
+      for (const [rowId, expected] of Object.entries(answerKey.formulaResults)) {
+        const row = rowMap.get(rowId);
+        const actual = row?.cells?.[colIdx] ?? '';
+        if (normLabel(actual) === normLabel(expected)) formulaOk++;
+        else formulaWrong.push(`${rowId}: 期望"${expected}"，实际"${actual}"`);
+      }
+      const formulaPassed = formulaOk === formulaTotal && formulaTotal > 0;
+      results.push({ label: '用公式求出班级', passed: formulaPassed, detail: formulaPassed ? `${formulaOk}/${formulaTotal} 个班级值正确` : formulaWrong.slice(0, 3).join('；') });
+    }
+
+    // ── 检查 3: 排序顺序 ──
+    if (Array.isArray(answerKey.sortedRowOrder) && answerKey.sortedRowOrder.length > 0) {
+      const actualOrder = Array.isArray(submission.rowOrder) ? submission.rowOrder.map(String) : (Array.isArray(submission.rows) ? submission.rows.map(r => String(r.id)) : []);
+      const expectedOrder = answerKey.sortedRowOrder.map(String);
+      const orderMatch = actualOrder.length === expectedOrder.length && actualOrder.every((id, i) => id === expectedOrder[i]);
+      results.push({ label: '按班级和成绩排序', passed: orderMatch, detail: orderMatch ? '排序顺序正确' : '排序顺序不正确' });
+    }
+
+    // ── 检查 4: 分类汇总 ──
+    if (Array.isArray(answerKey.summaryAverages) && answerKey.summaryAverages.length > 0) {
+      const actualGroups = Array.isArray(submission.summaryGroups) ? submission.summaryGroups : [];
+      let summaryOk = 0;
+      const summaryTotal = answerKey.summaryAverages.length;
+      const summaryWrong: string[] = [];
+      for (const expected of answerKey.summaryAverages) {
+        const actual = actualGroups.find(g => normLabel(g.key) === normLabel(expected.key));
+        if (!actual) { summaryWrong.push(`缺少"${expected.key}"的汇总`); continue; }
+        let avgOk = true;
+        for (const [col, expVal] of Object.entries(expected.averages)) {
+          const actVal = actual.averages?.[col];
+          const en = safeNumber(expVal);
+          const an = safeNumber(actVal);
+          const match = en !== null && an !== null ? Math.abs(en - an) <= tolerance : normLabel(actVal) === normLabel(expVal);
+          if (!match) { avgOk = false; summaryWrong.push(`"${expected.key}"的${col}平均值不正确`); }
+        }
+        if (avgOk) summaryOk++;
+      }
+      const summaryPassed = summaryOk === summaryTotal;
+      results.push({ label: '分类汇总求平均值', passed: summaryPassed, detail: summaryPassed ? `${summaryOk}/${summaryTotal} 个分组正确` : summaryWrong.slice(0, 3).join('；') });
+    }
+
+    // ── 检查 5: 标题行填充色 ──
+    if (typeof answerKey.headerColor === 'string') {
+      const colorPassed = normLabel(submission.headerColor) === normLabel(answerKey.headerColor);
+      results.push({ label: `标题行填充${answerKey.headerColor}色`, passed: colorPassed, detail: colorPassed ? '颜色正确' : `期望"${answerKey.headerColor}"色` });
+    }
+
+    // ── 检查 6: 成绩保留小数 ──
+    if (typeof answerKey.decimalPlaces === 'number') {
+      const decimalPassed = submission.decimalPlaces === answerKey.decimalPlaces;
+      results.push({ label: `成绩保留${answerKey.decimalPlaces}位小数`, passed: decimalPassed, detail: decimalPassed ? '小数格式正确' : `期望保留${answerKey.decimalPlaces}位小数` });
+    }
+
+    if (!results.length) return invalid(excelComprehensiveGrader, '评分项未配置');
+    const passedCount = results.filter(r => r.passed).length;
+    const score = clamp(passedCount / results.length);
+    const correct = passedCount === results.length;
+    const feedback = correct
+      ? '做对了！所有 Excel 操作均已完成。'
+      : results.filter(r => !r.passed).map(r => `${r.label}：${r.detail}`).join('；');
+    return { correct, score, feedback, graderVersion: versionOf(excelComprehensiveGrader), details: { checks: results, passedCount, totalChecks: results.length } };
+  },
+};
+
+const graders = [singleChoiceGrader, trueFalseGrader, fillInBlankGrader, excelDeleteRowsGrader, statsTableGrader, fileClassifyGrader, imageCleanGrader, imageAnnotationGrader, pointAnnotationGrader, polylineAnnotationGrader, polygonAnnotationGrader, textSentimentGrader, audioTranscriptionGrader, dataLabelingGrader, datasetQualityGrader, promptDescriptionGrader, compositeTaskGrader, excelComprehensiveGrader] as Array<Grader<unknown, unknown>>;
 const graderRegistry = new Map(graders.map(g => [g.id, g]));
 
 export const TASK_GRADER_MAP: Readonly<Record<string, string>> = Object.freeze({
@@ -544,6 +662,7 @@ export const TASK_GRADER_MAP: Readonly<Record<string, string>> = Object.freeze({
   data_labeling: 'data_labeling',
   dataset_quality: 'dataset_quality',
   composite_task: 'composite_task',
+  excel_comprehensive: 'excel_comprehensive',
 });
 
 export function graderIdForTaskType(taskType: string): string | null { return TASK_GRADER_MAP[taskType] ?? null; }

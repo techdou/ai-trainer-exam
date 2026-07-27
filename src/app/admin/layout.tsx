@@ -34,7 +34,7 @@ const navItems = [
   { href: '/admin/import', label: '题库导入', icon: FileUp, roles: ['super_admin', 'school_admin', 'question_editor'] },
   { href: '/admin/review', label: '题目审核', icon: ClipboardCheck, roles: ['super_admin', 'school_admin', 'question_reviewer'] },
   { href: '/admin/media-studio', label: '素材工坊', icon: Image, roles: ['super_admin', 'school_admin', 'question_editor'] },
-  { href: '/admin/grading-calibration', label: '评分校准', icon: SlidersHorizontal, roles: ['super_admin', 'school_admin'] },
+  { href: '/admin/grading-calibration', label: '评分校准', icon: SlidersHorizontal, roles: ['super_admin', 'school_admin', 'question_editor'] },
   { href: '/admin/papers', label: '试卷管理', icon: FileText, roles: ['super_admin', 'school_admin'] },
   { href: '/admin/exam-schedules', label: '考务安排', icon: CalendarClock, roles: ['super_admin', 'school_admin'] },
   { href: '/admin/exam-monitor', label: '考试监控', icon: MonitorCheck, roles: ['super_admin', 'school_admin', 'invigilator'] },
