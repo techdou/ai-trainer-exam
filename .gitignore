@@ -69,3 +69,5 @@ coverage/
 # ================================
 *.log
 tmp/
+.cozeproj/reduction
+.codegraph
