@@ -62,6 +62,14 @@ export async function POST(req: NextRequest) {
     if (file.size > 5 * 1024 * 1024) {
       return fail(413, '名册文件不能超过 5MB');
     }
+    // magic number 二次校验: xlsx/xls 实际是 ZIP(PK\x03\x04), 防伪造扩展名
+    const fileBuffer = await file.arrayBuffer();
+    const header = new Uint8Array(fileBuffer.slice(0, 4));
+    const isZip = header[0] === 0x50 && header[1] === 0x4b && header[2] === 0x03 && header[3] === 0x04;
+    const isOle = header[0] === 0xd0 && header[1] === 0xcf && header[2] === 0x11 && header[3] === 0xe0; // 老 .xls OLE
+    if (!isZip && !isOle) {
+      return fail(400, '文件内容不是有效的 Excel 文件(缺少 ZIP/OLE 文件头), 可能伪造了扩展名');
+    }
 
     // 显式校验 service role key: 缺失时 admin.createUser 必崩, 提前 fail 避免每条学员都静默 skipped
     loadEnv();
@@ -69,8 +77,7 @@ export async function POST(req: NextRequest) {
       return fail(500, '服务器未配置 COZE_SUPABASE_SERVICE_ROLE_KEY, 无法创建账号, 请联系平台管理员');
     }
 
-    // 解析 Excel
-    const fileBuffer = await file.arrayBuffer();
+    // 解析 Excel(fileBuffer 已在 magic number 校验时读取)
     const parsed = parseRoster(fileBuffer);
     const cohortName = customCohortName.trim() || parsed.cohortName;
 

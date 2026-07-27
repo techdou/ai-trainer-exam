@@ -111,8 +111,16 @@ export function parseRoster(fileBuffer: ArrayBuffer): ParsedRoster {
 
     // 跳过空行和注脚行
     if (!idCard || !name) continue;
-    // 身份证号至少 15 位
-    if (idCard.length < 15) continue;
+    // 身份证号格式校验: 18 位(老 15 位也接受), 末位为数字或 X
+    if (!/^\d{17}[\dX]$/.test(idCard) && !/^\d{15}$/.test(idCard)) continue;
+    // 18 位身份证校验位算法(GB 11643-1999), 拦截拼凑/手误的号码
+    if (idCard.length === 18) {
+      const weights = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2];
+      const checkCodes = ['1', '0', 'X', '9', '8', '7', '6', '5', '4', '3', '2'];
+      let sum = 0;
+      for (let i = 0; i < 17; i++) sum += parseInt(idCard[i], 10) * weights[i];
+      if (checkCodes[sum % 11] !== idCard[17].toUpperCase()) continue;
+    }
     // 跳过"注："开头的注脚
     if (idCard.startsWith('注') || name.startsWith('注')) continue;
 
