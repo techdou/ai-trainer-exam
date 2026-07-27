@@ -11,13 +11,14 @@
  * 用法: pnpm tsx scripts/db/verify-exam-flow.mts  (需要 dev server 运行在 5000 端口)
  */
 import { loadEnv } from 'coze-coding-dev-sdk';
+import { getAccount } from './_accounts.mjs';
 import { readFileSync } from 'node:fs';
 
 loadEnv();
 
 const BASE = process.env.VERIFY_BASE_URL || 'http://localhost:5000';
-const STUDENT = { email: 'stu001@student.exam.local', password: 'SEEDED' };
-const ADMIN = { email: 'admin@exam.local', password: 'SEEDED' };
+const STUDENT = getAccount('student');
+const ADMIN = getAccount('admin');
 const TAG = `【交卷实测${Date.now() % 100000}】`;
 
 let passed = 0;

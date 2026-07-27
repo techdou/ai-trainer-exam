@@ -9,16 +9,17 @@
  * 用法: pnpm tsx scripts/db/verify-student.mts  (需要 dev server 运行在 5000 端口)
  */
 import { loadEnv } from 'coze-coding-dev-sdk';
+import { getAccounts } from './_accounts.mjs';
 
 loadEnv();
 
 const BASE = process.env.VERIFY_BASE_URL || 'http://localhost:5000';
 
-const ACCOUNTS: Record<string, { email: string; password: string }> = {
-  student: { email: 'stu001@student.exam.local', password: 'SEEDED' },
-  student2: { email: 'stu002@student.exam.local', password: 'SEEDED' },
-  admin: { email: 'admin@exam.local', password: 'SEEDED' },
-};
+const ACCOUNTS: Record<string, { email: string; password: string }> = getAccounts(
+  'student',
+  'student2',
+  'admin',
+);
 
 const tokens: Record<string, string> = {};
 let passed = 0;
