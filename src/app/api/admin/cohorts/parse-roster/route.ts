@@ -15,8 +15,8 @@ export async function POST(req: NextRequest) {
     if (!file || !(file instanceof File)) {
       return fail(400, '请上传名册文件');
     }
-    if (!file.name.match(/\.xlsx?$/i)) {
-      return fail(400, '仅支持 .xlsx 或 .xls 格式的名册文件');
+    if (!file.name.match(/\.xlsx$/i)) {
+      return fail(400, '仅支持 .xlsx 格式的名册文件');
     }
     if (file.size > 5 * 1024 * 1024) {
       return fail(413, '名册文件不能超过 5MB');
@@ -26,11 +26,10 @@ export async function POST(req: NextRequest) {
     // magic number 校验: 防 XML/ZIP 炸弹和伪造扩展名
     const header = new Uint8Array(fileBuffer.slice(0, 4));
     const isZip = header[0] === 0x50 && header[1] === 0x4b && header[2] === 0x03 && header[3] === 0x04;
-    const isOle = header[0] === 0xd0 && header[1] === 0xcf && header[2] === 0x11 && header[3] === 0xe0;
-    if (!isZip && !isOle) {
-      return fail(400, '文件内容不是有效的 Excel 文件(缺少 ZIP/OLE 文件头)');
+    if (!isZip) {
+      return fail(400, '文件内容不是有效的 .xlsx 文件(缺少 ZIP 文件头)');
     }
-    const parsed = parseRoster(fileBuffer);
+    const parsed = await parseRoster(fileBuffer);
 
     return ok({
       cohortName: parsed.cohortName,

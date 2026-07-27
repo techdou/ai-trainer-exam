@@ -51,6 +51,18 @@ export const POST = handler(async (request: Request) => {
   const idempotencyKey = body.idempotencyKey ?? submissionHash;
 
   const result = await dbTx(async client => {
+    const scheduleLock = await client.query<{ status: string; results_released: boolean }>(
+      `SELECT status,results_released
+         FROM exam_schedules
+        WHERE id=$1 AND deleted_at IS NULL
+        FOR UPDATE`,
+      [body.scheduleId],
+    );
+    const lockedSchedule = scheduleLock.rows[0];
+    if (!lockedSchedule) throw new ApiError(404, '考试安排不存在');
+    if (lockedSchedule.results_released || ['results_released', 'archived'].includes(lockedSchedule.status)) {
+      throw new ApiError(409, '成绩已发布，不能再提交答卷');
+    }
     const attemptResult = await client.query<{
       id:string;status:string;server_deadline:Date|null;submission_hash:string|null;submit_receipt:string|null;
     }>(`SELECT id,status,server_deadline,submission_hash,submit_receipt FROM exam_attempts

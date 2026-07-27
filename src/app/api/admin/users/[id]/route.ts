@@ -93,6 +93,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
       case 'set_roles': {
         if (!body.roles) return fail(400, '缺少 roles');
+        const tenantRoles = body.roles.filter(role => role !== 'super_admin' && role !== 'auditor');
+        const globalRoles = body.roles.filter(role => role === 'super_admin' || role === 'auditor');
+        if (tenantRoles.length > 0 && globalRoles.length > 0) {
+          return fail(400, '全局角色与机构角色不能分配给同一账号');
+        }
+        if (globalRoles.length > 0 && target.organization_id) {
+          return fail(400, '已绑定学校的账号不能直接改为全局角色');
+        }
+        if (tenantRoles.length > 0 && !target.organization_id) {
+          return fail(400, '机构角色账号必须先绑定所属学校');
+        }
         if (!isSuper) {
           const bad = body.roles.filter(r => !(SCHOOL_ADMIN_ASSIGNABLE_ROLES as readonly string[]).includes(r));
           if (bad.length > 0) return fail(403, `学校管理员不能分配这些角色：${bad.join('、')}`);

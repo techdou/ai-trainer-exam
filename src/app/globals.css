@@ -104,8 +104,10 @@
   }
   body {
     @apply bg-background text-foreground;
+
     font-family: var(--font-sans);
   }
+
   /* 焦点态必须有可见 focus ring（键盘可用） */
   :focus-visible {
     outline: 3px solid var(--ring);
@@ -119,14 +121,17 @@
   /* 大操作按钮 */
   .btn-xl {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-8 py-4 text-lg font-bold;
+
     min-height: 3.5rem;
     min-width: 10rem;
   }
+
   /* 学员实操页正文 */
   .student-body {
     font-size: 1.125rem;
     line-height: 1.75;
   }
+
   /* 任务目标一句话 */
   .task-goal {
     font-size: 1.25rem;

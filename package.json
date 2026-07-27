@@ -3,15 +3,15 @@
   "version": "1.0.0-rc.2",
   "private": true,
   "scripts": {
-    "build": "bash ./scripts/build.sh",
-    "dev": "bash ./scripts/dev.sh",
+    "build": "next build && tsup src/server.ts --format cjs --platform node --target node22 --outDir dist --no-splitting --no-minify",
+    "dev": "tsx watch src/server.ts",
     "preinstall": "npx only-allow pnpm",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint",
     "lint:build": "eslint . --quiet",
     "lint:style": "stylelint \"src/**/*.css\"",
-    "start": "bash ./scripts/start.sh",
+    "start": "node scripts/start.mjs",
     "ts-check": "tsc -p tsconfig.json",
     "validate": "pnpm quality:offline && pnpm ts-check && pnpm lint:build && pnpm lint:style && pnpm test && pnpm build",
     "quality:offline": "node scripts/quality-gate.mjs",
@@ -21,8 +21,8 @@
     "db:seed-questions": "tsx scripts/db/seed-questions.mts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.958.0",
-    "@aws-sdk/lib-storage": "^3.958.0",
+    "@aws-sdk/client-s3": "3.1095.0",
+    "@aws-sdk/lib-storage": "3.1095.0",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -57,7 +57,7 @@
     "coze-coding-dev-sdk": "^0.7.24",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "^0.45.2",
     "drizzle-zod": "^0.8.3",
     "embla-carousel-react": "^8.6.0",
     "exceljs": "^4.4.0",
@@ -65,7 +65,7 @@
     "konva": "^10.3.0",
     "lucide-react": "^0.468.0",
     "mammoth": "^1.12.0",
-    "next": "16.1.1",
+    "next": "16.2.12",
     "next-themes": "^0.4.6",
     "pg": "^8.17.2",
     "react": "19.2.3",
@@ -79,7 +79,6 @@
     "tailwind-merge": "^2.6.0",
     "tw-animate-css": "^1.4.0",
     "vaul": "^1.1.2",
-    "xlsx": "^0.18.5",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -93,7 +92,8 @@
     "@vitejs/plugin-react": "^6.0.4",
     "drizzle-kit": "^0.31.8",
     "eslint": "^9",
-    "eslint-config-next": "16.1.1",
+    "eslint-config-next": "16.2.12",
+    "eslint-plugin-import": "^2.32.0",
     "only-allow": "^1.2.2",
     "react-dev-inspector": "^2.0.1",
     "shadcn": "latest",
@@ -105,8 +105,9 @@
     "typescript": "^5",
     "vitest": "^4.1.10"
   },
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@11.17.0",
   "engines": {
-    "pnpm": ">=9.0.0"
+    "node": ">=22.13.0",
+    "pnpm": ">=11.17.0"
   }
 }

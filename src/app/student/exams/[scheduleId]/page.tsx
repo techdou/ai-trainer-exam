@@ -47,6 +47,8 @@ export default function ExamTakePage() {
   // null = 倒计时尚未初始化; 仅当初始化后归零才触发自动交卷,避免试卷刚加载时误交白卷。
   const [timeLeft,setTimeLeft]=useState<number|null>(null);
   const dirtyRef=useRef(new Set<string>());
+  const responseVersionRef=useRef(new Map<string,number>());
+  const flushPromiseRef=useRef<Promise<boolean>|null>(null);
   const saveTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
 
   // 用 ref 承载高频变化的状态,让 flush/submit/定时器引用稳定,避免每答一题重建全部定时器。
@@ -69,6 +71,8 @@ export default function ExamTakePage() {
     if(result.data.attemptId!==start.data.attemptId){setLoadError('考试状态异常,请返回列表重试');setLoading(false);return;}
     setPayload(result.data);
     setResponses(result.data.savedResponses??{});
+    dirtyRef.current.clear();
+    responseVersionRef.current.clear();
     setServerOffset(new Date(result.data.serverNow).getTime()-Date.now());
     // 幂等键按 attempt 固定:重复交卷/断网重试时服务端可识别为同一次提交。
     idemKeyRef.current=`submit-${result.data.attemptId}`;
@@ -77,15 +81,28 @@ export default function ExamTakePage() {
   useEffect(()=>{void load()},[load]);
 
   const flush=useCallback(async(keepalive=false)=>{
+    if(flushPromiseRef.current)await flushPromiseRef.current;
     const p=payloadRef.current;
     if(!p||dirtyRef.current.size===0||receiptRef.current)return true;
     const ids=[...dirtyRef.current];
+    const sentVersions=new Map(ids.map(id=>[id,responseVersionRef.current.get(id)??0]));
     const body=ids.map(itemId=>({itemId,response:responsesRef.current[itemId]??{},workspaceSnapshot:responsesRef.current[itemId]??{}}));
-    setSaving(true);
-    const result=await apiFetch<{saved:number}>('/api/student/exams/save',{method:'POST',body:{scheduleId,attemptId:p.attemptId,responses:body},keepalive});
-    setSaving(false);
-    if(result.ok){ids.forEach(id=>dirtyRef.current.delete(id));return true;}
-    toast.error('自动保存失败',{description:result.error});return false;
+    const savePromise=(async()=>{
+      setSaving(true);
+      try{
+        const result=await apiFetch<{saved:number}>('/api/student/exams/save',{method:'POST',body:{scheduleId,attemptId:p.attemptId,responses:body},keepalive});
+        if(result.ok){
+          ids.forEach(id=>{
+            if(responseVersionRef.current.get(id)===sentVersions.get(id))dirtyRef.current.delete(id);
+          });
+          return true;
+        }
+        toast.error('自动保存失败',{description:result.error});return false;
+      }finally{setSaving(false)}
+    })();
+    flushPromiseRef.current=savePromise;
+    try{return await savePromise}
+    finally{if(flushPromiseRef.current===savePromise)flushPromiseRef.current=null}
   },[scheduleId]);
 
   // 答题后 1.2s 防抖保存
@@ -137,7 +154,11 @@ export default function ExamTakePage() {
   },[flush,scheduleId]);
   useEffect(()=>{if(payload&&timeLeft!==null&&timeLeft<=0&&!receipt)void submit()},[payload,timeLeft,receipt,submit]);
 
-  const change=(itemId:string,value:unknown)=>{setResponses(prev=>({...prev,[itemId]:value}));dirtyRef.current.add(itemId)};
+  const change=(itemId:string,value:unknown)=>{
+    responseVersionRef.current.set(itemId,(responseVersionRef.current.get(itemId)??0)+1);
+    dirtyRef.current.add(itemId);
+    setResponses(prev=>({...prev,[itemId]:value}));
+  };
   const count=useMemo(()=>Object.values(responses).filter(answered).length,[responses]);
   const format=(seconds:number)=>`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
 

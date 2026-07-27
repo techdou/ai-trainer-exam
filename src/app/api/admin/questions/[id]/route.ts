@@ -1,14 +1,14 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireRole } from '@/server/auth';
-import { updateQuestion, retireQuestion, getQuestionById, reviewQuestion } from '@/server/question-bank';
+import { updateQuestion, getQuestionById, reviewQuestion } from '@/server/question-bank';
 import { insertAudit } from '@/server/audit';
 import { catchError, fail, ok, parseBody } from '@/lib/api';
 import { assertOrganizationScope } from '@/server/exam-security';
 
 const schema = z.object({
   action: z.enum(['retire','approve','reject','publish']).optional(), stem: z.string().trim().min(2).max(5000).optional(),
-  options: z.record(z.string(), z.string()).optional(), answerKey: z.union([z.string(),z.boolean()]).optional(),
+  options: z.record(z.string(), z.string()).optional(), answerKey: z.unknown().optional(),
   explanation: z.string().max(5000).nullable().optional(), knowledgePoint: z.string().max(200).nullable().optional(),
   difficulty: z.number().int().min(1).max(5).optional(),
   note: z.string().max(500).optional(),
@@ -27,7 +27,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     assertOrganizationScope(user, current.organization_id);
     const body = await parseBody(request, schema);
     if (body.action === 'retire') {
-      await retireQuestion(id);
+      if (!user.roles.some(r => EDIT_ROLES.includes(r))) return fail(403, '只有编辑员或管理员可以退役题目');
+      await reviewQuestion(id, 'retire', user.id, body.note);
       await insertAudit({ actorId: user.id, actorRole: user.roles[0], organizationId: current.organization_id, action: 'question_retire', entityType: 'question', entityId: id });
       return ok({ retired: true });
     }
@@ -44,7 +45,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!user.roles.some(r => EDIT_ROLES.includes(r))) return fail(403, '只有编辑员或管理员可以编辑题目');
     const updated = await updateQuestion(id, {
       stem: body.stem, options: body.options, answer_key: body.answerKey === undefined ? undefined : JSON.stringify(body.answerKey),
-      explanation: body.explanation ?? undefined, knowledge_point: body.knowledgePoint ?? undefined, difficulty: body.difficulty,
+      explanation: body.explanation, knowledge_point: body.knowledgePoint, difficulty: body.difficulty,
     }, user.id);
     await insertAudit({ actorId: user.id, actorRole: user.roles[0], organizationId: current.organization_id, action: 'question_edit', entityType: 'question', entityId: id });
     return ok(updated);

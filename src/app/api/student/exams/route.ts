@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireRole } from '@/server/auth';
 import { dbQuery } from '@/server/db';
 import {ok, catchError } from '@/lib/api';
+import { isScheduleStartableStatus } from '@/server/exam-security';
 
 /** GET /api/student/exams - 列出学员可参加的考试 */
 export async function GET(req: NextRequest) {
@@ -60,12 +61,16 @@ export async function GET(req: NextRequest) {
       const startAt = new Date(s.exam_start_at).getTime();
       const endAt = new Date(s.exam_end_at).getTime() + (s.submit_grace_seconds ?? 60) * 1000;
       const lateEntryAt = startAt + (s.late_entry_minutes ?? 15) * 60 * 1000;
-      const isOpen = now >= startAt && now <= endAt;
+      const statusCanStart = isScheduleStartableStatus(s.status);
+      const statusCanResume = !s.results_released && !['results_released', 'archived'].includes(s.status);
+      const isOpen = statusCanStart && now >= startAt && now <= endAt;
       const isUpcoming = now < startAt;
-      const canEnter = s.attempt_status === 'in_progress' ? now <= endAt : now >= startAt && now <= lateEntryAt;
+      const canEnter = s.attempt_status === 'in_progress'
+        ? statusCanResume && now <= endAt
+        : statusCanStart && now >= startAt && now <= lateEntryAt;
 
       let timeStatus: 'upcoming' | 'open' | 'closed' = 'closed';
-      if (isUpcoming) timeStatus = 'upcoming';
+      if (statusCanStart && isUpcoming) timeStatus = 'upcoming';
       else if (isOpen) timeStatus = 'open';
 
       return {

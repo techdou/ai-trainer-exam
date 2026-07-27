@@ -76,39 +76,50 @@ export async function PATCH(req: NextRequest) {
   try {
     const user = await requireRole(req, ['super_admin', 'school_admin']);
     const body = await parseBody(req, patchSchema);
-    const current = await loadScore(body.scoreId);
-    if (!current) return fail(404, '成绩记录不存在');
-    await assertAccess(user, current);
-    // 状态守卫: 已发布/作废的成绩不能再走复核(通过或调整), 否则发布后可被无限改回 reviewed 反复调整。
-    if (!['auto_graded','reviewed','pending'].includes(current.status)) {
-      return fail(409, `当前成绩状态为 ${current.status}，不能复核。已发布的成绩需先撤回发布。`);
+    if (!body.note) {
+      return fail(400, body.action === 'approve' ? '复核通过也必须填写复核说明' : '调整成绩必须填写原因');
+    }
+    if (body.action === 'adjust' && Object.keys(body.adjustments ?? {}).length === 0) {
+      return fail(400, '没有需要调整的分数项');
     }
 
-    if (body.action === 'approve') {
-      if (!body.note) return fail(400, '复核通过也必须填写复核说明');
-      await dbTx(async client => {
+    const result = await dbTx(async client => {
+      const locked = await client.query<ScoreRow>(
+        `SELECT sc.id,sc.attempt_id,sc.schedule_id,sc.user_id,s.organization_id,s.cohort_id,p.pass_score,
+                sc.theory_score,sc.cleaning_score,sc.image_annotation_score,sc.text_annotation_score,sc.audio_score,
+                sc.statistics_score,sc.total_score,sc.max_score,sc.passed,sc.status,sc.auto_score_detail,sc.created_at
+           FROM exam_scores sc
+           JOIN exam_schedules s ON s.id=sc.schedule_id
+           JOIN exam_papers p ON p.id=s.paper_id
+          WHERE sc.id=$1 AND s.deleted_at IS NULL
+          FOR UPDATE OF sc`,
+        [body.scoreId],
+      );
+      const current = locked.rows[0];
+      if (!current) return { error: fail(404, '成绩记录不存在') };
+      assertOrganizationScope(user, current.organization_id);
+      if (!['auto_graded','reviewed','pending'].includes(current.status)) {
+        return { error: fail(409, `当前成绩状态为 ${current.status}，不能复核。已发布的成绩需先撤回发布。`) };
+      }
+
+      if (body.action === 'approve') {
         await client.query(`UPDATE exam_scores SET status='reviewed',updated_at=NOW() WHERE id=$1`, [body.scoreId]);
         await client.query(`INSERT INTO audit_logs(actor_id,actor_role,organization_id,action,entity_type,entity_id,detail)
           VALUES($1,$2,$3,'score_review_approve','exam_score',$4,$5)`,
           [user.id, user.roles[0] ?? null, current.organization_id, body.scoreId, { note: body.note, total: Number(current.total_score) }]);
-      });
-      return ok({ scoreId: body.scoreId, status: 'reviewed' });
-    }
+        return { scoreId: body.scoreId, status: 'reviewed' as const };
+      }
 
-    if (!body.note) return fail(400, '调整成绩必须填写原因');
-    const adj = body.adjustments ?? {};
-    if (Object.keys(adj).length === 0) return fail(400, '没有需要调整的分数项');
-    const next = {
-      theory: adj.theoryScore ?? Number(current.theory_score), cleaning: adj.cleaningScore ?? Number(current.cleaning_score),
-      image: adj.imageAnnotationScore ?? Number(current.image_annotation_score),
-      text: adj.textAnnotationScore ?? Number(current.text_annotation_score), audio: adj.audioScore ?? Number(current.audio_score),
-      statistics: adj.statisticsScore ?? Number(current.statistics_score),
-    };
-    const total = Number((next.theory + next.cleaning + next.image + next.text + next.audio + next.statistics).toFixed(2));
-    if (total > Number(current.max_score)) return fail(400, '调整后的总分不能超过试卷满分');
-    const passed = total >= Number(current.pass_score);
-
-    await dbTx(async client => {
+      const adj = body.adjustments ?? {};
+      const next = {
+        theory: adj.theoryScore ?? Number(current.theory_score), cleaning: adj.cleaningScore ?? Number(current.cleaning_score),
+        image: adj.imageAnnotationScore ?? Number(current.image_annotation_score),
+        text: adj.textAnnotationScore ?? Number(current.text_annotation_score), audio: adj.audioScore ?? Number(current.audio_score),
+        statistics: adj.statisticsScore ?? Number(current.statistics_score),
+      };
+      const total = Number((next.theory + next.cleaning + next.image + next.text + next.audio + next.statistics).toFixed(2));
+      if (total > Number(current.max_score)) return { error: fail(400, '调整后的总分不能超过试卷满分') };
+      const passed = total >= Number(current.pass_score);
       await client.query(`UPDATE exam_scores SET theory_score=$1,cleaning_score=$2,image_annotation_score=$3,
           text_annotation_score=$4,audio_score=$5,statistics_score=$6,total_score=$7,passed=$8,
           original_total=COALESCE(original_total,total_score),adjusted_total=$7,adjust_reason=$9,adjusted_by=$10,
@@ -118,7 +129,9 @@ export async function PATCH(req: NextRequest) {
           VALUES($1,$2,$3,'score_adjust','exam_score',$4,$5)`,
         [user.id,user.roles[0] ?? null,current.organization_id,body.scoreId,
           { note: body.note, before: { theory: Number(current.theory_score), cleaning: Number(current.cleaning_score), image: Number(current.image_annotation_score), text: Number(current.text_annotation_score), audio: Number(current.audio_score), statistics: Number(current.statistics_score), total: Number(current.total_score) }, after: { ...next, total, passed } }]);
+      return { scoreId: body.scoreId, totalScore: total, passed, status: 'reviewed' as const };
     });
-    return ok({ scoreId: body.scoreId, totalScore: total, passed, status: 'reviewed' });
+    if ('error' in result) return result.error;
+    return ok(result);
   } catch (error) { return catchError(error); }
 }

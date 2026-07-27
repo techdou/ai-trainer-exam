@@ -229,6 +229,8 @@ export const practiceTaskTemplates = pgTable(
       .notNull()
       .default("draft"),
     published_version: integer("published_version"),
+    created_by: varchar("created_by", { length: 36 }),
+    reviewer_id: varchar("reviewer_id", { length: 36 }),
     created_at: createdAt(),
     updated_at: updatedAt(),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
@@ -385,6 +387,8 @@ export const examTaskTemplates = pgTable(
       .notNull()
       .default("draft"),
     published_version: integer("published_version"),
+    created_by: varchar("created_by", { length: 36 }),
+    reviewer_id: varchar("reviewer_id", { length: 36 }),
     created_at: createdAt(),
     updated_at: updatedAt(),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),

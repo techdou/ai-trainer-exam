@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { requireRole } from '@/server/auth';
-import { dbOne, dbQuery, dbExec, dbTx } from '@/server/db';
+import { ApiError, requireRole } from '@/server/auth';
+import { dbOne, dbQuery, dbTx } from '@/server/db';
 import { ok, fail, catchError, parseBody } from '@/lib/api';
 import { assertExamStatusTransition, assertOrganizationScope } from '@/server/exam-security';
 import { EXAM_STATUS } from '@/lib/constants';
@@ -115,39 +115,55 @@ export async function PATCH(req: NextRequest) {
   try {
     const user = await requireRole(req, ['super_admin', 'school_admin']);
     const body = await parseBody(req, patchSchema);
-    const current = await dbOne<ScheduleOwner>('SELECT id,organization_id,status,exam_start_at,exam_end_at FROM exam_schedules WHERE id=$1 AND deleted_at IS NULL', body.scheduleId);
-    if (!current) return fail(404, '考试安排不存在');
-    assertOrganizationScope(user, current.organization_id);
+    const result = await dbTx(async client => {
+      const currentResult = await client.query<ScheduleOwner>(
+        `SELECT id,organization_id,status,exam_start_at,exam_end_at
+           FROM exam_schedules
+          WHERE id=$1 AND deleted_at IS NULL
+          FOR UPDATE`,
+        [body.scheduleId],
+      );
+      const current = currentResult.rows[0];
+      if (!current) throw new ApiError(404, '考试安排不存在');
+      assertOrganizationScope(user, current.organization_id);
 
-    if (body.status) assertExamStatusTransition(current.status, body.status);
-    const effectiveStart = body.examStartAt ?? current.exam_start_at;
-    const effectiveEnd = body.examEndAt ?? current.exam_end_at;
-    if (new Date(effectiveEnd).getTime() <= new Date(effectiveStart).getTime()) return fail(400, '考试结束时间必须晚于开始时间');
-    if (current.status !== 'draft' && [body.examStartAt, body.examEndAt, body.practiceLockAt].some(v => v !== undefined)) return fail(409, '考试发布后不能修改关键时间，请新建考试安排');
-    // 公平性参数(交卷宽限/迟到入场)直接影响在考学员的交卷截止与入场边界,
-    // 考试发布后同样冻结, 否则 exam_open 期间改参数会对不同时间入场的学员造成不对等。
-    if (current.status !== 'draft' && [body.submitGraceSeconds, body.lateEntryMinutes].some(v => v !== undefined)) return fail(409, '考试发布后不能修改交卷宽限与迟到入场参数，请新建考试安排');
+      if (body.status === 'results_released') {
+        throw new ApiError(409, '请通过成绩发布接口释放成绩');
+      }
+      if (body.status) assertExamStatusTransition(current.status, body.status);
+      const effectiveStart = body.examStartAt ?? current.exam_start_at;
+      const effectiveEnd = body.examEndAt ?? current.exam_end_at;
+      if (new Date(effectiveEnd).getTime() <= new Date(effectiveStart).getTime()) {
+        throw new ApiError(400, '考试结束时间必须晚于开始时间');
+      }
+      if (current.status !== 'draft' && [body.examStartAt, body.examEndAt, body.practiceLockAt].some(v => v !== undefined)) {
+        throw new ApiError(409, '考试发布后不能修改关键时间，请新建考试安排');
+      }
+      // 公平性参数直接影响在考学员的截止与入场边界，发布后必须冻结。
+      if (current.status !== 'draft' && [body.submitGraceSeconds, body.lateEntryMinutes].some(v => v !== undefined)) {
+        throw new ApiError(409, '考试发布后不能修改交卷宽限与迟到入场参数，请新建考试安排');
+      }
 
-    const fields: string[] = []; const values: unknown[] = [];
-    const add = (column: string, value: unknown) => { values.push(value); fields.push(`${column}=$${values.length}`); };
-    if (body.title !== undefined) add('title', body.title);
-    if (body.practiceOpenAt !== undefined) add('practice_open_at', body.practiceOpenAt);
-    if (body.practiceLockAt !== undefined) add('practice_lock_at', body.practiceLockAt);
-    if (body.examStartAt !== undefined) add('exam_start_at', body.examStartAt);
-    if (body.examEndAt !== undefined) add('exam_end_at', body.examEndAt);
-    if (body.lateEntryMinutes !== undefined) add('late_entry_minutes', body.lateEntryMinutes);
-    if (body.submitGraceSeconds !== undefined) add('submit_grace_seconds', body.submitGraceSeconds);
-    if (body.resultsReleaseAt !== undefined) add('results_release_at', body.resultsReleaseAt);
-    if (body.status !== undefined) add('status', body.status);
-    if (fields.length === 0) return ok({ updated: false });
+      const fields: string[] = []; const values: unknown[] = [];
+      const add = (column: string, value: unknown) => { values.push(value); fields.push(`${column}=$${values.length}`); };
+      if (body.title !== undefined) add('title', body.title);
+      if (body.practiceOpenAt !== undefined) add('practice_open_at', body.practiceOpenAt);
+      if (body.practiceLockAt !== undefined) add('practice_lock_at', body.practiceLockAt);
+      if (body.examStartAt !== undefined) add('exam_start_at', body.examStartAt);
+      if (body.examEndAt !== undefined) add('exam_end_at', body.examEndAt);
+      if (body.lateEntryMinutes !== undefined) add('late_entry_minutes', body.lateEntryMinutes);
+      if (body.submitGraceSeconds !== undefined) add('submit_grace_seconds', body.submitGraceSeconds);
+      if (body.resultsReleaseAt !== undefined) add('results_release_at', body.resultsReleaseAt);
+      if (body.status !== undefined) add('status', body.status);
+      if (fields.length === 0) return { updated: false };
 
-    await dbTx(async client => {
       values.push(body.scheduleId);
       await client.query(`UPDATE exam_schedules SET ${fields.join(',')},updated_at=NOW() WHERE id=$${values.length}`, values);
       await client.query(`INSERT INTO audit_logs(actor_id,actor_role,organization_id,action,entity_type,entity_id,detail)
                           VALUES($1,$2,$3,'exam_schedule_update','exam_schedule',$4,$5)`,
         [user.id, user.roles[0] ?? null, current.organization_id, body.scheduleId, { fromStatus: current.status, changes: body }]);
+      return { updated: true };
     });
-    return ok({ updated: true });
+    return ok(result);
   } catch (error) { return catchError(error); }
 }

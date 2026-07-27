@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { ApiError, requireRole } from '@/server/auth';
+import { ApiError, organizationScope, requireRole } from '@/server/auth';
 import { dbOne, dbQuery } from '@/server/db';
 import { catchError, ok, parseBody } from '@/lib/api';
 import { insertAudit } from '@/server/audit';
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
         WHERE p.deleted_at IS NULL AND ($1::text IS NULL OR p.organization_id = $1)
         GROUP BY p.id, o.name
         ORDER BY p.created_at DESC`,
-      user.roles.includes('super_admin') ? null : user.organizationId,
+      organizationScope(user),
     );
     return ok({ items: rows.map(row => ({
       id:row.id, organizationId:row.organization_id, organizationName:row.organization_name,
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireRole(request, ['super_admin', 'school_admin']);
     const body = await parseBody(request, createSchema);
-    const organizationId = user.roles.includes('super_admin') ? body.organizationId : user.organizationId;
+    const organizationId = user.roles.includes('super_admin') ? body.organizationId : organizationScope(user);
     if (!organizationId) throw new ApiError(400, '请选择所属机构');
     const org = await dbOne<{ id:string }>('SELECT id FROM organizations WHERE id = $1 AND deleted_at IS NULL AND status = \'active\'', organizationId);
     if (!org) throw new ApiError(404, '所属机构不存在或已停用');

@@ -1,0 +1,8 @@
+diff --git a/minimatch.js b/minimatch.js
+index 0e7b402..bd36885 100644
+--- a/minimatch.js
++++ b/minimatch.js
+@@ -12 +12,2 @@ var GLOBSTAR = minimatch.GLOBSTAR = Minimatch.GLOBSTAR = {}
+-var expand = require('brace-expansion')
++var braceExpansion = require('brace-expansion')
++var expand = typeof braceExpansion === 'function' ? braceExpansion : braceExpansion.expand

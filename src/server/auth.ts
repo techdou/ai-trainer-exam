@@ -109,6 +109,17 @@ export function requireSameOrg(user: SessionUser, organizationId: string | null)
   if (user.roles.includes('super_admin')) return;
   if (!organizationId || user.organizationId !== organizationId) throw new ApiError(403, '不能访问其他机构的数据');
 }
+export function requireOrganizationId(user: SessionUser): string {
+  if (!user.organizationId) throw new ApiError(403, '账号未绑定机构');
+  return user.organizationId;
+}
+export function organizationScope(
+  user: SessionUser,
+  globalRoles: Role[] = ['super_admin'],
+): string | null {
+  if (user.roles.some(role => globalRoles.includes(role))) return null;
+  return requireOrganizationId(user);
+}
 export const ADMIN_ROLES: Role[] = ['super_admin', 'school_admin'];
 export const STAFF_ROLES: Role[] = ['super_admin', 'school_admin', 'teacher'];
 export const QUESTION_EDIT_ROLES: Role[] = ['super_admin', 'school_admin', 'question_editor'];

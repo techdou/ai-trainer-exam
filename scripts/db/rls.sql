@@ -12,11 +12,15 @@ DECLARE
     'exam_schedules','exam_attempts','exam_responses','exam_scores','exam_grade_reviews',
     'import_jobs','question_review_tasks','media_generation_jobs','asset_manifests',
     'grading_engine_versions','publication_records',
-    'audit_logs','system_events','exam_heartbeats','export_jobs','notifications','feature_flags'
+    'audit_logs','system_events','exam_heartbeats','export_jobs','notifications','feature_flags',
+    'system_settings'
   ];
 BEGIN
   FOREACH t IN ARRAY tables LOOP
-    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+    IF to_regclass('public.' || t) IS NOT NULL THEN
+      EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+      EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', t);
+    END IF;
   END LOOP;
 END $$;
 
@@ -32,12 +36,15 @@ DECLARE
     'exam_schedules','exam_attempts','exam_responses','exam_scores','exam_grade_reviews',
     'import_jobs','question_review_tasks','media_generation_jobs','asset_manifests',
     'grading_engine_versions','publication_records',
-    'audit_logs','system_events','exam_heartbeats','export_jobs','notifications','feature_flags'
+    'audit_logs','system_events','exam_heartbeats','export_jobs','notifications','feature_flags',
+    'system_settings'
   ];
 BEGIN
   FOREACH t IN ARRAY tables LOOP
-    EXECUTE format('DROP POLICY IF EXISTS deny_all_anon ON public.%I', t);
-    EXECUTE format(
-      'CREATE POLICY deny_all_anon ON public.%I FOR ALL TO anon, authenticated USING (false) WITH CHECK (false)', t);
+    IF to_regclass('public.' || t) IS NOT NULL THEN
+      EXECUTE format('DROP POLICY IF EXISTS deny_all_anon ON public.%I', t);
+      EXECUTE format(
+        'CREATE POLICY deny_all_anon ON public.%I FOR ALL TO anon, authenticated USING (false) WITH CHECK (false)', t);
+    END IF;
   END LOOP;
 END $$;
