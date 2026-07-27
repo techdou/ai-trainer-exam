@@ -195,6 +195,53 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Excel 综合操作题 */}
+      <Card>
+        <CardContent className="py-5 px-6">
+          <div className="flex items-start justify-between gap-6">
+            <div className="flex-1 space-y-1">
+              <div className="text-base font-medium flex items-center gap-2">
+                <Database className="w-4 h-4 text-primary" />
+                Excel 综合操作题
+              </div>
+              <div className="flex items-center gap-1 text-sm text-gray-400">
+                <Info className="w-3.5 h-3.5" />
+                一键导入 Excel 综合操作实操题（学生成绩统计表场景：边框/公式/排序/分类汇总/着色/小数格式）
+              </div>
+              <div className="text-sm text-gray-400">
+                同时写入练习库和考试库，已存在则自动跳过，可安全重复导入。
+              </div>
+            </div>
+            <div className="shrink-0">
+              <Button
+                onClick={async () => {
+                  setSeeding(true);
+                  try {
+                    const res = await apiFetch('/api/admin/seed-excel-comprehensive', { method: 'POST' });
+                    if (res.ok && res.data) {
+                      const d = res.data as { inserted: number; skipped: number };
+                      toast.success('导入成功', {
+                        description: `新增 ${d.inserted} 条，跳过已存在 ${d.skipped} 条`,
+                      });
+                    } else {
+                      toast.error('导入失败', { description: String(res.error) });
+                    }
+                  } catch {
+                    toast.error('网络错误');
+                  } finally {
+                    setSeeding(false);
+                  }
+                }}
+                disabled={seeding}
+              >
+                <Upload className="w-4 h-4 mr-1" />
+                {seeding ? '导入中...' : '一键导入Excel综合题'}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
