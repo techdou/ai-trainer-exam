@@ -88,7 +88,7 @@
 ### 环境要求
 
 - Node.js >= 22.13
-- pnpm >= 11.17（项目强制使用，`preinstall` 脚本会拦截 npm/yarn）
+- pnpm >= 9.0（项目强制使用，`preinstall` 脚本会拦截 npm/yarn）
 - PostgreSQL 数据库（推荐 Supabase）
 
 ### 安装与启动
@@ -301,7 +301,7 @@ pnpm build                   # 构建 Next.js 并打包 Node.js 22 服务端
 pnpm start                   # Ubuntu 生产模式启动，默认端口 5000
 ```
 
-生产环境要求 Ubuntu、Node.js 22.13+ 与 pnpm 11.17+。通过 `PORT` 或 `DEPLOY_RUN_PORT` 指定监听端口，密钥由部署平台环境变量或专用密钥管理服务注入。更完整的上线、回滚与验证流程见 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)。
+生产环境要求 Ubuntu、Node.js 22.13+ 与 pnpm 9+。通过 `PORT` 或 `DEPLOY_RUN_PORT` 指定监听端口，密钥由部署平台环境变量或专用密钥管理服务注入。更完整的上线、回滚与验证流程见 [`docs/DELIVERY.md`](docs/DELIVERY.md)。
 
 ### CI/CD
 
