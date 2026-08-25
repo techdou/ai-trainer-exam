@@ -1,9 +1,10 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ApiError, requireRole } from '@/server/auth';
-import { dbTx } from '@/server/db';
+import { dbTx, dbQuery } from '@/server/db';
 import { ok, catchError, parseBody } from '@/lib/api';
 import { assertOrganizationScope } from '@/server/exam-security';
+import { awardExamPass } from '@/server/gamification';
 
 const schema = z.object({ scheduleId: z.string().uuid() });
 
@@ -69,6 +70,14 @@ export async function POST(req: NextRequest) {
         [user.id, user.roles[0] ?? null, schedule.organization_id, scheduleId, { publishedCount: result.rowCount ?? 0 }]);
       return result.rowCount ?? 0;
     });
+    // 激励层: 发布后给通过学员计积分/勋章(内部幂等且吞错,不影响发布结果)。
+    const passedScores = await dbQuery<{ user_id: string; total_score: string; max_score: string }>(
+      `SELECT user_id, total_score::text, max_score::text FROM exam_scores WHERE schedule_id=$1 AND passed`,
+      scheduleId,
+    );
+    for (const score of passedScores) {
+      await awardExamPass(score.user_id, null, scheduleId, Number(score.total_score), Number(score.max_score));
+    }
     return ok({ scheduleId, publishedCount });
   } catch (error) { return catchError(error); }
 }

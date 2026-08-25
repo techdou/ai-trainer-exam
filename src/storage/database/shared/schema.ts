@@ -326,6 +326,43 @@ export const practiceWrongItems = pgTable(
   ]
 );
 
+/* ---------------- 2.5 学员激励层(积分流水 + 勋章, 详情见 drizzle/0004) ---------------- */
+
+export const studentPointsLedger = pgTable(
+  "student_points_ledger",
+  {
+    id: id(),
+    user_id: varchar("user_id", { length: 36 })
+      .notNull()
+      .references(() => profiles.id),
+    organization_id: varchar("organization_id", { length: 36 }),
+    reason: varchar("reason", { length: 64 }).notNull(),
+    points: integer("points").notNull(),
+    ref_type: varchar("ref_type", { length: 48 }),
+    ref_id: varchar("ref_id", { length: 36 }),
+    created_at: createdAt(),
+  },
+  (t) => [
+    index("idx_points_ledger_user").on(t.user_id, t.created_at),
+    index("idx_points_ledger_ref").on(t.user_id, t.reason, t.ref_type, t.ref_id),
+  ]
+);
+
+export const studentBadges = pgTable(
+  "student_badges",
+  {
+    id: id(),
+    user_id: varchar("user_id", { length: 36 })
+      .notNull()
+      .references(() => profiles.id),
+    badge_key: varchar("badge_key", { length: 64 }).notNull(),
+    earned_at: timestamp("earned_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [uniqueIndex("student_badges_user_badge_unique").on(t.user_id, t.badge_key)]
+);
+
 /* ---------------- 3. 正式考试内容（独立表，answer_key 仅服务端） ---------------- */
 
 export const examQuestionItems = pgTable(

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { apiFetch } from '@/lib/session-client';
+import { DialogueView } from '@/components/dialogue-bubble';
 import { toast } from 'sonner';
 
 interface WrongItem {
@@ -14,7 +15,7 @@ interface WrongItem {
   last_wrong_at: string;
   question_type: string;
   stem: string;
-  options: Record<string, string> | null;
+  options: Record<string, unknown> | null;
   explanation: string | null;
   knowledge_point: string | null;
 }
@@ -38,6 +39,7 @@ function questionTypeLabel(type: string): string {
   if (type === 'true_false') return '判断题';
   if (type === 'fill_in_blank') return '填空题';
   if (type === 'prompt_description') return '提示词描述题';
+  if (type === 'dialogue_sentiment') return '对话情绪判读题';
   return '单选题';
 }
 
@@ -143,7 +145,7 @@ export default function WrongItemsPage() {
             <p className="mb-4 text-lg leading-relaxed">{reviewingItem.stem}</p>
             {reviewingItem.question_type === 'prompt_description' ? (
               <div className="space-y-4">
-                {reviewingItem.options?.image && (
+                {reviewingItem.options?.image !== undefined && typeof reviewingItem.options.image === 'string' && (
                   <div className="overflow-hidden rounded-lg border-2 border-border">
                     <img
                       src={reviewingItem.options.image}
@@ -192,10 +194,13 @@ export default function WrongItemsPage() {
               </div>
             ) : (
             <div className="space-y-3">
+              {reviewingItem.question_type === 'dialogue_sentiment' && (
+                <DialogueView dialogue={reviewingItem.options?.dialogue} target={reviewingItem.options?.target} />
+              )}
               {(reviewingItem.question_type === 'true_false' ? ['A', 'B'] : ['A', 'B', 'C', 'D']).map(key => {
                 const optionText = reviewingItem.question_type === 'true_false'
                   ? (key === 'A' ? '正确' : '错误')
-                  : reviewingItem.options?.[key] || '';
+                  : String(reviewingItem.options?.[key] ?? '');
                 const isSelected = selectedAnswer === key;
                 const isCorrectAnswer = result?.correctAnswer === key;
                 const isWrongSelection = result && isSelected && !result.correct;

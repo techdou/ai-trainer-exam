@@ -299,7 +299,8 @@ export const pointAnnotationGrader: Grader<PointAnnotationSubmission, PointAnnot
     const extra = submission.points.length - pairs.length;
     const score = clamp((pairs.reduce((s, p) => s + p[2], 0) - extra * 0.25) / Math.max(1, answerKey.points.length));
     const correct = missed === 0 && extra === 0 && pairs.every(p => p[2] > 0);
-    return { correct, score: correct ? 1 : score, feedback: correct ? '点标注正确。' : [missed ? `漏标 ${missed} 个点` : '', extra ? `多标 ${extra} 个点` : ''].filter(Boolean).join('；'), graderVersion: versionOf(pointAnnotationGrader), details: { tolerance, missed, extra } };
+    // pairs 供练习判分反馈可视化定位"学员第 i 个点对上标准答案第 j 个"。
+    return { correct, score: correct ? 1 : score, feedback: correct ? '点标注正确。' : [missed ? `漏标 ${missed} 个点` : '', extra ? `多标 ${extra} 个点` : ''].filter(Boolean).join('；'), graderVersion: versionOf(pointAnnotationGrader), details: { tolerance, pairs: pairs.map(([expectedIndex, submittedIndex, pscore]) => ({ expectedIndex, submittedIndex, score: pscore })), missed, extra } };
   },
 };
 
@@ -341,7 +342,8 @@ export const polylineAnnotationGrader: Grader<PolylineSubmission, PolylineAnswer
     const missed = answerKey.lines.length - pairs.length, extra = submission.lines.length - pairs.length;
     const score = clamp((pairs.reduce((s, p) => s + p[2], 0) - extra * 0.25) / Math.max(1, answerKey.lines.length));
     const correct = missed === 0 && extra === 0 && pairs.every(p => p[2] > 0);
-    return { correct, score: correct ? 1 : score, feedback: correct ? '线框标注正确。' : [missed ? `漏标 ${missed} 条线` : '', extra ? `多标 ${extra} 条线` : '', '请检查线条是否贴合轮廓'].filter(Boolean).join('；'), graderVersion: versionOf(polylineAnnotationGrader), details: { tolerance, missed, extra } };
+    // pairs 供练习判分反馈可视化定位"学员第 i 条线对上标准答案第 j 条",score 为 Chamfer 相似度 0—1。
+    return { correct, score: correct ? 1 : score, feedback: correct ? '线框标注正确。' : [missed ? `漏标 ${missed} 条线` : '', extra ? `多标 ${extra} 条线` : '', '请检查线条是否贴合轮廓'].filter(Boolean).join('；'), graderVersion: versionOf(polylineAnnotationGrader), details: { tolerance, pairs: pairs.map(([expectedIndex, submittedIndex, similarity]) => ({ expectedIndex, submittedIndex, score: similarity })), missed, extra } };
   },
 };
 
@@ -378,7 +380,8 @@ export const polygonAnnotationGrader: Grader<PolygonSubmission, PolygonAnswerKey
     const missed = answerKey.polygons.length - pairs.length, extra = submission.polygons.length - pairs.length;
     const score = clamp((pairs.reduce((s, p) => s + p[2], 0) - extra * 0.25) / Math.max(1, answerKey.polygons.length));
     const correct = missed === 0 && extra === 0;
-    return { correct, score: correct ? 1 : score, feedback: correct ? '轮廓标注正确。' : [missed ? `漏标 ${missed} 个轮廓` : '', extra ? `多标 ${extra} 个轮廓` : ''].filter(Boolean).join('；'), graderVersion: versionOf(polygonAnnotationGrader), details: { threshold, missed, extra } };
+    // pairs 供练习判分反馈可视化定位"学员第 i 个轮廓对上标准答案第 j 个",score 为栅格化 IoU 0—1。
+    return { correct, score: correct ? 1 : score, feedback: correct ? '轮廓标注正确。' : [missed ? `漏标 ${missed} 个轮廓` : '', extra ? `多标 ${extra} 个轮廓` : ''].filter(Boolean).join('；'), graderVersion: versionOf(polygonAnnotationGrader), details: { threshold, pairs: pairs.map(([expectedIndex, submittedIndex, iou]) => ({ expectedIndex, submittedIndex, score: iou })), missed, extra } };
   },
 };
 

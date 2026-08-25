@@ -299,6 +299,7 @@ export const QUESTION_TYPE_LABELS: Record<string, string> = {
   true_false: '判断题',
   fill_in_blank: '填空题',
   prompt_description: '提示词描述',
+  dialogue_sentiment: '对话情绪判读',
 };
 
 /** 实操类型中文标签(供错误消息)。 */
@@ -332,7 +333,7 @@ export const KNOWN_TASK_TYPES = Object.freeze([
 
 /** 已知理论题型集合。 */
 export const KNOWN_QUESTION_TYPES = Object.freeze([
-  'single_choice', 'true_false', 'fill_in_blank', 'prompt_description',
+  'single_choice', 'true_false', 'fill_in_blank', 'prompt_description', 'dialogue_sentiment',
 ]);
 
 /** 从一行考试题库数据构造 SourceItem(理论题)。返回 null 表示答案键配置异常。 */

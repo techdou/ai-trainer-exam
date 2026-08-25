@@ -8,7 +8,11 @@ import pg from 'pg';
 import fs from 'node:fs';
 import path from 'node:path';
 
+// 数据库连接串在 .env.local, SDK 的 loadEnv 只读 .env, 必须补读(与 seed 脚本同一约定)。
+import { loadEnvLocal } from './_env.mjs';
+
 loadEnv();
+loadEnvLocal();
 const url = await getDbUrl();
 const client = new pg.Client({ connectionString: url });
 await client.connect();

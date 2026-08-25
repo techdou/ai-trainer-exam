@@ -107,6 +107,12 @@ export default function StudentHomePage() {
           desc="查看模拟考试和正式考试安排"
           onClick={() => router.push('/student/exams')}
         />
+        <EntryCard
+          icon={Award}
+          title="我的勋章"
+          desc="积分、勋章收集和班级排行榜"
+          onClick={() => router.push('/student/badges')}
+        />
       </div>
 
       {/* 练习统计 */}

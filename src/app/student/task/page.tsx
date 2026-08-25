@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/session-client';
 import { toast } from 'sonner';
 import { Image as ImageIcon, Music } from 'lucide-react';
 import { ExamTaskInput } from '@/components/exam-task-input';
+import { AnnotationFeedback, isAnnotationTaskType } from '@/components/annotation-feedback';
 
 // ─── 类型 ──────────────────────────────────────────────────────
 
@@ -54,6 +55,8 @@ interface SubmitResult {
   score: number;
   feedback: string;
   passed: boolean;
+  details?: Record<string, unknown>;
+  answerKey?: unknown;
 }
 
 // ─── 主页面 ────────────────────────────────────────────────────
@@ -63,6 +66,8 @@ export default function TaskPage() {
   const [loading, setLoading] = useState(true);
   const [activeTask, setActiveTask] = useState<TaskItem | null>(null);
   const [result, setResult] = useState<SubmitResult | null>(null);
+  // 判分反馈可视化需要回显学员刚才提交的标注,与 result 同生命周期。
+  const [lastSubmission, setLastSubmission] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -100,6 +105,7 @@ export default function TaskPage() {
         );
         if (res.ok && res.data) {
           setResult(res.data);
+          setLastSubmission(submission);
         } else {
           toast.error(res.error || '提交失败');
         }
@@ -125,13 +131,15 @@ export default function TaskPage() {
     return (
       <ResultView
         result={result}
-        taskTitle={activeTask.title}
+        task={activeTask}
+        submission={lastSubmission}
         onRetry={() => {
           setResult(null);
         }}
         onBack={() => {
           setResult(null);
           setActiveTask(null);
+          setLastSubmission(null);
         }}
       />
     );
@@ -225,17 +233,21 @@ function DifficultyBadge({ level }: { level: number }) {
 
 function ResultView({
   result,
-  taskTitle,
+  task,
+  submission,
   onRetry,
   onBack,
 }: {
   result: SubmitResult;
-  taskTitle: string;
+  task: TaskItem;
+  submission: unknown;
   onRetry: () => void;
   onBack: () => void;
 }) {
+  const showAnnotationFeedback =
+    isAnnotationTaskType(task.taskType) && !!result.details && result.answerKey !== undefined;
   return (
-    <div className="mx-auto max-w-lg px-4 py-12">
+    <div className={`mx-auto px-4 py-12 ${showAnnotationFeedback ? 'max-w-3xl' : 'max-w-lg'}`}>
       <div className="bg-card rounded-2xl border p-8 text-center">
         <div
           className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full text-3xl ${
@@ -247,7 +259,7 @@ function ResultView({
         <h2 className="mb-1 text-xl font-bold">
           {result.passed ? '做对了！' : '还需努力'}
         </h2>
-        <p className="text-muted-foreground mb-4 text-sm">任务：{taskTitle}</p>
+        <p className="text-muted-foreground mb-4 text-sm">任务：{task.title}</p>
         <div className="bg-muted mb-6 rounded-xl py-4">
           <span className="text-3xl font-bold">{Math.round(result.score)}</span>
           <span className="text-muted-foreground">分</span>
@@ -260,6 +272,18 @@ function ResultView({
           >
             <p className="font-medium">反馈</p>
             <p className="mt-1">{result.feedback}</p>
+          </div>
+        )}
+        {showAnnotationFeedback && (
+          <div className="mb-6 text-left">
+            <p className="mb-2 text-sm font-medium">哪里对、哪里偏——蓝色是你的标注，绿色虚线是标准答案</p>
+            <AnnotationFeedback
+              taskType={task.taskType}
+              imageUrl={task.config?.imageUrl}
+              submission={submission}
+              answerKey={result.answerKey}
+              details={result.details as Parameters<typeof AnnotationFeedback>[0]['details']}
+            />
           </div>
         )}
         <div className="flex gap-3">

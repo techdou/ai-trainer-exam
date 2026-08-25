@@ -24,6 +24,7 @@ const TYPE_LABELS: Record<string, string> = {
   true_false: '判断题',
   fill_in_blank: '填空题',
   prompt_description: '提示词描述题',
+  dialogue_sentiment: '对话情绪判读',
   stats_table_fill: '统计填表',
   excel_delete_rows: 'Excel删行',
   file_classification: '文件分类',

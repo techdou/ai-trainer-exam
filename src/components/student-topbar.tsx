@@ -13,6 +13,7 @@ const links = [
   { href: '/student/wrong', label: '错题本' },
   { href: '/student/exams', label: '考试' },
   { href: '/student/results', label: '成绩' },
+  { href: '/student/badges', label: '我的勋章' },
   { href: '/student/help', label: '帮助' },
 ];
 

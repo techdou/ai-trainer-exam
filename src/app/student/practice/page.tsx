@@ -5,13 +5,14 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { apiFetch } from '@/lib/session-client';
+import { DialogueView } from '@/components/dialogue-bubble';
 import { toast } from 'sonner';
 
 interface PracticeQuestion {
   id: string;
   question_type: string;
   stem: string;
-  options: Record<string, string>;
+  options: Record<string, unknown>;
   difficulty: string;
   knowledge_point: string;
 }
@@ -114,6 +115,7 @@ export default function TheoryPracticePage() {
   const isTrueFalse = q.question_type === 'true_false';
   const isFillInBlank = q.question_type === 'fill_in_blank';
   const isPromptDescription = q.question_type === 'prompt_description';
+  const isDialogue = q.question_type === 'dialogue_sentiment';
   const optionKeys = isTrueFalse ? ['A', 'B'] : ['A', 'B', 'C', 'D'];
 
   return (
@@ -140,7 +142,7 @@ export default function TheoryPracticePage() {
       <Card className="p-6 mb-4">
         <div className="mb-2 flex items-center gap-2">
           <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-            {isPromptDescription ? '提示词描述题' : isFillInBlank ? '填空题' : isTrueFalse ? '判断题' : '单选题'}
+            {isPromptDescription ? '提示词描述题' : isDialogue ? '对话情绪判读题' : isFillInBlank ? '填空题' : isTrueFalse ? '判断题' : '单选题'}
           </span>
           <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
             难度：{q.difficulty}
@@ -150,7 +152,7 @@ export default function TheoryPracticePage() {
 
         {isPromptDescription ? (
           <div className="space-y-4">
-            {q.options?.image && (
+            {typeof q.options?.image === 'string' && q.options.image && (
               <div className="overflow-hidden rounded-lg border-2 border-border">
                 <img
                   src={q.options.image}
@@ -199,10 +201,11 @@ export default function TheoryPracticePage() {
           </div>
         ) : (
         <div className="space-y-3">
+          {isDialogue && <DialogueView dialogue={q.options?.dialogue} target={q.options?.target} />}
           {optionKeys.map(key => {
             const optionText = isTrueFalse
               ? (key === 'A' ? '正确' : '错误')
-              : q.options?.[key] || '';
+              : String(q.options?.[key] ?? '');
             const isSelected = selectedAnswer === key;
             const isCorrectAnswer = result?.correctAnswer === key;
             const isWrongSelection = result && isSelected && !result.correct;

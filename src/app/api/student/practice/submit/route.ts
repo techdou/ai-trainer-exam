@@ -6,6 +6,7 @@ import { gradeTaskByType } from '@/server/grading';
 
 import { getPracticeMaxScore, getPracticePassScore } from '@/server/settings';
 import { assertPracticeUnlocked } from '@/server/exam-security';
+import { awardTaskPass } from '@/server/gamification';
 
 const schema = z.object({ taskId: z.string().min(1).max(100), submission: z.unknown() });
 
@@ -63,5 +64,7 @@ export const POST = handler(async (request: Request) => {
     );
   }
 
-  return ok({ correct: result.correct, score, maxScore, feedback: result.feedback, graderVersion: result.graderVersion, passed, details: result.details ?? {} });
+  // 练习模式题库公开是设计约定(驾考模式): answerKey 随判分结果下发,供前端做"你的标注 vs 标准答案"可视化。
+  if (result.correct && passed) await awardTaskPass(user.id, user.organizationId, task.id);
+  return ok({ correct: result.correct, score, maxScore, feedback: result.feedback, graderVersion: result.graderVersion, passed, details: result.details ?? {}, answerKey: task.answer_key ?? {} });
 });

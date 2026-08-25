@@ -5,6 +5,7 @@ import { dbExec, dbOne } from '@/server/db';
 import { insertAudit } from '@/server/audit';
 import { catchError, fail, ok, parseBody } from '@/lib/api';
 import { gradeByType, normalizeTrueFalseAnswer, parseSingleChoiceAnswerKey, parseTrueFalseAnswerKey, parseFillInBlankAnswerKey, parsePromptDescriptionAnswerKey } from '@/server/grading';
+import { awardPracticeCorrect } from '@/server/gamification';
 const schema=z.object({questionId:z.string().uuid(),answer:z.union([z.string(),z.boolean()]).optional(),userAnswer:z.union([z.string(),z.boolean()]).optional()});
 export async function POST(request:Request){
  try{
@@ -38,6 +39,7 @@ export async function POST(request:Request){
   else await dbExec(`INSERT INTO practice_wrong_items(user_id,item_type,item_id,wrong_count,resolved,last_wrong_at,created_at,updated_at)
    VALUES($1,'theory_question',$2,1,false,NOW(),NOW(),NOW()) ON CONFLICT(user_id,item_type,item_id) DO UPDATE SET wrong_count=practice_wrong_items.wrong_count+1,resolved=false,last_wrong_at=NOW(),updated_at=NOW()`,user.id,body.questionId);
   await insertAudit({actorId:user.id,actorRole:'student',organizationId:user.organizationId,action:'practice_answer',entityType:'question',entityId:body.questionId});
+  if(graded.correct)await awardPracticeCorrect(user.id,user.organizationId,body.questionId);
   return ok({correct:graded.correct,correctAnswer:q.question_type==='true_false'?((answerKey as {correctAnswer:boolean}).correctAnswer?'A':'B'):q.question_type==='fill_in_blank'?((answerKey as {acceptable:string[]}).acceptable[0]??''):q.question_type==='prompt_description'?((answerKey as {referencePrompt?:string}).referencePrompt??''):(answerKey as {correctOption:string}).correctOption,feedback:graded.feedback,explanation:q.explanation,knowledgePoint:q.knowledge_point});
  }catch(error){return catchError(error)}
 }
