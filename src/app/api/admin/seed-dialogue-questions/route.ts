@@ -12,7 +12,7 @@ import { handler, ok, fail } from '@/lib/api';
  */
 
 interface DialogueTurn { speaker: string; text: string }
-type DialogueSeed = {
+export type DialogueSeed = {
   stem: string;
   dialogue: DialogueTurn[];
   target: number;
@@ -23,7 +23,8 @@ type DialogueSeed = {
   difficulty: number;
 };
 
-const DIALOGUE_QUESTIONS: DialogueSeed[] = [
+/** 种子数据单一来源: scripts/db/seed-dialogue-sentiment.mts 与本 API 共用,避免两份漂移。 */
+export const DIALOGUE_QUESTIONS: DialogueSeed[] = [
   {
     stem: '阅读下面这段客服对话，判断第 3 句（高亮句）中客户的主要情绪或意图。',
     dialogue: [

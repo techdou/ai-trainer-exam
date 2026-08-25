@@ -102,6 +102,12 @@ export default function StudentHomePage() {
           onClick={() => router.push('/student/task')}
         />
         <EntryCard
+          icon={Sparkles}
+          title="AI 实训课堂"
+          desc="亲手标注数据、训练一个 AI 模型"
+          onClick={() => router.push('/student/lab')}
+        />
+        <EntryCard
           icon={FileText}
           title="我的考试"
           desc="查看模拟考试和正式考试安排"
