@@ -12,6 +12,7 @@ interface ExamResult {
   maxScore: number;
   passed: boolean;
   status: string;
+  adjusted: boolean;
   createdAt: string;
 }
 
@@ -87,7 +88,7 @@ export default function StudentResultsPage() {
                   <div>
                     <div className="text-lg font-medium">{r.scheduleTitle}</div>
                     <div className="text-base text-muted-foreground">
-                      {r.passed ? '及格' : '未及格'} · {r.status === 'adjusted' ? '已复核' : '自动评分'} · {new Date(r.createdAt).toLocaleDateString('zh-CN')}
+                      {r.passed ? '及格' : '未及格'} · {r.adjusted ? '已复核' : '自动评分'} · {new Date(r.createdAt).toLocaleDateString('zh-CN')}
                     </div>
                   </div>
                 </div>

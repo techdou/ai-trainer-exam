@@ -29,7 +29,16 @@ interface WrongListData {
 interface CheckResult {
   correct: boolean;
   correctAnswer: string;
+  feedback?: string;
   explanation: string | null;
+}
+
+// 题型中文名: 与练习页保持同构,错题本必须覆盖所有会进 practice_wrong_items 的题型。
+function questionTypeLabel(type: string): string {
+  if (type === 'true_false') return '判断题';
+  if (type === 'fill_in_blank') return '填空题';
+  if (type === 'prompt_description') return '提示词描述题';
+  return '单选题';
 }
 
 export default function WrongItemsPage() {
@@ -123,7 +132,7 @@ export default function WrongItemsPage() {
                 错了 {reviewingItem.wrong_count} 次
               </span>
               <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                {reviewingItem.question_type === 'true_false' ? '判断题' : '单选题'}
+                {questionTypeLabel(reviewingItem.question_type)}
               </span>
               {reviewingItem.knowledge_point && (
                 <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
@@ -132,6 +141,56 @@ export default function WrongItemsPage() {
               )}
             </div>
             <p className="mb-4 text-lg leading-relaxed">{reviewingItem.stem}</p>
+            {reviewingItem.question_type === 'prompt_description' ? (
+              <div className="space-y-4">
+                {reviewingItem.options?.image && (
+                  <div className="overflow-hidden rounded-lg border-2 border-border">
+                    <img
+                      src={reviewingItem.options.image}
+                      alt="提示词描述素材"
+                      className="max-h-96 w-full object-contain"
+                      loading="lazy"
+                    />
+                  </div>
+                )}
+                <textarea
+                  value={selectedAnswer}
+                  onChange={e => !result && setSelectedAnswer(e.target.value)}
+                  disabled={!!result}
+                  placeholder="请仔细观察图片，用自然语言描述图片内容，撰写一段提示词。描述应包含画面中的主体、颜色、场景、动作、风格等关键信息。"
+                  rows={6}
+                  className="w-full resize-y rounded-lg border-2 border-border p-4 text-lg leading-relaxed focus:border-primary focus:outline-none disabled:opacity-60"
+                />
+                {result && (
+                  <div className={`rounded-lg border-2 p-4 ${result.correct ? 'border-success bg-success/10' : 'border-destructive bg-destructive/10'}`}>
+                    <span className="text-base">
+                      {result.correct ? '✓ 做对了！' : '✗ 再看看图片中有哪些关键信息没有描述到'}
+                    </span>
+                    {result.feedback && (
+                      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{result.feedback}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : reviewingItem.question_type === 'fill_in_blank' ? (
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={selectedAnswer}
+                  onChange={e => !result && setSelectedAnswer(e.target.value)}
+                  disabled={!!result}
+                  placeholder="请在此输入你的答案"
+                  className="w-full rounded-lg border-2 border-border p-4 text-lg focus:border-primary focus:outline-none disabled:opacity-60"
+                />
+                {result && (
+                  <div className={`rounded-lg border-2 p-4 ${result.correct ? 'border-success bg-success/10' : 'border-destructive bg-destructive/10'}`}>
+                    <span className="text-base">
+                      {result.correct ? '✓ 回答正确' : `✗ 参考答案：${result.correctAnswer}`}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : (
             <div className="space-y-3">
               {(reviewingItem.question_type === 'true_false' ? ['A', 'B'] : ['A', 'B', 'C', 'D']).map(key => {
                 const optionText = reviewingItem.question_type === 'true_false'
@@ -172,6 +231,7 @@ export default function WrongItemsPage() {
                 );
               })}
             </div>
+            )}
           </Card>
 
           {result && (
@@ -222,7 +282,7 @@ export default function WrongItemsPage() {
                     <p className="text-base leading-relaxed line-clamp-2">{item.stem}</p>
                     <div className="mt-1 flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">
-                        {item.question_type === 'true_false' ? '判断题' : '单选题'}
+                        {questionTypeLabel(item.question_type)}
                       </span>
                       {item.knowledge_point && (
                         <span className="text-xs text-muted-foreground">{item.knowledge_point}</span>

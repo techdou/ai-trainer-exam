@@ -12,6 +12,7 @@ interface ExamInfo {
   examEndAt: string;
   durationMinutes: number;
   timeStatus: 'upcoming' | 'open' | 'closed';
+  canEnter: boolean;
   attempt: { id: string; status: string; startedAt: string; submittedAt: string | null } | null;
 }
 
@@ -122,13 +123,19 @@ export default function ExamsPage() {
                 <p>截止时间：{formatTime(exam.examEndAt)}</p>
                 <p>考试时长：{exam.durationMinutes} 分钟</p>
               </div>
-              {exam.timeStatus === 'open' && !exam.attempt && (
+              {/* canEnter 由后端按迟到窗口(late_entry_minutes)算好,别在前端重算一遍造成规则漂移 */}
+              {exam.canEnter && !exam.attempt && (
                 <button
                   onClick={() => router.push(`/student/exams/${exam.id}`)}
                   className="mt-4 px-6 py-3 rounded-lg bg-primary text-white font-bold text-lg hover:opacity-90 transition-opacity"
                 >
                   进入考试
                 </button>
+              )}
+              {exam.timeStatus === 'open' && !exam.attempt && !exam.canEnter && (
+                <p className="mt-4 px-6 py-3 rounded-lg bg-muted text-muted-foreground font-medium text-base">
+                  已超过本场考试的迟到入场时间，无法进入。如有疑问请联系监考老师。
+                </p>
               )}
               {/* 已开考未交卷: 刷新/断线后必须能回到考试(start 接口对 in_progress 幂等恢复) */}
               {exam.attempt?.status === 'in_progress' && (

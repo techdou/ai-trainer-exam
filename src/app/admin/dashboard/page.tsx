@@ -11,7 +11,7 @@ interface DashboardStats {
   teachers: number;
   practiceQuestions: number;
   examQuestions: number;
-  recentImports: { id: string; created_at: string; status: string; total_rows: number }[];
+  recentImports: { id: string; created_at: string; status: string; total_count: number }[];
 }
 
 export default function AdminDashboardPage() {

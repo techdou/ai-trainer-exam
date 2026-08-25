@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Users } from 'lucide-react';
 import { toast } from 'sonner';
-import { apiFetch } from '@/lib/session-client';
+import { apiFetch, getToken } from '@/lib/session-client';
 
 interface Organization {
   id: string;
@@ -85,11 +85,11 @@ export function RosterImportDialog({
     try {
       const fd = new FormData();
       fd.append('file', selectedFile);
-      const token = typeof window !== 'undefined' ? window.sessionStorage.getItem('examsys.session.v2') : null;
-      const tokenObj = token ? JSON.parse(token) : null;
+      // FormData 上传不能走 apiFetch(它会 JSON.stringify),但 token 必须走统一出口 getToken()。
+      const token = getToken();
       const res = await fetch('/api/admin/cohorts/parse-roster', {
         method: 'POST',
-        headers: tokenObj?.accessToken ? { Authorization: `Bearer ${tokenObj.accessToken}` } : {},
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: fd,
       });
       const json = await res.json();
@@ -123,13 +123,12 @@ export function RosterImportDialog({
       if (fixedCohortId) fd.append('cohortId', fixedCohortId);
       if (isSuperAdmin && orgId) fd.append('organizationId', orgId);
 
-      const token = typeof window !== 'undefined' ? window.sessionStorage.getItem('examsys.session.v2') : null;
-      const tokenObj = token ? JSON.parse(token) : null;
+      const token = getToken();
 
       setProgress(30);
       const res = await fetch('/api/admin/cohorts/import-roster', {
         method: 'POST',
-        headers: tokenObj?.accessToken ? { Authorization: `Bearer ${tokenObj.accessToken}` } : {},
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: fd,
       });
       setProgress(80);

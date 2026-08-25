@@ -67,7 +67,8 @@ export default function PracticeBankPage() {
   const handleRetire = async (id: string) => {
     const r = await apiFetch(`/api/admin/questions/${id}`, {
       method: 'PATCH',
-      body: { action: 'retire', bankType: 'practice' },
+      // 后端按题目 id 自动路由实际题库表,无需传 bankType。
+      body: { action: 'retire' },
     });
     if (r.ok) {
       toast.success('已下架');

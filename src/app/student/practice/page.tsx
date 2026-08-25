@@ -14,7 +14,6 @@ interface PracticeQuestion {
   options: Record<string, string>;
   difficulty: string;
   knowledge_point: string;
-  explanation: string | null;
 }
 
 interface CheckResult {

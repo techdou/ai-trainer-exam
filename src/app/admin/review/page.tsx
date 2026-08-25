@@ -49,10 +49,11 @@ export default function ReviewPage() {
 
   useEffect(() => { fetchPending(); }, []);
 
-  const handleReview = async (id: string, bankType: string, action: 'approve' | 'reject') => {
+  const handleReview = async (id: string, action: 'approve' | 'reject') => {
     const r = await apiFetch(`/api/admin/questions/${id}`, {
       method: 'PATCH',
-      body: { action, bankType },
+      // 后端按题目 id 自动路由实际题库表,无需传 bankType。
+      body: { action },
     });
     if (r.ok) {
       toast.success(action === 'approve' ? '已通过审核' : '已驳回');
@@ -94,10 +95,10 @@ export default function ReviewPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <Button size="sm" onClick={() => handleReview(q.id, q.bank_type, 'approve')} className="bg-green-600 hover:bg-green-700">
+                  <Button size="sm" onClick={() => handleReview(q.id, 'approve')} className="bg-green-600 hover:bg-green-700">
                     <CheckCircle2 className="w-4 h-4 mr-1" /> 通过
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleReview(q.id, q.bank_type, 'reject')} className="text-red-600 hover:text-red-700">
+                  <Button size="sm" variant="outline" onClick={() => handleReview(q.id, 'reject')} className="text-red-600 hover:text-red-700">
                     <XCircle className="w-4 h-4 mr-1" /> 驳回
                   </Button>
                 </div>

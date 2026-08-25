@@ -5,11 +5,13 @@ import { ok, catchError } from '@/lib/api';
 export async function GET(req:NextRequest){
  try{
   const user=await requireRole(req,['student']);
-  const rows=await dbQuery<{id:string;schedule_id:string;schedule_title:string;total_score:number;max_score:number;passed:boolean;status:string;created_at:string}>(
-   `SELECT sc.id,sc.schedule_id,s.title schedule_title,sc.total_score,sc.max_score,sc.passed,sc.status,sc.created_at
+  const rows=await dbQuery<{id:string;schedule_id:string;schedule_title:string;total_score:number;max_score:number;passed:boolean;status:string;adjusted:boolean;created_at:string}>(
+   `SELECT sc.id,sc.schedule_id,s.title schedule_title,sc.total_score,sc.max_score,sc.passed,sc.status,
+      sc.adjusted_total IS NOT NULL AS adjusted,sc.created_at
       FROM exam_scores sc JOIN exam_schedules s ON s.id=sc.schedule_id
      WHERE sc.user_id=$1 AND sc.status='published' AND s.results_released=true
        AND (s.results_release_at IS NULL OR s.results_release_at<=NOW()) ORDER BY sc.created_at DESC`,user.id);
-  return ok(rows.map(r=>({id:r.id,scheduleId:r.schedule_id,scheduleTitle:r.schedule_title,totalScore:Number(r.total_score),maxScore:Number(r.max_score),passed:r.passed,status:r.status,createdAt:r.created_at})));
+  // 发布后 status 统一为 published,是否人工复核过只能靠 adjusted_total 判断,前端据此显示"已复核"。
+  return ok(rows.map(r=>({id:r.id,scheduleId:r.schedule_id,scheduleTitle:r.schedule_title,totalScore:Number(r.total_score),maxScore:Number(r.max_score),passed:r.passed,status:r.status,adjusted:r.adjusted,createdAt:r.created_at})));
  }catch(error){return catchError(error)}
 }
