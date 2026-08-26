@@ -139,7 +139,7 @@ export default function TheoryPracticePage() {
       </div>
 
       {/* Question card */}
-      <Card className="p-6 mb-4">
+      <Card className="p-5 mb-4">
         <div className="mb-2 flex items-center gap-2">
           <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
             {isPromptDescription ? '提示词描述题' : isDialogue ? '对话情绪判读题' : isFillInBlank ? '填空题' : isTrueFalse ? '判断题' : '单选题'}
@@ -216,7 +216,7 @@ export default function TheoryPracticePage() {
                 onClick={() => !result && setSelectedAnswer(key)}
                 disabled={!!result}
                 className={[
-                  'flex w-full items-start gap-3 rounded-lg border-2 p-4 text-left transition-colors',
+                  'flex w-full items-start gap-3 rounded-lg border-2 px-4 py-3 text-left transition-colors',
                   result && isCorrectAnswer
                     ? 'border-success bg-success/10'
                     : isWrongSelection
@@ -232,7 +232,7 @@ export default function TheoryPracticePage() {
                 }`}>
                   {key}
                 </span>
-                <span className="pt-1 text-base">{optionText}</span>
+                <span className="pt-1 text-lg">{optionText}</span>
                 {result && isCorrectAnswer && (
                   <span className="ml-auto pt-1 text-success font-medium text-sm">✓ 正确答案</span>
                 )}
@@ -276,14 +276,14 @@ export default function TheoryPracticePage() {
         {!result ? (
           <Button
             size="lg"
-            className="flex-1 text-base"
+            className="flex-1 text-lg"
             onClick={handleCheck}
             disabled={!selectedAnswer || checking}
           >
             {checking ? '提交中...' : '提交答案'}
           </Button>
         ) : (
-          <Button size="lg" className="flex-1 text-base" onClick={handleNext}>
+          <Button size="lg" className="flex-1 text-lg" onClick={handleNext}>
             {currentIdx < questions.length - 1 ? '下一题 →' : '再来一组'}
           </Button>
         )}
