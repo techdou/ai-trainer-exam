@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/session-client';
 import { toast } from 'sonner';
 import { Image as ImageIcon, Music } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { ExamTaskInput } from '@/components/exam-task-input';
 import { AnnotationFeedback, isAnnotationTaskType } from '@/components/annotation-feedback';
 
@@ -287,18 +288,12 @@ function ResultView({
           </div>
         )}
         <div className="flex gap-3">
-          <button
-            onClick={onRetry}
-            className="hover:border-primary flex-1 rounded-xl border py-3 text-base font-medium transition-colors"
-          >
+          <Button variant="outline" className="h-12 flex-1 rounded-xl text-base" onClick={onRetry}>
             再做一次
-          </button>
-          <button
-            onClick={onBack}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 flex-1 rounded-xl py-3 text-base font-medium transition-colors"
-          >
+          </Button>
+          <Button className="h-12 flex-1 rounded-xl text-base" onClick={onBack}>
             返回列表
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -422,13 +417,14 @@ function GenericTaskWorkspace({
         onChange={setValue}
         disabled={submitting}
       />
-      <button
+      <Button
+        size="lg"
+        className="h-12 w-full rounded-xl text-lg"
         onClick={() => onSubmit(value)}
         disabled={submitting || value === null}
-        className="bg-primary text-primary-foreground hover:bg-primary/90 w-full rounded-xl py-3 text-base font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
       >
         {submitting ? '提交中...' : '提交答案'}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -725,7 +721,7 @@ function ImageCleaningTask({ config, submitting, onSubmit }: TaskProps) {
               <div className="flex gap-2">
                 <button
                   onClick={() => handleDecide(img.id, 'keep')}
-                  className={`flex min-h-[44px] flex-1 items-center justify-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                  className={`flex min-h-[44px] flex-1 items-center justify-center rounded-lg py-2 text-base font-medium transition-colors ${
                     decision === 'keep'
                       ? 'bg-success text-success-foreground'
                       : 'bg-secondary hover:bg-secondary/70 text-secondary-foreground'
@@ -735,7 +731,7 @@ function ImageCleaningTask({ config, submitting, onSubmit }: TaskProps) {
                 </button>
                 <button
                   onClick={() => handleDecide(img.id, 'discard')}
-                  className={`flex min-h-[44px] flex-1 items-center justify-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                  className={`flex min-h-[44px] flex-1 items-center justify-center rounded-lg py-2 text-base font-medium transition-colors ${
                     decision === 'discard'
                       ? 'bg-destructive text-destructive-foreground'
                       : 'bg-secondary hover:bg-secondary/70 text-secondary-foreground'
@@ -793,7 +789,7 @@ function TextSentimentTask({ config, submitting, onSubmit }: TaskProps) {
                   <button
                     key={label}
                     onClick={() => handleSelect(t.id, label)}
-                    className={`flex min-h-[44px] items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                    className={`flex min-h-[44px] items-center justify-center rounded-lg px-4 py-2 text-base font-medium transition-colors ${
                       selected
                         ? labelColors[label] ?? 'bg-primary text-primary-foreground'
                         : 'bg-secondary hover:bg-secondary/70 text-secondary-foreground'
@@ -891,12 +887,13 @@ function SubmitButton({
   label: string;
 }) {
   return (
-    <button
+    <Button
+      size="lg"
       onClick={onClick}
       disabled={submitting || disabled}
-      className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground w-full rounded-xl py-3.5 text-lg font-medium transition-colors disabled:cursor-not-allowed"
+      className="h-12 w-full rounded-xl text-lg font-medium disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:cursor-not-allowed"
     >
       {submitting ? '评分中...' : label}
-    </button>
+    </Button>
   );
 }

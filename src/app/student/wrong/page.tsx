@@ -280,9 +280,9 @@ export default function WrongItemsPage() {
                 onClick={() => { setReviewingId(item.id); setSelectedAnswer(''); setResult(null); }}
               >
                 <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-full bg-destructive/10 text-destructive font-medium text-sm">
-                    {item.wrong_count}
-                  </div>
+                  <span className="flex-shrink-0 rounded bg-destructive/10 px-2 py-1 text-sm font-medium text-destructive">
+                    错 {item.wrong_count} 次
+                  </span>
                   <div className="flex-1 min-w-0">
                     <p className="text-base leading-relaxed line-clamp-2">{item.stem}</p>
                     <div className="mt-1 flex items-center gap-2">
