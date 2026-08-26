@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { BookOpen, Pencil, Rocket, LineChart, Lightbulb, CheckCircle2, XCircle, RotateCcw } from 'lucide-react';
+import { BookOpen, Pencil, Rocket, LineChart, Lightbulb, CheckCircle2, XCircle, RotateCcw, Lock } from 'lucide-react';
 
 const STORAGE_KEY = 'examsys.lab.v1';
 
@@ -152,12 +152,13 @@ export default function LabPage() {
               onClick={() => n <= state.step && goto(n)}
               disabled={n > state.step}
               className={`flex flex-1 flex-col items-center gap-1 rounded-lg px-1 py-2 text-sm transition-colors ${
-                active ? 'bg-primary/10 font-semibold text-primary' : done ? 'text-muted-foreground' : 'text-muted-foreground/50'
+                active ? 'bg-primary/10 font-semibold text-primary' : 'text-muted-foreground'
               }`}
             >
               <Icon className="h-5 w-5" aria-hidden />
               <span className="flex items-center gap-1">
                 {done && <CheckCircle2 className="h-3.5 w-3.5 text-success" aria-hidden />}
+                {!active && !done && <Lock className="h-3.5 w-3.5" aria-hidden />}
                 {n}. {s.title}
               </span>
             </button>
@@ -183,7 +184,7 @@ export default function LabPage() {
             </p>
           </div>
           <p className="text-base text-muted-foreground">💡 标得越准，模型的判断就越准。标错了，模型也会跟着学错——这就是本课堂要你体会的核心。</p>
-          <Button size="lg" className="w-full text-base" onClick={() => goto(2)}>开始标注 →</Button>
+          <Button size="lg" className="w-full text-lg" onClick={() => goto(2)}>开始标注 →</Button>
         </CardContent></Card>
       )}
 
@@ -224,7 +225,7 @@ export default function LabPage() {
             );
           })}
           <Button
-            size="lg" className="w-full text-base"
+            size="lg" className="w-full text-lg"
             disabled={labeledCount < TRAINING_SAMPLES.length}
             onClick={() => goto(3)}
           >
@@ -250,7 +251,7 @@ export default function LabPage() {
             </p>
           </div>
           <p className="text-base text-muted-foreground">现在看看它学得怎么样——用 8 条它没见过的评价考考它。</p>
-          <Button size="lg" className="w-full text-base" onClick={() => goto(4)}>开始测试 →</Button>
+          <Button size="lg" className="w-full text-lg" onClick={() => goto(4)}>开始测试 →</Button>
         </CardContent></Card>
       )}
 
@@ -299,7 +300,7 @@ export default function LabPage() {
               </Button>
             </div>
           )}
-          <Button size="lg" className="w-full text-base" onClick={() => { setState(prev => ({ ...prev, step: 5, completed: true })); }}>
+          <Button size="lg" className="w-full text-lg" onClick={() => { setState(prev => ({ ...prev, step: 5, completed: true })); }}>
             我体会到了，去总结 →
           </Button>
         </div>
