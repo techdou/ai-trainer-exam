@@ -21,12 +21,13 @@ function extensionFromType(contentType: string): string {
 let storageInstance: S3Storage | null = null;
 function getStorage(): S3Storage {
   if (storageInstance) return storageInstance;
+  // 凭证解析同 src/server/object-storage.ts: 自部署读 AWS_* 变量, 平台环境传空走代理认证。
   storageInstance = new S3Storage({
     endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
-    accessKey: '',
-    secretKey: '',
+    accessKey: process.env.AWS_ACCESS_KEY_ID ?? '',
+    secretKey: process.env.AWS_SECRET_ACCESS_KEY ?? '',
     bucketName: process.env.COZE_BUCKET_NAME,
-    region: 'cn-beijing',
+    region: process.env.AWS_REGION || 'cn-beijing',
   });
   return storageInstance;
 }

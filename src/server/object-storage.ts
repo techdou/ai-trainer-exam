@@ -10,11 +10,12 @@ function getStorage(): S3Storage {
   if (!endpoint || !bucketName) {
     throw new Error('对象存储未配置：缺少 COZE_BUCKET_ENDPOINT_URL 或 COZE_BUCKET_NAME');
   }
-  // S3Storage uses empty credentials — the platform S3 proxy handles auth transparently
+  // 凭证解析: 自部署(S3 兼容存储如 MinIO)经 AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY 提供;
+  // 扣子平台环境两者未设置, 传空凭证由平台 S3 代理透明认证。
   storage = new S3Storage({
     endpointUrl: endpoint,
-    accessKey: '',
-    secretKey: '',
+    accessKey: process.env.AWS_ACCESS_KEY_ID ?? '',
+    secretKey: process.env.AWS_SECRET_ACCESS_KEY ?? '',
     bucketName,
     region: process.env.AWS_REGION || process.env.COZE_BUCKET_REGION || 'cn-beijing',
   });
