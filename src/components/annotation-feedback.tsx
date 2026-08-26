@@ -2,10 +2,12 @@
 
 /**
  * 判分反馈可视化：学员标注 vs 标准答案叠加对比。
- * - 蓝色实线 = 你的标注（位置基本正确）
- * - 琥珀色实线 = 你的标注（位置偏离，需要调整）
- * - 红色虚线 + "多标" = 多余的标注
- * - 绿色粗虚线 + "漏标" = 漏掉的标准答案
+ * 颜色全部走设计 token(CSS 变量), 与全站墨青绿/暖橙体系一致:
+ * - 暖橙实线 = 你的标注(位置正确)
+ * - 砖红实线 + "偏了" = 你的标注(位置偏离, 需要调整)
+ * - 砖红虚线 + "多标" = 多余的标注
+ * - 墨青绿虚线 = 标准答案; 墨青绿粗虚线 + "漏标" = 漏掉的标准答案
+ * 颜色+线型+文字三通道, 色弱学员也能分辨(不用蓝/绿对色)。
  * 下方逐条列出匹配度（不出现 IoU 等术语，学员只看百分比和哪里错）。
  * pairs 数据来自评分器 details（image_annotation 用 iou，其余用 score）。
  */
@@ -68,47 +70,49 @@ export function AnnotationFeedback({
     const missed = !matchedExpected.has(i);
     const width = missed ? 3 : 1.5;
     const dash = missed ? '8 4' : '4 4';
-    const stroke = '#16a34a';
     if (taskType === 'image_annotation') {
       return (
         <rect key={`e${i}`} x={s.x} y={s.y} width={s.width ?? 0} height={s.height ?? 0}
-          fill="none" stroke={stroke} strokeWidth={width} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
+          fill="none" style={{ stroke: 'var(--primary)' }} strokeWidth={width} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
       );
     }
     if (taskType === 'point_annotation') {
-      return <circle key={`e${i}`} cx={s.x} cy={s.y} r={3} fill="none" stroke={stroke} strokeWidth={width} vectorEffect="non-scaling-stroke" />;
+      return <circle key={`e${i}`} cx={s.x} cy={s.y} r={3} fill="none" style={{ stroke: 'var(--primary)' }} strokeWidth={width} vectorEffect="non-scaling-stroke" />;
     }
     if (taskType === 'polygon_annotation') {
-      return <polygon key={`e${i}`} points={svg(s.points)} fill="rgba(22,163,74,0.08)" stroke={stroke} strokeWidth={width} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />;
+      return <polygon key={`e${i}`} points={svg(s.points)} style={{ fill: 'var(--primary)', fillOpacity: 0.08 }} stroke="none" strokeWidth={width} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />;
     }
-    return <polyline key={`e${i}`} points={svg(s.points)} fill="none" stroke={stroke} strokeWidth={width} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />;
+    return <polyline key={`e${i}`} points={svg(s.points)} fill="none" style={{ stroke: 'var(--primary)' }} strokeWidth={width} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />;
   };
 
   const renderMine = (s: Shape, i: number) => {
     const pair = pairs.find(p => p.submittedIndex === i);
     const matched = Boolean(pair);
     const good = matched && pairPassed(pair!);
-    const stroke = matched ? (good ? '#2563eb' : '#d97706') : '#dc2626';
+    // 通过=暖橙实线; 偏离=砖红实线+文字; 多标=砖红虚线+文字
+    const stroke = matched && good ? 'var(--accent)' : 'var(--destructive)';
     const dash = matched ? undefined : '6 4';
+    const fillOpacity = 0.10;
     if (taskType === 'image_annotation') {
       return (
         <g key={`m${i}`}>
           <rect x={s.x} y={s.y} width={s.width ?? 0} height={s.height ?? 0}
-            fill={good ? 'rgba(37,99,235,0.10)' : matched ? 'rgba(217,119,6,0.10)' : 'rgba(220,38,38,0.08)'}
-            stroke={stroke} strokeWidth={2} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
-          <text x={s.x} y={Math.max(0.02, s.y - 0.008)} fontSize={0.028} fill={stroke}>
-            {s.label}{matched ? '' : ' ·多标'}
+            style={{ fill: stroke, fillOpacity }} stroke="none" strokeWidth={2} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
+          <rect x={s.x} y={s.y} width={s.width ?? 0} height={s.height ?? 0}
+            fill="none" style={{ stroke }} strokeWidth={2} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
+          <text x={s.x} y={Math.max(0.02, s.y - 0.008)} fontSize={0.028} style={{ fill: stroke }}>
+            {s.label}{matched ? '' : ' ·多标'}{matched && !good ? ' ·偏了' : ''}
           </text>
         </g>
       );
     }
     if (taskType === 'point_annotation') {
-      return <circle key={`m${i}`} cx={s.x} cy={s.y} r={4} fill={stroke} />;
+      return <circle key={`m${i}`} cx={s.x} cy={s.y} r={4} style={{ fill: stroke }} />;
     }
     if (taskType === 'polygon_annotation') {
-      return <polygon key={`m${i}`} points={svg(s.points)} fill="rgba(37,99,235,0.10)" stroke={stroke} strokeWidth={2} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />;
+      return <polygon key={`m${i}`} points={svg(s.points)} style={{ fill: stroke, fillOpacity }} stroke="none" strokeWidth={2} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />;
     }
-    return <polyline key={`m${i}`} points={svg(s.points)} fill="none" stroke={stroke} strokeWidth={2} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />;
+    return <polyline key={`m${i}`} points={svg(s.points)} fill="none" style={{ stroke }} strokeWidth={2} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />;
   };
 
   return (
@@ -125,12 +129,13 @@ export function AnnotationFeedback({
         </svg>
       </div>
 
-      {/* 图例：颜色 + 文字双通道表达状态 */}
+      {/* 图例：颜色 + 线型 + 文字三通道 */}
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-        <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-2 border-blue-600" /> 你的标注</span>
-        <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-2 border-dashed border-green-600" /> 标准答案</span>
-        <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-2 border-dashed border-red-600" /> 多余标注</span>
-        <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-[3px] border-dashed border-green-600" /> 漏标位置</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-2 border-accent" /> 你的标注（正确）</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-2 border-destructive" /> 你的标注（偏了）</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-2 border-dashed border-destructive" /> 多余标注</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-2 border-dashed border-primary" /> 标准答案</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-[3px] border-dashed border-primary" /> 漏标位置</span>
       </div>
 
       {(pairs.length > 0 || (details.missed ?? 0) > 0 || (details.extra ?? 0) > 0) && (
@@ -146,7 +151,7 @@ export function AnnotationFeedback({
               </li>
             ))}
             {(details.missed ?? 0) > 0 && (
-              <li className="text-destructive">✗ 有 {details.missed} 个目标没有标出来（看绿色粗虚线位置）</li>
+              <li className="text-destructive">✗ 有 {details.missed} 个目标没有标出来（看"漏标"粗虚线标记的位置）</li>
             )}
             {(details.extra ?? 0) > 0 && (
               <li className="text-destructive">✗ 有 {details.extra} 个多余标注（看红色虚线框）</li>
