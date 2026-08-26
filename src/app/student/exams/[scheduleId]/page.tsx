@@ -174,7 +174,6 @@ export default function ExamTakePage() {
   const count=useMemo(()=>Object.values(responses).filter(answered).length,[responses]);
   // 未答题号列表(items 顺序即题号), 供交卷确认框展示。
   const unanswered=useMemo(()=>payload?payload.items.map((x,i)=>({x,i})).filter(({x})=>!answered(responses[x.id])).map(({i})=>i+1):[],[payload,responses]);
-  const format=(seconds:number)=>`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
 
   if(loading)return <div className="flex min-h-[60vh] items-center justify-center text-lg text-muted-foreground">正在安全加载试卷…</div>;
   // 开考是幂等的, 试卷加载失败可直接重试(不会重复创建考试记录)。
@@ -184,45 +183,230 @@ export default function ExamTakePage() {
 
   const item=payload.items[index];
   if(!item)return <div className="py-16 text-center">试卷没有可作答内容，请联系考务人员。</div>;
+  const current=responses[item.id];
+  const selected=typeof current==='string'?current:String((current as {answer?:unknown;selectedOption?:unknown}|undefined)?.answer??(current as {selectedOption?:unknown}|undefined)?.selectedOption??'');
+  const lowTime=timeLeft!==null&&timeLeft<300;
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-4 pb-28">
+      <ExamStickyBar
+        index={index}
+        total={payload.items.length}
+        count={count}
+        saving={saving}
+        saveError={saveError}
+        lowTime={lowTime}
+        timeLeft={timeLeft}
+      />
+      <Card>
+        <CardContent className="space-y-6 p-6 sm:p-8">
+          <QuestionCard item={item} current={current} selected={selected} onChange={change} />
+        </CardContent>
+      </Card>
+      <QuestionNav items={payload.items} responses={responses} index={index} onJump={setIndex} />
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background px-4 py-3">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
+          <span className="text-sm text-muted-foreground">交卷后不能修改，请检查未完成项目。</span>
+          <Button size="lg" disabled={submitting} onClick={()=>setConfirmOpen(true)}>
+            {submitting?'正在交卷…':`确认交卷（${count}/${payload.items.length}）`}
+          </Button>
+        </div>
+      </div>
+      <SubmitConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        unanswered={unanswered}
+        submitting={submitting}
+        onConfirm={()=>{setConfirmOpen(false);void submit()}}
+      />
+    </div>
+  );
+}
+
+// ─── 展示子组件(纯展示, 状态与业务逻辑留在页面组件) ────────────
+
+/** 顶部粘性条: 进度 + 保存状态 + 倒计时 */
+function ExamStickyBar({
+  index,
+  total,
+  count,
+  saving,
+  saveError,
+  lowTime,
+  timeLeft,
+}: {
+  index: number;
+  total: number;
+  count: number;
+  saving: boolean;
+  saveError: string;
+  lowTime: boolean;
+  timeLeft: number | null;
+}) {
+  const format=(seconds:number)=>`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
+  return (
+    <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/95 px-5 py-3 backdrop-blur">
+      <strong>第 {index+1}/{total} 项</strong>
+      <span>已完成 {count}/{total}</span>
+      <span className="text-sm text-muted-foreground">{saveError?'':saving?'正在保存…':'答案自动保存，放心做题'}</span>
+      {saveError&&<span className="text-sm font-medium text-destructive" role="alert">⚠ 保存失败：{saveError}。恢复网络后会自动重存，持续失败请举手告诉老师</span>}
+      <span className="flex items-center gap-2">
+        {lowTime&&<span className="text-sm font-medium text-destructive" role="alert">⚠ 时间不多了，请检查未答项目</span>}
+        <strong className={cn('text-xl tabular-nums',lowTime?'text-destructive':'text-primary')} aria-label="剩余时间">
+          {timeLeft===null?'--:--':format(timeLeft)}
+        </strong>
+      </span>
+    </div>
+  );
+}
+
+/** 单个题目/任务的题干与作答区 */
+function QuestionCard({
+  item,
+  current,
+  selected,
+  onChange,
+}: {
+  item: ExamItem;
+  current: unknown;
+  selected: string;
+  onChange: (itemId: string, value: unknown) => void;
+}) {
   const questionType=String(item.content.questionType??'');
   const isFillIn=questionType==='fill_in_blank';
   const isPromptDesc=questionType==='prompt_description';
   const isDialogue=questionType==='dialogue_sentiment';
   const options=(item.content.options??{}) as Record<string,unknown>;
   // 选项只认单字母键:对话题的 dialogue/target 是素材键,不能被渲染成选项按钮。
-  const optionEntries=(questionType==='true_false'?{A:'正确',B:'错误'}:Object.fromEntries(Object.entries(options).filter(([k])=>/^[A-Z]$/.test(k)))) as Record<string,string>;
-  const current=responses[item.id];
-  const selected=typeof current==='string'?current:String((current as {answer?:unknown;selectedOption?:unknown}|undefined)?.answer??(current as {selectedOption?:unknown}|undefined)?.selectedOption??'');
-  const lowTime=timeLeft!==null&&timeLeft<300;
+  const optionEntries=(questionType==='true_false'
+    ?{A:'正确',B:'错误'}
+    :Object.fromEntries(Object.entries(options).filter(([k])=>/^[A-Z]$/.test(k)))) as Record<string,string>;
+  const typeLabel=item.itemType==='question'
+    ?(questionType==='true_false'?'判断题':isFillIn?'填空题':isPromptDesc?'提示词描述题':isDialogue?'对话情绪判读题':'单选题')
+    :'实操题';
 
-  return <div className="mx-auto max-w-5xl space-y-4 pb-28">
-    <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/95 px-5 py-3 backdrop-blur">
-      <strong>第 {index+1}/{payload.items.length} 项</strong><span>已完成 {count}/{payload.items.length}</span><span className="text-sm text-muted-foreground">{saveError?'':saving?'正在保存…':'答案自动保存，放心做题'}</span>
-      {saveError&&<span className="text-sm font-medium text-destructive" role="alert">⚠ 保存失败：{saveError}。恢复网络后会自动重存，持续失败请举手告诉老师</span>}
-      <span className="flex items-center gap-2">
-        {lowTime&&<span className="text-sm font-medium text-destructive" role="alert">⚠ 时间不多了，请检查未答项目</span>}
-        <strong className={cn('text-xl tabular-nums',lowTime?'text-destructive':'text-primary')} aria-label="剩余时间">{timeLeft===null?'--:--':format(timeLeft)}</strong>
-      </span>
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <span className="mb-2 inline-block rounded bg-primary/10 px-2 py-1 text-sm text-primary">{typeLabel}</span>
+          <h1 className="text-xl font-semibold leading-relaxed">{String(item.content.stem??item.content.title??'')}</h1>
+          {item.content.instructions?<p className="mt-2 text-base text-muted-foreground">{String(item.content.instructions)}</p>:null}
+        </div>
+        <span className="shrink-0 text-sm text-muted-foreground">{item.score}分</span>
+      </div>
+      {item.itemType==='question'?(
+        isPromptDesc?(
+          <div className="space-y-4">
+            {typeof options.image==='string'&&options.image?(
+              <div className="overflow-hidden rounded-lg border-2 border-border">
+                <img src={options.image} alt="提示词描述素材" className="max-h-96 w-full object-contain" loading="lazy" />
+              </div>
+            ):null}
+            <textarea
+              value={typeof current==='string'?current:''}
+              onChange={e=>onChange(item.id,e.target.value)}
+              placeholder="请仔细观察图片，用自然语言描述图片内容，撰写一段提示词"
+              rows={6}
+              className="w-full resize-y rounded-lg border-2 border-border p-4 text-lg leading-relaxed focus:border-primary focus:outline-none"
+            />
+          </div>
+        ):isFillIn?(
+          <input
+            type="text"
+            value={typeof current==='string'?current:''}
+            onChange={e=>onChange(item.id,e.target.value)}
+            placeholder="请输入答案"
+            className="w-full rounded-lg border-2 border-border p-4 text-lg focus:border-primary focus:outline-none"
+          />
+        ):(
+          <div className="space-y-3">
+            {isDialogue?<DialogueView dialogue={options.dialogue} target={options.target} />:null}
+            {Object.entries(optionEntries).map(([key,text])=>(
+              <button
+                key={key}
+                type="button"
+                onClick={()=>onChange(item.id,key)}
+                className={`w-full rounded-lg border-2 p-4 text-left text-lg ${selected===key?'border-primary bg-primary/5':'hover:border-primary/40'}`}
+              >
+                <strong className="mr-3 text-primary">{key}.</strong>{text}
+              </button>
+            ))}
+          </div>
+        )
+      ):(
+        <ExamTaskInput content={item.content} value={current} onChange={value=>onChange(item.id,value)} />
+      )}
     </div>
-    <Card><CardContent className="space-y-6 p-6 sm:p-8">
-      <div className="flex items-start justify-between gap-4"><div><span className="mb-2 inline-block rounded bg-primary/10 px-2 py-1 text-sm text-primary">{item.itemType==='question'?(questionType==='true_false'?'判断题':isFillIn?'填空题':isPromptDesc?'提示词描述题':isDialogue?'对话情绪判读题':'单选题'):'实操题'}</span><h1 className="text-xl font-semibold leading-relaxed">{String(item.content.stem??item.content.title??'')}</h1>{item.content.instructions?<p className="mt-2 text-base text-muted-foreground">{String(item.content.instructions)}</p>:null}</div><span className="shrink-0 text-sm text-muted-foreground">{item.score}分</span></div>
-      {item.itemType==='question'?(isPromptDesc?(<div className="space-y-4">{typeof options.image==='string'&&options.image?<div className="overflow-hidden rounded-lg border-2 border-border"><img src={options.image} alt="提示词描述素材" className="max-h-96 w-full object-contain" loading="lazy" /></div>:null}<textarea value={typeof current==='string'?current:''} onChange={e=>change(item.id,e.target.value)} placeholder="请仔细观察图片，用自然语言描述图片内容，撰写一段提示词" rows={6} className="w-full resize-y rounded-lg border-2 border-border p-4 text-lg leading-relaxed focus:border-primary focus:outline-none" /></div>):isFillIn?<input type="text" value={typeof current==='string'?current:''} onChange={e=>change(item.id,e.target.value)} placeholder="请输入答案" className="w-full rounded-lg border-2 border-border p-4 text-lg focus:border-primary focus:outline-none" />:<div className="space-y-3">{isDialogue?<DialogueView dialogue={options.dialogue} target={options.target} />:null}{Object.entries(optionEntries).map(([key,text])=><button key={key} type="button" onClick={()=>change(item.id,key)} className={`w-full rounded-lg border-2 p-4 text-left text-lg ${selected===key?'border-primary bg-primary/5':'hover:border-primary/40'}`}><strong className="mr-3 text-primary">{key}.</strong>{text}</button>)}</div>):<ExamTaskInput content={item.content} value={current} onChange={value=>change(item.id,value)} />}
-    </CardContent></Card>
-    <div className="flex items-center justify-between gap-3"><Button size="lg" variant="outline" disabled={index===0} onClick={()=>setIndex(i=>i-1)}>上一项</Button><div className="hidden max-w-2xl flex-wrap justify-center gap-1 md:flex">{payload.items.map((x,i)=>{const done=answered(responses[x.id]);return <button key={x.id} type="button" onClick={()=>setIndex(i)} aria-label={`第${i+1}题，${done?'已答':'未答'}`} className={cn('h-9 min-w-9 rounded px-2 text-sm',i===index?'bg-primary text-primary-foreground':done?'bg-primary/15 text-primary':'bg-muted')}>{i===index?i+1:done?`✓${i+1}`:i+1}</button>})}</div><Button size="lg" disabled={index===payload.items.length-1} onClick={()=>setIndex(i=>i+1)}>下一项</Button></div>
-    <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background px-4 py-3"><div className="mx-auto flex max-w-5xl items-center justify-between gap-4"><span className="text-sm text-muted-foreground">交卷后不能修改，请检查未完成项目。</span><Button size="lg" disabled={submitting} onClick={()=>setConfirmOpen(true)}>{submitting?'正在交卷…':`确认交卷（${count}/${payload.items.length}）`}</Button></div></div>
-    <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+  );
+}
+
+/** 题号导航: 已答✓+颜色, 未答仅颜色, 当前实底 */
+function QuestionNav({
+  items,
+  responses,
+  index,
+  onJump,
+}: {
+  items: ExamItem[];
+  responses: Record<string, unknown>;
+  index: number;
+  onJump: (i: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <Button size="lg" variant="outline" disabled={index===0} onClick={()=>onJump(index-1)}>上一项</Button>
+      <div className="hidden max-w-2xl flex-wrap justify-center gap-1 md:flex">
+        {items.map((x,i)=>{
+          const done=answered(responses[x.id]);
+          return (
+            <button
+              key={x.id}
+              type="button"
+              onClick={()=>onJump(i)}
+              aria-label={`第${i+1}题，${done?'已答':'未答'}`}
+              className={cn('h-9 min-w-9 rounded px-2 text-sm',i===index?'bg-primary text-primary-foreground':done?'bg-primary/15 text-primary':'bg-muted')}
+            >
+              {i===index||!done?i+1:`✓${i+1}`}
+            </button>
+          );
+        })}
+      </div>
+      <Button size="lg" disabled={index===items.length-1} onClick={()=>onJump(index+1)}>下一项</Button>
+    </div>
+  );
+}
+
+/** 交卷二次确认框: 有未答题列出题号, 全答完则直接确认 */
+function SubmitConfirmDialog({
+  open,
+  onOpenChange,
+  unanswered,
+  submitting,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  unanswered: number[];
+  submitting: boolean;
+  onConfirm: () => void;
+}) {
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{unanswered.length>0?`还有 ${unanswered.length} 题没有作答`:'确认交卷？'}</AlertDialogTitle>
           <AlertDialogDescription>
-            {unanswered.length>0?`未答题号：${unanswered.join('、')}。确认要现在交卷吗？交卷后不能修改。`:'所有题目都已作答。交卷后不能修改，确认要交卷吗？'}
+            {unanswered.length>0
+              ?`未答题号：${unanswered.join('、')}。确认要现在交卷吗？交卷后不能修改。`
+              :'所有题目都已作答。交卷后不能修改，确认要交卷吗？'}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>再检查一下</AlertDialogCancel>
-          <AlertDialogAction onClick={()=>{setConfirmOpen(false);void submit()}}>确定交卷</AlertDialogAction>
+          <AlertDialogAction disabled={submitting} onClick={onConfirm}>确定交卷</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  </div>;
+  );
 }
