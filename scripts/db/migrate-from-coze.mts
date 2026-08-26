@@ -116,6 +116,8 @@ const plan: Array<[string, string?]> = [
   ['asset_manifests', 'created_at'],
   ['practice_asset_versions'],
   ['exam_asset_versions'],
+  // 老师布置的作业关系(任务列表按"班级→布置→模板"关联, 不搬则学员任务列表为空)
+  ['practice_assignments', 'created_at'],
 ];
 
 for (const [table, order] of plan) {

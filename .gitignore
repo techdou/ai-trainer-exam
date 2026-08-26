@@ -93,3 +93,6 @@ temp/
 
 # UI 评审截图(本地临时产物)
 .ui-review/
+
+# AI 素材生成工作目录(临时产物)
+.media-gen/
