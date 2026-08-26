@@ -55,12 +55,12 @@ try {
     ON CONFLICT(code) DO UPDATE SET name=EXCLUDED.name,status='active',updated_at=NOW() RETURNING id`);
   if (!org) throw new Error('无法创建示例机构');
   const project = await one<{ id: string }>(`INSERT INTO training_projects(organization_id,name,description,funding_source,status,created_at,updated_at)
-    SELECT $1,'人工智能训练师五级培训班（示例）','面向零基础学员的人工智能训练师五级职业技能培训','财政支持示例','active',NOW(),NOW()
+    SELECT $1::varchar,'人工智能训练师五级培训班（示例）','面向零基础学员的人工智能训练师五级职业技能培训','财政支持示例','active',NOW(),NOW()
     WHERE NOT EXISTS(SELECT 1 FROM training_projects WHERE organization_id=$1 AND name='人工智能训练师五级培训班（示例）')
     RETURNING id`, [org.id]) ?? await one<{ id: string }>(`SELECT id FROM training_projects WHERE organization_id=$1 AND name='人工智能训练师五级培训班（示例）'`, [org.id]);
   if (!project) throw new Error('无法创建示例培训项目');
   const cohort = await one<{ id: string }>(`INSERT INTO cohorts(organization_id,project_id,name,status,created_at,updated_at)
-    SELECT $1,$2,'五级示例班','active',NOW(),NOW()
+    SELECT $1::varchar,$2::varchar,'五级示例班','active',NOW(),NOW()
     WHERE NOT EXISTS(SELECT 1 FROM cohorts WHERE organization_id=$1 AND project_id=$2 AND name='五级示例班') RETURNING id`, [org.id, project.id])
     ?? await one<{ id: string }>(`SELECT id FROM cohorts WHERE organization_id=$1 AND project_id=$2 AND name='五级示例班'`, [org.id, project.id]);
   if (!cohort) throw new Error('无法创建示例班级');
@@ -72,7 +72,10 @@ try {
     { email: 'teacher01@exam.local', name: '培训教师', roles: ['teacher'], org: org.id },
     { email: 'editor01@exam.local', name: '题库编辑员', roles: ['question_editor'], org: org.id },
     { email: 'reviewer01@exam.local', name: '题库审核员', roles: ['question_reviewer'], org: org.id },
-    { email: 'student001@student.exam.local', name: '示例学员', roles: ['student'], org: org.id },
+    { email: 'stu001@student.exam.local', name: '示例学员', roles: ['student'], org: org.id },
+    { email: 'stu002@student.exam.local', name: '示例学员二', roles: ['student'], org: org.id },
+    { email: 'invig01@exam.local', name: '监考员', roles: ['invigilator'], org: org.id },
+    { email: 'auditor01@exam.local', name: '审计员', roles: ['auditor'], org: null },
   ];
   const newlyCreated: Array<{ email: string; password: string }> = [];
   for (const account of credentials) {
@@ -80,9 +83,11 @@ try {
     if (result.createdPassword) newlyCreated.push({ email: account.email, password: result.createdPassword });
   }
   const teacher = await one<{ id: string }>('SELECT id FROM profiles WHERE email=$1', ['teacher01@exam.local']);
-  const student = await one<{ id: string }>('SELECT id FROM profiles WHERE email=$1', ['student001@student.exam.local']);
-  if (teacher) await db.query(`INSERT INTO teacher_cohort_grants(teacher_id,cohort_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, [teacher.id, cohort.id]);
-  if (student) await db.query(`INSERT INTO enrollments(user_id,cohort_id,status,created_at,updated_at) VALUES($1,$2,'active',NOW(),NOW()) ON CONFLICT(user_id,cohort_id) DO UPDATE SET status='active',updated_at=NOW()`, [student.id, cohort.id]);
+  if (teacher && cohort) await db.query(`INSERT INTO teacher_cohort_grants(teacher_id,cohort_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, [teacher.id, cohort.id]);
+  for (const stuEmail of ['stu001@student.exam.local', 'stu002@student.exam.local']) {
+    const student = await one<{ id: string }>('SELECT id FROM profiles WHERE email=$1', [stuEmail]);
+    if (student && cohort) await db.query(`INSERT INTO enrollments(user_id,cohort_id,status,created_at,updated_at) VALUES($1,$2,'active',NOW(),NOW()) ON CONFLICT(user_id,cohort_id) DO UPDATE SET status='active',updated_at=NOW()`, [student.id, cohort.id]);
+  }
 
   console.log(`机构: ${org.id}\n项目: ${project.id}\n班级: ${cohort.id}`);
   if (newlyCreated.length) {

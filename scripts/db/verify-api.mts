@@ -141,6 +141,11 @@ if (questionId) {
     name: '审核员通过', role: 'reviewer', method: 'PATCH', path: `/api/admin/questions/${questionId}`,
     body: { action: 'approve', bankType: 'practice', note: '回归验证通过' }, expect: 200,
   });
+  // 发布(reviewed → published; 状态机要求 retire 仅允许从 published)
+  await run({
+    name: '审核员发布', role: 'reviewer', method: 'PATCH', path: `/api/admin/questions/${questionId}`,
+    body: { action: 'publish', bankType: 'practice' }, expect: 200,
+  });
   // 状态过滤: imported_unreviewed 参数真实生效
   await run({
     name: '状态过滤', role: 'reviewer', path: '/api/admin/questions?bank_type=practice&review_status=imported_unreviewed&limit=5',
@@ -255,10 +260,10 @@ if (newUserId && initialPw) {
     name: '改角色', role: 'school', method: 'PATCH', path: `/api/admin/users/${newUserId}`,
     body: { action: 'set_roles', roles: ['student', 'invigilator'] }, expect: 200,
   });
-  // 越权: 改成超纲角色被拒
+  // 越权: 改成超纲角色被拒(绑定学校的账号不能直升全局角色, 业务层 400 拒绝)
   await run({
     name: '改角色超纲-拒绝', role: 'school', method: 'PATCH', path: `/api/admin/users/${newUserId}`,
-    body: { action: 'set_roles', roles: ['auditor'] }, expect: 403,
+    body: { action: 'set_roles', roles: ['auditor'] }, expect: 400,
   });
   // 重置密码
   await run({
