@@ -6,7 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ExamTaskInput } from '@/components/exam-task-input';
 import { DialogueView } from '@/components/dialogue-bubble';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { apiFetch } from '@/lib/session-client';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface ExamItem {
@@ -45,6 +47,11 @@ export default function ExamTakePage() {
   const [receipt,setReceipt]=useState<string|null>(null);
   const [serverOffset,setServerOffset]=useState(0);
   const [loadError,setLoadError]=useState('');
+  // 手动交卷确认框: 零基础学员误触即终局, 必须二次确认; 倒计时归零的自动交卷不走此框。
+  const [confirmOpen,setConfirmOpen]=useState(false);
+  // 自动保存失败需常驻提示(一次性 toast 易被错过), 下次保存成功即清除。
+  const [saveError,setSaveError]=useState('');
+  const tenMinHintShownRef=useRef(false);
   // null = 倒计时尚未初始化; 仅当初始化后归零才触发自动交卷,避免试卷刚加载时误交白卷。
   const [timeLeft,setTimeLeft]=useState<number|null>(null);
   const dirtyRef=useRef(new Set<string>());
@@ -93,11 +100,13 @@ export default function ExamTakePage() {
       try{
         const result=await apiFetch<{saved:number}>('/api/student/exams/save',{method:'POST',body:{scheduleId,attemptId:p.attemptId,responses:body},keepalive});
         if(result.ok){
+          setSaveError('');
           ids.forEach(id=>{
             if(responseVersionRef.current.get(id)===sentVersions.get(id))dirtyRef.current.delete(id);
           });
           return true;
         }
+        setSaveError(result.error??'保存失败');
         toast.error('自动保存失败',{description:result.error});return false;
       }finally{setSaving(false)}
     })();
@@ -135,8 +144,10 @@ export default function ExamTakePage() {
   },[payload,receipt,scheduleId,serverOffset]);
   useEffect(()=>{
     if(!payload||receipt)return;
-    const update=()=>{const left=Math.max(0,Math.floor((new Date(payload.serverDeadline).getTime()-(Date.now()+serverOffset))/1000));setTimeLeft(left)};
-    update();const timer=setInterval(update,1000);return()=>clearInterval(timer);
+    const update=()=>{const left=Math.max(0,Math.floor((new Date(payload.serverDeadline).getTime()-(Date.now()+serverOffset))/1000));setTimeLeft(left);
+      // 剩 10 分钟温和提醒一次(提前于 5 分钟强警告), 零基础学员答题慢, 5 分钟才警告等于突然死刑。
+      if(left>0&&left<=600&&!tenMinHintShownRef.current){tenMinHintShownRef.current=true;toast.info('还有 10 分钟，没答的题先写个大概')}}
+    ;update();const timer=setInterval(update,1000);return()=>clearInterval(timer);
   },[payload,receipt,serverOffset]);
 
   const submit=useCallback(async()=>{
@@ -161,6 +172,8 @@ export default function ExamTakePage() {
     setResponses(prev=>({...prev,[itemId]:value}));
   };
   const count=useMemo(()=>Object.values(responses).filter(answered).length,[responses]);
+  // 未答题号列表(items 顺序即题号), 供交卷确认框展示。
+  const unanswered=useMemo(()=>payload?payload.items.map((x,i)=>({x,i})).filter(({x})=>!answered(responses[x.id])).map(({i})=>i+1):[],[payload,responses]);
   const format=(seconds:number)=>`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
 
   if(loading)return <div className="flex min-h-[60vh] items-center justify-center text-lg text-muted-foreground">正在安全加载试卷…</div>;
@@ -184,17 +197,32 @@ export default function ExamTakePage() {
 
   return <div className="mx-auto max-w-5xl space-y-4 pb-28">
     <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/95 px-5 py-3 backdrop-blur">
-      <strong>第 {index+1}/{payload.items.length} 项</strong><span>已完成 {count}/{payload.items.length}</span><span className="text-sm text-muted-foreground">{saving?'正在保存…':'已启用自动保存'}</span>
+      <strong>第 {index+1}/{payload.items.length} 项</strong><span>已完成 {count}/{payload.items.length}</span><span className="text-sm text-muted-foreground">{saveError?'':saving?'正在保存…':'答案自动保存，放心做题'}</span>
+      {saveError&&<span className="text-sm font-medium text-destructive" role="alert">⚠ 保存失败：{saveError}。恢复网络后会自动重存，持续失败请举手告诉老师</span>}
       <span className="flex items-center gap-2">
         {lowTime&&<span className="text-sm font-medium text-destructive" role="alert">⚠ 时间不多了，请检查未答项目</span>}
-        <strong className={lowTime?'text-destructive':'text-primary'} aria-label="剩余时间">{timeLeft===null?'--:--':format(timeLeft)}</strong>
+        <strong className={cn('text-xl tabular-nums',lowTime?'text-destructive':'text-primary')} aria-label="剩余时间">{timeLeft===null?'--:--':format(timeLeft)}</strong>
       </span>
     </div>
     <Card><CardContent className="space-y-6 p-6 sm:p-8">
       <div className="flex items-start justify-between gap-4"><div><span className="mb-2 inline-block rounded bg-primary/10 px-2 py-1 text-sm text-primary">{item.itemType==='question'?(questionType==='true_false'?'判断题':isFillIn?'填空题':isPromptDesc?'提示词描述题':isDialogue?'对话情绪判读题':'单选题'):'实操题'}</span><h1 className="text-xl font-semibold leading-relaxed">{String(item.content.stem??item.content.title??'')}</h1>{item.content.instructions?<p className="mt-2 text-base text-muted-foreground">{String(item.content.instructions)}</p>:null}</div><span className="shrink-0 text-sm text-muted-foreground">{item.score}分</span></div>
       {item.itemType==='question'?(isPromptDesc?(<div className="space-y-4">{typeof options.image==='string'&&options.image?<div className="overflow-hidden rounded-lg border-2 border-border"><img src={options.image} alt="提示词描述素材" className="max-h-96 w-full object-contain" loading="lazy" /></div>:null}<textarea value={typeof current==='string'?current:''} onChange={e=>change(item.id,e.target.value)} placeholder="请仔细观察图片，用自然语言描述图片内容，撰写一段提示词" rows={6} className="w-full resize-y rounded-lg border-2 border-border p-4 text-lg leading-relaxed focus:border-primary focus:outline-none" /></div>):isFillIn?<input type="text" value={typeof current==='string'?current:''} onChange={e=>change(item.id,e.target.value)} placeholder="请输入答案" className="w-full rounded-lg border-2 border-border p-4 text-lg focus:border-primary focus:outline-none" />:<div className="space-y-3">{isDialogue?<DialogueView dialogue={options.dialogue} target={options.target} />:null}{Object.entries(optionEntries).map(([key,text])=><button key={key} type="button" onClick={()=>change(item.id,key)} className={`w-full rounded-lg border-2 p-4 text-left text-lg ${selected===key?'border-primary bg-primary/5':'hover:border-primary/40'}`}><strong className="mr-3 text-primary">{key}.</strong>{text}</button>)}</div>):<ExamTaskInput content={item.content} value={current} onChange={value=>change(item.id,value)} />}
     </CardContent></Card>
-    <div className="flex items-center justify-between gap-3"><Button size="lg" variant="outline" disabled={index===0} onClick={()=>setIndex(i=>i-1)}>上一项</Button><div className="hidden max-w-2xl flex-wrap justify-center gap-1 md:flex">{payload.items.map((x,i)=><button key={x.id} onClick={()=>setIndex(i)} className={`h-9 min-w-9 rounded px-2 text-sm ${i===index?'bg-primary text-primary-foreground':answered(responses[x.id])?'bg-primary/15 text-primary':'bg-muted'}`}>{i+1}</button>)}</div><Button size="lg" disabled={index===payload.items.length-1} onClick={()=>setIndex(i=>i+1)}>下一项</Button></div>
-    <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background px-4 py-3"><div className="mx-auto flex max-w-5xl items-center justify-between gap-4"><span className="text-sm text-muted-foreground">交卷后不能修改，请检查未完成项目。</span><Button size="lg" variant="destructive" disabled={submitting} onClick={()=>void submit()}>{submitting?'正在交卷…':`确认交卷（${count}/${payload.items.length}）`}</Button></div></div>
+    <div className="flex items-center justify-between gap-3"><Button size="lg" variant="outline" disabled={index===0} onClick={()=>setIndex(i=>i-1)}>上一项</Button><div className="hidden max-w-2xl flex-wrap justify-center gap-1 md:flex">{payload.items.map((x,i)=>{const done=answered(responses[x.id]);return <button key={x.id} type="button" onClick={()=>setIndex(i)} aria-label={`第${i+1}题，${done?'已答':'未答'}`} className={cn('h-9 min-w-9 rounded px-2 text-sm',i===index?'bg-primary text-primary-foreground':done?'bg-primary/15 text-primary':'bg-muted')}>{i===index?i+1:done?`✓${i+1}`:i+1}</button>})}</div><Button size="lg" disabled={index===payload.items.length-1} onClick={()=>setIndex(i=>i+1)}>下一项</Button></div>
+    <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background px-4 py-3"><div className="mx-auto flex max-w-5xl items-center justify-between gap-4"><span className="text-sm text-muted-foreground">交卷后不能修改，请检查未完成项目。</span><Button size="lg" disabled={submitting} onClick={()=>setConfirmOpen(true)}>{submitting?'正在交卷…':`确认交卷（${count}/${payload.items.length}）`}</Button></div></div>
+    <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{unanswered.length>0?`还有 ${unanswered.length} 题没有作答`:'确认交卷？'}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {unanswered.length>0?`未答题号：${unanswered.join('、')}。确认要现在交卷吗？交卷后不能修改。`:'所有题目都已作答。交卷后不能修改，确认要交卷吗？'}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>再检查一下</AlertDialogCancel>
+          <AlertDialogAction onClick={()=>{setConfirmOpen(false);void submit()}}>确定交卷</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>;
 }
