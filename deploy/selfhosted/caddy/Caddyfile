@@ -1,0 +1,7 @@
+# supabase-js 只请求 {SUPABASE_URL}/auth/v1/*, 剥前缀转发给 GoTrue 即可。
+# 项目不使用 PostgREST/Realtime/Storage 等其余 supabase 服务, 不需要 Kong 全家桶。
+:8000 {
+	handle_path /auth/v1/* {
+		reverse_proxy auth:9999
+	}
+}

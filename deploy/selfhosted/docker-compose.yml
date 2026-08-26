@@ -1,0 +1,127 @@
+# 考试系统自部署 Supabase 裁剪版 + MinIO 对象存储
+# 组件: Postgres(supabase 官方镜像, 内置 auth schema) + GoTrue(Auth) + Caddy(路由网关) + MinIO(S3)
+# 全部端口只绑 127.0.0.1: 前端浏览器从不直连本栈, 只有 Next.js 服务端访问, 公网只需暴露应用本身。
+# 用法: cp .env.example .env && node utils/generate-keys.mjs 填入密钥 && docker compose up -d
+
+name: exam-supabase
+
+services:
+  db:
+    container_name: exam-db
+    image: supabase/postgres:17.6.1.136
+    restart: unless-stopped
+    volumes:
+      # 官方初始化脚本: 注入角色密码与 JWT 配置(auth schema 已内置于镜像)
+      - ./db/00-auth-schema.sql:/docker-entrypoint-initdb.d/init-scripts/98-auth-schema.sql:Z
+      - ./db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:Z
+      - ./db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:Z
+      - db-data:/var/lib/postgresql/data:Z
+      - db-config:/etc/postgresql-custom:Z
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: 5432
+      POSTGRES_PORT: 5432
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      POSTGRES_DB: ${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXP: 3600
+    ports:
+      # 仅本机管理用(迁移/备份); 生产服务器上若不需要可删掉
+      - "127.0.0.1:25432:5432"
+    command:
+      ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf", "-c", "log_min_messages=fatal"]
+
+  auth:
+    container_name: exam-auth
+    image: supabase/gotrue:v2.189.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${API_EXTERNAL_URL}
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      GOTRUE_SITE_URL: ${SITE_URL}
+      # 学员账号一律由管理员通过名册导入创建, 关闭公开注册与邮件/手机验证(不配 SMTP)
+      GOTRUE_DISABLE_SIGNUP: "true"
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_ISSUER: ${API_EXTERNAL_URL}
+      # 邮箱+密码登录是本系统唯一登录方式, 必须开; 防公开注册靠上面的 GOTRUE_DISABLE_SIGNUP
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: "false"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
+
+  gateway:
+    container_name: exam-gateway
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      auth:
+        condition: service_healthy
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-18000}:8000"
+
+  minio:
+    container_name: exam-minio
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    restart: unless-stopped
+    volumes:
+      - minio-data:/data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:19000:9000" # S3 API — 仅本机(应用服务端访问)
+      - "127.0.0.1:19001:9001" # Console 管理界面 — 仅本机
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+
+  # 一次性任务: 建素材桶并设为可匿名下载(素材为题图/音频, 本就面向学员)
+  minio-init:
+    container_name: exam-minio-init
+    image: minio/mc:latest
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
+      mc mb --ignore-existing local/$$MINIO_BUCKET &&
+      mc anonymous set download local/$$MINIO_BUCKET &&
+      echo 'MinIO bucket ready'"
+
+volumes:
+  db-data:
+  db-config:
+  minio-data:
