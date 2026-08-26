@@ -90,3 +90,6 @@ tmp/
 temp/
 .cozeproj/reduction
 .codegraph
+
+# UI 评审截图(本地临时产物)
+.ui-review/
