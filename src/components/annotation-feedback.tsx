@@ -151,7 +151,7 @@ export function AnnotationFeedback({
               </li>
             ))}
             {(details.missed ?? 0) > 0 && (
-              <li className="text-destructive">✗ 有 {details.missed} 个目标没有标出来（看"漏标"粗虚线标记的位置）</li>
+              <li className="text-destructive">✗ 有 {details.missed} 个目标没有标出来（看「漏标」粗虚线标记的位置）</li>
             )}
             {(details.extra ?? 0) > 0 && (
               <li className="text-destructive">✗ 有 {details.extra} 个多余标注（看红色虚线框）</li>
