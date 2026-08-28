@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { requireRole } from '@/server/auth';
 import { dbTx } from '@/server/db';
 import { handler, ok, parseBody, fail } from '@/lib/api';
-import { assertScheduleCanStart, attemptDeadline, getScheduleForStudent } from '@/server/exam-security';
+import { assertScheduleCanStart, attemptDeadline, expireOverdueAttempts, getScheduleForStudent } from '@/server/exam-security';
 
 const schema = z.object({ scheduleId: z.string().min(1).max(100) });
 type StartResult =
@@ -49,7 +49,9 @@ export const POST = handler(async (request: Request) => {
         }
         const deadline = existing.server_deadline ? new Date(existing.server_deadline).getTime() : new Date(lockedSchedule.exam_end_at).getTime();
         if (now > deadline + lockedSchedule.submit_grace_seconds * 1000) {
-          return { kind: 'error', response: fail(409, '考试已结束，请联系考务人员处理') };
+          // 超宽限的断线 attempt 直接落 expired 终态(0 分缺考),不再永久卡在 in_progress 阻塞成绩发布。
+          await expireOverdueAttempts(client, scheduleId);
+          return { kind: 'error', response: fail(409, '考试已结束：超过交卷宽限时间未交卷，按缺考处理（0 分）') };
         }
         return { kind: 'success', attemptId: existing.id, resumed: true, serverDeadline: existing.server_deadline };
       }

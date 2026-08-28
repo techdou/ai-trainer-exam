@@ -407,6 +407,11 @@ function normalizeTranscript(text: string): string {
   return toHalfWidth(text).normalize('NFKC').toLowerCase().replace(/[\s，。！？；：、“”‘’（）()【】\[\],.!?;:'"`~—-]/g, '');
 }
 export function levenshteinDistance(a: string, b: string): number {
+  // 长度差是编辑距离的下界:悬殊输入直接返回下界,避免超大 transcript 触发 O(n·m) 全量计算。
+  const diff = Math.abs(a.length - b.length);
+  if (diff > 2000) return diff;
+  // 正常转写题素材仅数百字;超长输入按不匹配处理,防御持锁事务内的资源耗尽。
+  if (a.length > 10_000 || b.length > 10_000) return diff + Math.max(a.length, b.length);
   const previous = Array.from({ length: b.length + 1 }, (_, i) => i);
   for (let i = 1; i <= a.length; i++) {
     let diagonal = previous[0]; previous[0] = i;
@@ -456,8 +461,10 @@ export const datasetQualityGrader: Grader<DatasetQualitySubmission, DatasetQuali
   grade(submission, answerKey) {
     if (!Array.isArray(submission?.flaggedItems) || !Array.isArray(answerKey?.correctFlaggedItems)) return invalid(datasetQualityGrader);
     const actual = new Set(unique(submission.flaggedItems.map(String))), expected = new Set(unique(answerKey.correctFlaggedItems.map(String)));
+    // 标准答案为空属于配置缺陷:不能给乱标满分,判 invalid 让考务修复。
+    if (!expected.size) return invalid(datasetQualityGrader, '标准答案未配置');
     const tp = [...actual].filter(x => expected.has(x)).length, fp = [...actual].filter(x => !expected.has(x)).length, fn = [...expected].filter(x => !actual.has(x)).length;
-    const precision = tp / Math.max(1, tp + fp), recall = tp / Math.max(1, tp + fn), score = tp || expected.size ? (2 * precision * recall) / Math.max(Number.EPSILON, precision + recall) : 1;
+    const precision = tp / Math.max(1, tp + fp), recall = tp / Math.max(1, tp + fn), score = (2 * precision * recall) / Math.max(Number.EPSILON, precision + recall);
     const correct = fp === 0 && fn === 0;
     return { correct, score: correct ? 1 : clamp(score), feedback: correct ? '问题数据识别正确。' : [fp ? `误标 ${fp} 条正常数据` : '', fn ? `漏标 ${fn} 条问题数据` : ''].filter(Boolean).join('；'), graderVersion: versionOf(datasetQualityGrader), details: { tp, fp, fn } };
   },
@@ -678,9 +685,19 @@ export function gradeTaskByType(taskType: string, submission: unknown, answerKey
   if (!graderId) return { correct: false, score: 0, feedback: `不支持的任务类型：${taskType}`, graderVersion: 'unknown@0.0.0' };
   return gradeByType(graderId, submission, answerKey);
 }
+/** 单次评分输入的序列化上限:练习/考试提交的 response 超过此大小按 invalid 处理,
+ *  防止超大 transcript/标注点阵在持锁事务内触发分钟级评分拖垮连接池。 */
+export const MAX_GRADING_INPUT_BYTES = 64 * 1024;
+function oversizeInput(value: unknown): boolean {
+  try { return JSON.stringify(value ?? {}).length > MAX_GRADING_INPUT_BYTES; } catch { return true; }
+}
+
 export function gradeByType(graderId: string, submission: unknown, answerKey: unknown): GraderResult {
   const grader = graderRegistry.get(graderId);
   if (!grader) return { correct: false, score: 0, feedback: `未知评分器：${graderId}`, graderVersion: 'unknown@0.0.0' };
+  if (oversizeInput(submission)) {
+    return { correct: false, score: 0, feedback: '提交内容过大，请缩减后重新提交', graderVersion: versionOf(grader), details: { invalid: true } };
+  }
   try {
     const result = grader.grade(submission, answerKey);
     // 契约兜底:无论评分器内部如何计算,出口分数强制落在 0..1。
@@ -693,11 +710,15 @@ export function getRegisteredGraderIds(): string[] { return [...graderRegistry.k
 /* ---------- 学员作答与题库 answer_key 的共享归一(练习/考试两个入口必须使用同一套) ---------- */
 
 const TRUE_TOKENS = new Set(['A', 'TRUE', 'T', 'YES', 'Y', '1', '正确', '对', '是']);
+const FALSE_TOKENS = new Set(['B', 'FALSE', 'F', 'NO', 'N', '0', '错误', '错', '否']);
 
-/** 学员判断题作答归一为布尔。练习与考试入口共用,保证同一答案判定一致。 */
-export function normalizeTrueFalseAnswer(raw: unknown): boolean {
+/** 学员判断题作答归一为三态:识别的真/假 token 归一为布尔,未识别返回 null(交评分器判 invalid 0 分)。练习与考试入口共用,保证同一答案判定一致。 */
+export function normalizeTrueFalseAnswer(raw: unknown): boolean | null {
   if (typeof raw === 'boolean') return raw;
-  return TRUE_TOKENS.has(String(raw ?? '').trim().toUpperCase());
+  const upper = String(raw ?? '').trim().toUpperCase();
+  if (TRUE_TOKENS.has(upper)) return true;
+  if (FALSE_TOKENS.has(upper)) return false;
+  return null;
 }
 
 /** 从题库 answer_key(JSONB 形态不一:布尔/字符串/对象)解析判断题标准答案,无法解析返回 null。 */
@@ -709,7 +730,7 @@ export function parseTrueFalseAnswerKey(raw: unknown): boolean | null {
     const upper = text.toUpperCase();
     if (TRUE_TOKENS.has(upper)) return true;
     // 判断题常以 A=正确 / B=错误 存储;FALSE/F/错误/错/否/B 均为假。
-    if (['FALSE', 'F', 'NO', 'N', '0', 'B', '错误', '错', '否'].includes(upper)) return false;
+    if (FALSE_TOKENS.has(upper)) return false;
   }
   return null;
 }

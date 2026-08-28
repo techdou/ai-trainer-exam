@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { ApiError, requireRole } from '@/server/auth';
 import { dbTx, dbQuery } from '@/server/db';
 import { ok, catchError, parseBody } from '@/lib/api';
-import { assertOrganizationScope } from '@/server/exam-security';
+import { assertOrganizationScope, expireOverdueAttempts } from '@/server/exam-security';
 import { awardExamPass } from '@/server/gamification';
 
 const schema = z.object({ scheduleId: z.string().uuid() });
@@ -27,6 +27,8 @@ export async function POST(req: NextRequest) {
       if (!['grading', 'results_pending', 'exam_closed'].includes(schedule.status)) {
         throw new ApiError(409, '当前考试状态不能发布成绩');
       }
+      // 断线/超时未交卷的 attempt 先落 expired 终态(按 0 分缺考生成成绩),解除对发布的永久阻塞。
+      const expiredCount = await expireOverdueAttempts(client, scheduleId);
       const active = await client.query<{ count: string }>(
         `SELECT count(*)::text AS count
            FROM exam_attempts
@@ -67,7 +69,7 @@ export async function POST(req: NextRequest) {
       await client.query(`UPDATE exam_schedules SET results_released=true,status='results_released',results_release_at=COALESCE(results_release_at,NOW()),updated_at=NOW() WHERE id=$1`, [scheduleId]);
       await client.query(`INSERT INTO audit_logs(actor_id,actor_role,organization_id,action,entity_type,entity_id,detail)
                           VALUES($1,$2,$3,'scores_publish','exam_schedule',$4,$5)`,
-        [user.id, user.roles[0] ?? null, schedule.organization_id, scheduleId, { publishedCount: result.rowCount ?? 0 }]);
+        [user.id, user.roles[0] ?? null, schedule.organization_id, scheduleId, { publishedCount: result.rowCount ?? 0, expiredCount }]);
       return result.rowCount ?? 0;
     });
     // 激励层: 发布后给通过学员计积分/勋章(内部幂等且吞错,不影响发布结果)。

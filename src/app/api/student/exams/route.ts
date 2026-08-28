@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { requireRole } from '@/server/auth';
-import { dbQuery } from '@/server/db';
+import { dbNow, dbQuery } from '@/server/db';
 import {ok, catchError } from '@/lib/api';
 import { isScheduleStartableStatus } from '@/server/exam-security';
 
@@ -50,14 +50,15 @@ export async function GET(req: NextRequest) {
       ORDER BY s.exam_start_at DESC
     `, user.id);
 
+    // 时间判断统一用数据库时钟:与 start/save/submit 的服务端强制校验同源,避免多实例/时钟漂移导致按钮态与准入不一致。
+    const now = (await dbNow()).getTime();
     const examsWithStatus = rows.map((s) => {
       const hasAttempt = s.attempt_id !== null;
       const showScore = hasAttempt
-        && (s.attempt_status === 'graded' || s.attempt_status === 'submitted')
+        && (s.attempt_status === 'graded' || s.attempt_status === 'submitted' || s.attempt_status === 'expired')
         && s.results_released
         && s.total_score !== null;
 
-      const now = Date.now();
       const startAt = new Date(s.exam_start_at).getTime();
       const endAt = new Date(s.exam_end_at).getTime() + (s.submit_grace_seconds ?? 60) * 1000;
       const lateEntryAt = startAt + (s.late_entry_minutes ?? 15) * 60 * 1000;

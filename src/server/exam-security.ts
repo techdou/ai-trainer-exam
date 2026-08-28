@@ -127,6 +127,37 @@ export async function lockAttempt(client: PoolClient, attemptId: string, userId:
   return result.rows[0] ?? null;
 }
 
+/**
+ * 把超宽限仍未交卷的 attempt 落为 expired 终态,并按 0 分(缺考)生成 auto_graded 成绩,
+ * 解除其对整场成绩发布的永久阻塞。必须在持有 exam_schedules 行锁的事务内调用。
+ * 返回本次过期条数。
+ */
+export async function expireOverdueAttempts(client: PoolClient, scheduleId: string): Promise<number> {
+  const expired = await client.query<{ id: string }>(
+    `UPDATE exam_attempts a SET status='expired', updated_at=NOW()
+       FROM exam_schedules s
+      WHERE a.schedule_id=$1 AND s.id=a.schedule_id
+        AND a.status IN ('not_started','in_progress')
+        AND (COALESCE(a.server_deadline, s.exam_end_at) + make_interval(secs => s.submit_grace_seconds)) < NOW()
+      RETURNING a.id`,
+    [scheduleId],
+  );
+  if (!expired.rows.length) return 0;
+  await client.query(
+    `INSERT INTO exam_scores
+       (attempt_id,schedule_id,user_id,total_score,max_score,passed,engine_version,paper_version,auto_score_detail,original_total,status,created_at,updated_at)
+     SELECT a.id, a.schedule_id, a.user_id, 0,
+            COALESCE((SELECT SUM(i.score) FROM exam_paper_items i WHERE i.paper_id=s.paper_id), 0),
+            false, 'expired@1.0.0', s.paper_version, '{"reason":"overdue_not_submitted"}'::jsonb, 0,
+            'auto_graded', NOW(), NOW()
+       FROM exam_attempts a JOIN exam_schedules s ON s.id=a.schedule_id
+      WHERE a.schedule_id=$1 AND a.status='expired'
+        AND NOT EXISTS (SELECT 1 FROM exam_scores sc WHERE sc.attempt_id=a.id)`,
+    [scheduleId],
+  );
+  return expired.rows.length;
+}
+
 export async function organizationForSchedule(scheduleId: string): Promise<string | null> {
   const row = await dbOne<{ organization_id: string | null }>('SELECT organization_id FROM exam_schedules WHERE id = $1', scheduleId);
   return row?.organization_id ?? null;

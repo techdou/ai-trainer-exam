@@ -139,7 +139,8 @@ export default function ExamTakePage() {
   },[payload,receipt,flush]);
   useEffect(()=>{
     if(!payload||receipt)return;
-    const ping=()=>void apiFetch('/api/student/exams/heartbeat',{method:'POST',body:{scheduleId,attemptId:payload.attemptId,clientOffsetMs:serverOffset}});
+    // clientOffsetMs 语义是"客户端时钟相对服务端的偏移"(client-server),与 serverOffset(server-client) 互为相反数。
+    const ping=()=>void apiFetch('/api/student/exams/heartbeat',{method:'POST',body:{scheduleId,attemptId:payload.attemptId,clientOffsetMs:-serverOffset}});
     ping();const timer=setInterval(ping,30_000);return()=>clearInterval(timer);
   },[payload,receipt,scheduleId,serverOffset]);
   useEffect(()=>{

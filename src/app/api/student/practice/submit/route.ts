@@ -2,13 +2,20 @@ import { z } from 'zod';
 import { requireRole } from '@/server/auth';
 import { dbOne, dbExec } from '@/server/db';
 import { ok, handler, parseBody, fail } from '@/lib/api';
-import { gradeTaskByType } from '@/server/grading';
+import { gradeTaskByType, MAX_GRADING_INPUT_BYTES } from '@/server/grading';
 
 import { getPracticeMaxScore, getPracticePassScore } from '@/server/settings';
 import { assertPracticeUnlocked } from '@/server/exam-security';
 import { awardTaskPass } from '@/server/gamification';
 
-const schema = z.object({ taskId: z.string().min(1).max(100), submission: z.unknown() });
+const schema = z.object({
+  taskId: z.string().min(1).max(100),
+  // 评分前先限制单次提交大小,超大输入直接 400 而不是落库后再判 invalid。
+  submission: z.unknown().refine(
+    v => { try { return JSON.stringify(v ?? {}).length <= MAX_GRADING_INPUT_BYTES; } catch { return false; } },
+    { message: '提交内容过大' },
+  ),
+});
 
 export const POST = handler(async (request: Request) => {
   const user = await requireRole(request, ['student']);

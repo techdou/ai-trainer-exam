@@ -62,13 +62,22 @@ describe('审查修复回归:综合任务递归防御', () => {
 });
 
 describe('审查修复回归:共享答案归一(练习/考试一致)', () => {
-  it('判断题真值集合两端一致', () => {
+  it('判断题真值集合两端一致(未识别输入归 null,交评分器判 invalid)', () => {
     for (const v of ['A', 'a', 'TRUE', 'true', '正确', '对', '是', true]) {
       expect(normalizeTrueFalseAnswer(v)).toBe(true);
     }
-    for (const v of ['B', 'FALSE', '错误', '错', '否', false, '']) {
+    for (const v of ['B', 'b', 'FALSE', 'F', 'NO', 'N', '0', '错误', '错', '否', false]) {
       expect(normalizeTrueFalseAnswer(v)).toBe(false);
     }
+    for (const v of ['', '   ', '随便乱填', 'C', null, undefined, 42]) {
+      expect(normalizeTrueFalseAnswer(v)).toBe(null);
+    }
+  });
+  it('判断题乱输入经 gradeByType 判 invalid 0 分,不能白拿答案为"错"的题', () => {
+    const r = gradeByType('true_false', { answer: normalizeTrueFalseAnswer('乱串xyz') }, { correctAnswer: false });
+    expect(r.correct).toBe(false);
+    expect(r.score).toBe(0);
+    expect(r.details).toMatchObject({ invalid: true });
   });
   it('解析判断题 answer_key 的多种形态', () => {
     expect(parseTrueFalseAnswerKey(true)).toBe(true);

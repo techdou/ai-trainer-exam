@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/session-client';
-import { Clock, PlayCircle, CheckCircle2, RotateCcw } from 'lucide-react';
+import { Clock, PlayCircle, CheckCircle2, RotateCcw, AlertCircle } from 'lucide-react';
 
 interface ExamInfo {
   id: string;
@@ -49,6 +49,14 @@ export default function ExamsPage() {
   };
 
   const statusBadge = (exam: ExamInfo) => {
+    // 超宽限未交卷的 attempt 由服务端落为 expired(按 0 分缺考),需要独立于"已交卷"展示。
+    if (exam.attempt?.status === 'expired') {
+      return (
+        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-muted text-muted-foreground font-medium text-base">
+          <AlertCircle className="w-4 h-4" aria-hidden /> 已结束（超时未交，按缺考计）
+        </span>
+      );
+    }
     // 交卷后服务端状态机为 submitted/grading/graded/released,都按“已交卷”展示。
     if (exam.attempt && ['submitted', 'grading', 'graded', 'released'].includes(exam.attempt.status)) {
       return (

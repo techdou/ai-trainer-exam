@@ -3,14 +3,18 @@ import { z } from 'zod';
 import { ApiError, requireRole } from '@/server/auth';
 import { dbTx } from '@/server/db';
 import { handler, ok, fail, parseBody } from '@/lib/api';
-import { gradeByType, normalizeTrueFalseAnswer } from '@/server/grading';
+import { gradeByType, normalizeTrueFalseAnswer, MAX_GRADING_INPUT_BYTES } from '@/server/grading';
 import { getScheduleForStudent } from '@/server/exam-security';
 
+const boundedInput = z.unknown().refine(
+  v => { try { return JSON.stringify(v ?? {}).length <= MAX_GRADING_INPUT_BYTES; } catch { return false; } },
+  { message: '单题提交内容过大' },
+);
 const schema = z.object({
   scheduleId: z.string().min(1),
   attemptId: z.string().min(1),
   idempotencyKey: z.string().min(8).max(128).optional(),
-  responses: z.array(z.object({ itemId: z.string().min(1), response: z.unknown(), workspaceSnapshot: z.unknown().optional() })).max(300).default([]),
+  responses: z.array(z.object({ itemId: z.string().min(1), response: boundedInput, workspaceSnapshot: boundedInput.optional() })).max(300).default([]),
   // 兼容旧客户端，迁移期后可移除。
   answers: z.array(z.object({ questionId: z.string().min(1), answer: z.string() })).max(300).optional(),
 });
