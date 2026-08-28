@@ -31,13 +31,32 @@ await db.connect();
 async function one<T>(text: string, values: unknown[] = []): Promise<T | null> {
   const result = await db.query(text, values); return (result.rows[0] as T | undefined) ?? null;
 }
+/** admin API 无 getUserByEmail,分页遍历 auth 用户按 email 找回 id。 */
+async function findAuthUserByEmail(email: string): Promise<string | null> {
+  let page = 1;
+  for (;;) {
+    const list = await auth.listUsers({ page, perPage: 1000 });
+    if (list.error || !list.data) throw new Error(`查询 auth 用户列表失败：${list.error?.message ?? '未知错误'}`);
+    const hit = list.data.users.find(u => u.email === email);
+    if (hit) return hit.id;
+    if (list.data.users.length < 1000 || page >= (list.data.totalPages ?? 1)) return null;
+    page++;
+  }
+}
 async function ensureUser(email: string, displayName: string, roles: string[], organizationId: string | null, password = generatedPassword()) {
   let profile = await one<{ id: string }>('SELECT id FROM profiles WHERE email=$1', [email]);
   let createdPassword: string | null = null;
   if (!profile) {
     const created = await auth.createUser({ email, password, email_confirm: true, user_metadata: { display_name: displayName } });
-    if (created.error || !created.data.user) throw new Error(`创建 ${email} 失败：${created.error?.message ?? '未知错误'}`);
-    profile = { id: created.data.user.id }; createdPassword = password;
+    if (created.error || !created.data.user) {
+      // 半写自愈: 上次运行可能已建 auth 用户但 profiles 插入失败(外部系统无法回滚)。
+      // 此时 createUser 报 already registered,按 email 找回已有用户补写 profiles,而不是永久卡死。
+      const existingId = await findAuthUserByEmail(email);
+      if (!existingId) throw new Error(`创建 ${email} 失败：${created.error?.message ?? '未知错误'}`);
+      profile = { id: existingId };
+    } else {
+      profile = { id: created.data.user.id }; createdPassword = password;
+    }
   }
   await db.query(`INSERT INTO profiles(id,organization_id,display_name,email,must_change_password,status,created_at,updated_at)
                   VALUES($1,$2,$3,$4,true,'active',NOW(),NOW())

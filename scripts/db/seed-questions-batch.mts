@@ -99,24 +99,30 @@ try {
     }
     const contentHash = q.stem.replace(/\s+/g, '').toLowerCase();
 
-    // practice
+    // practice/exam 各自查重、各自插入:两库一旦漂移(单侧被删/经导入器先入库)仍能对账补齐。
     const pExisting = await client.query("SELECT 1 FROM practice_question_items WHERE organization_id=$1 AND regexp_replace(lower(stem),'\\s+','','g')=$2 LIMIT 1",
       [organizationId, contentHash]);
-    if (pExisting.rowCount) { skipped++; continue; }
+    const eExisting = await client.query("SELECT 1 FROM exam_question_items WHERE organization_id=$1 AND regexp_replace(lower(stem),'\\s+','','g')=$2 LIMIT 1",
+      [organizationId, contentHash]);
+    if (pExisting.rowCount && eExisting.rowCount) { skipped++; continue; }
+    if (!pExisting.rowCount) {
     await client.query(
       `INSERT INTO practice_question_items(organization_id,question_type,stem,options,answer_key,explanation,knowledge_point,difficulty,source,review_status,published_version,practice_only,legal_review_required,created_at,updated_at)
        VALUES($1,$2,$3,$4,$5,NULL,$6,$7,'batch_seed','published',1,true,false,NOW(),NOW())`,
       [organizationId, q.type, q.stem, options, JSON.stringify(answerKey), q.kp, q.difficulty],
     );
     practiceInserted++;
+    }
 
     // exam (same content, eligible_for_formal_exam=true)
+    if (!eExisting.rowCount) {
     await client.query(
       `INSERT INTO exam_question_items(organization_id,question_type,stem,options,answer_key,explanation,knowledge_point,difficulty,source,review_status,published_version,practice_only,eligible_for_formal_exam,legal_review_required,created_at,updated_at)
        VALUES($1,$2,$3,$4,$5,NULL,$6,$7,'batch_seed','published',1,false,true,false,NOW(),NOW())`,
       [organizationId, q.type, q.stem, options, JSON.stringify(answerKey), q.kp, q.difficulty],
     );
     examInserted++;
+    }
   }
   await client.query('COMMIT');
   console.log(JSON.stringify({ total: questions.length, practiceInserted, examInserted, skipped }, null, 2));

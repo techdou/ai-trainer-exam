@@ -3,7 +3,7 @@ import { S3Storage } from 'coze-coding-dev-sdk';
 
 let storage: S3Storage | null = null;
 
-function getStorage(): S3Storage {
+export function getStorage(): S3Storage {
   if (storage) return storage;
   const endpoint = process.env.COZE_BUCKET_ENDPOINT_URL;
   const bucketName = process.env.COZE_BUCKET_NAME;
@@ -47,14 +47,6 @@ export async function readObject(key: string): Promise<{ body: Uint8Array; conte
     contentType: guessContentType(key),
     length: buffer.length,
   };
-}
-
-/**
- * Generate a presigned URL for an object key.
- * expireTime defaults to 7 days (604800 seconds) for task images.
- */
-export async function presignedUrl(objectKey: string, expireTime = 604800): Promise<string> {
-  return getStorage().generatePresignedUrl({ key: objectKey, expireTime });
 }
 
 /**

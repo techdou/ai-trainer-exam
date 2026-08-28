@@ -95,6 +95,8 @@ export async function loadSourceItem(item: PaperItemRequest, organizationId: str
           ? (parsePromptDescriptionAnswerKey(rawAnswer) ?? { keywords: [] })
           : { correctOption: String((rawAnswer as { letter?: unknown } | null)?.letter ?? rawAnswer ?? '').trim().toUpperCase() };
     const probe = gradeByType(graderId, row.question_type === 'fill_in_blank' ? { text: '' } : row.question_type === 'prompt_description' ? { text: '' } : { selectedOption: 'A' }, answerKey);
+    // probe 判 invalid 说明 answer_key 配置缺陷,静默入卷会导致考试时该题全员 0 分,必须拒入。
+    if (probe.details?.invalid === true) return null;
     return { id: row.id, itemType: 'question', itemId: row.id, section: 'theory', score: item.score, snapshot: { sourceItemId: row.id, questionType: row.question_type, stem: row.stem, options: row.options, explanation: row.explanation, knowledgePoint: row.knowledge_point, difficulty: row.difficulty, sourceVersion: row.published_version }, answerKey, gradingConfig: {}, graderId, graderVersion: probe.graderVersion };
   }
 
@@ -109,7 +111,25 @@ export async function loadSourceItem(item: PaperItemRequest, organizationId: str
   const graderId = graderIdForTaskType(row.task_type);
   if (!graderId) return null;
   const probe = gradeByType(graderId, {}, row.answer_key);
+  // answer_key 配置缺陷的任务同样拒入,避免考试时该题全员 0 分。
+  if (probe.details?.invalid === true) return null;
   return { id: row.id, itemType: 'task', itemId: row.id, section: item.section ?? sectionForTask(row.task_type), score: item.score, snapshot: { sourceItemId: row.id, taskType: row.task_type, title: row.title, instructions: row.instructions, difficulty: row.difficulty, config: row.config, sourceVersion: row.published_version }, answerKey: row.answer_key, gradingConfig: row.grading_config, graderId, graderVersion: probe.graderVersion, assetChecksum: typeof row.config?.assetChecksum === 'string' ? row.config.assetChecksum : null };
+}
+
+/** loadSourceItem 拒绝时取人类可读标识(题干前 30 字/任务标题),供报错替代裸 UUID。 */
+export async function describeSourceItem(item: { itemType: string; itemId: string }, organizationId: string): Promise<string | null> {
+  if (item.itemType === 'question') {
+    const row = await dbOne<{ stem: string }>(
+      'SELECT stem FROM exam_question_items WHERE id=$1 AND organization_id=$2',
+      item.itemId, organizationId,
+    );
+    return row?.stem ? row.stem.replace(/\s+/g, ' ').slice(0, 30) : null;
+  }
+  const row = await dbOne<{ title: string }>(
+    'SELECT title FROM exam_task_templates WHERE id=$1 AND organization_id=$2',
+    item.itemId, organizationId,
+  );
+  return row?.title ?? null;
 }
 
 // ============================================================
@@ -359,6 +379,9 @@ function buildQuestionSource(row: { id: string; question_type: string; stem: str
     : (graderId === 'fill_in_blank' || graderId === 'prompt_description') ? { text: '' }
     : { selectedOption: 'A' };
   const probe = gradeByType(graderId, probeInput, answerKey);
+  // probe 判 invalid 说明 answer_key 配置缺陷(空 acceptable/空 keywords/非字母选项键等),
+  // 静默入卷会导致考试时该题全员 0 分,必须拒入。
+  if (probe.details?.invalid === true) return null;
   return {
     id: row.id, itemType: 'question', itemId: row.id, section: 'theory',
     snapshot: { sourceItemId: row.id, questionType: row.question_type, stem: row.stem, options: row.options, explanation: row.explanation, knowledgePoint: row.knowledge_point, difficulty: row.difficulty, sourceVersion: row.published_version },

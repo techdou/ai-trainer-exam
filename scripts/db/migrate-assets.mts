@@ -17,8 +17,9 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import pg from 'pg';
-import { getDbUrl, loadEnv, S3Storage } from 'coze-coding-dev-sdk';
+import { getDbUrl, loadEnv } from 'coze-coding-dev-sdk';
 import { createHash, randomUUID } from 'node:crypto';
+import { getStorage } from '../../src/server/object-storage';
 import { loadEnvLocal } from './_env.mjs';
 
 loadEnv();
@@ -27,14 +28,8 @@ loadEnvLocal();
 const db = new pg.Client({ connectionString: await getDbUrl() });
 await db.connect();
 
-// ── S3Storage via SDK ──
-const storage = new S3Storage({
-  endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
-  accessKey: '',
-  secretKey: '',
-  bucketName: process.env.COZE_BUCKET_NAME,
-  region: 'cn-beijing',
-});
+// ── S3Storage 与服务端同一 env 驱动构造(自部署 MinIO 凭证走 AWS_* 环境变量),不再硬编码空凭证 ──
+const storage = getStorage();
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'];
 const CONTENT_TYPES: Record<string, string> = {

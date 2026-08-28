@@ -8,6 +8,8 @@ const scriptSrc = isDev
   ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
   : "script-src 'self' 'unsafe-inline'";
 
+// connect/img/media 的 https: 通配是有意权衡: 素材 URL 存在数据库里(MinIO/对象存储域名可变),
+// 上线前域名固定后应收敛为 env 驱动白名单,当前先保可用性(XSS 后外联通道不受限是已知代价)。
 const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'X-Frame-Options', value: 'SAMEORIGIN' },

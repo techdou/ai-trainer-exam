@@ -42,12 +42,23 @@ export const BADGES: BadgeDef[] = [
 ];
 
 async function addPoints(userId: string, organizationId: string | null, reason: string, points: number, refType: string, refId: string): Promise<void> {
+  // ON CONFLICT 兜底并发双击: 0008 的唯一约束 (user_id, reason, ref_type, ref_id) 保证同 ref 只计一次。
   await dbExec(
     `INSERT INTO student_points_ledger (user_id, organization_id, reason, points, ref_type, ref_id, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())
+     ON CONFLICT (user_id, reason, ref_type, ref_id) DO NOTHING`,
     userId, organizationId, reason, points, refType, refId,
   );
 }
+
+/** 连对口径:同一题的重复作答只计最新一次(DISTINCT ON 折叠),防止同题连答刷 streak。 */
+const STREAK_SQL = `
+  SELECT passed FROM (
+    SELECT DISTINCT ON (item_id) item_id, passed, created_at
+      FROM practice_attempts
+     WHERE user_id=$1 AND item_type='theory_question' AND passed IS NOT NULL
+     ORDER BY item_id, created_at DESC
+  ) t ORDER BY created_at DESC LIMIT 60`;
 
 async function hasLedger(userId: string, reasons: string[], refId: string): Promise<boolean> {
   const rows = await dbQuery<{ one: number }>(
@@ -61,23 +72,16 @@ async function hasLedger(userId: string, reasons: string[], refId: string): Prom
 /** 理论题答对后调用: 基础分(每题一次) + 连对奖励 + 勋章评估。 */
 export async function awardPracticeCorrect(userId: string, organizationId: string | null, questionId: string): Promise<void> {
   try {
-    if (!(await hasLedger(userId, ['practice_correct'], questionId))) {
-      await addPoints(userId, organizationId, 'practice_correct', POINT_RULES.practice_correct, 'theory_question', questionId);
-    }
-    // 连对判定: 取最近 60 条理论练习记录,数头部连续答对数。
-    const recent = await dbQuery<{ passed: boolean }>(
-      `SELECT passed FROM practice_attempts
-        WHERE user_id=$1 AND item_type='theory_question' AND passed IS NOT NULL
-        ORDER BY created_at DESC LIMIT 60`,
-      userId,
-    );
+    await addPoints(userId, organizationId, 'practice_correct', POINT_RULES.practice_correct, 'theory_question', questionId);
+    // 连对判定: 最近 60 条有效作答(同题折叠),数头部连续答对数。
+    const recent = await dbQuery<{ passed: boolean }>(STREAK_SQL, userId);
     let streak = 0;
     for (const row of recent) {
       if (row.passed) streak++;
       else break;
     }
     if (streak > 0 && streak % 5 === 0) {
-      // bonus 挂当前题 ref: streak 严格递增,每个 5 倍数只经过一次,天然不重复。
+      // bonus 挂当前题 ref: 每题至多一条(唯一约束),连对断档后重新计数属于设计语义。
       await addPoints(userId, organizationId, 'streak_bonus', POINT_RULES.streak_bonus, 'theory_question', questionId);
     }
     if (streak >= 10) await grantBadge(userId, 'streak_10');
@@ -90,9 +94,7 @@ export async function awardPracticeCorrect(userId: string, organizationId: strin
 /** 实操任务通过后调用: 首次通过得分(每任务一次) + 勋章评估。 */
 export async function awardTaskPass(userId: string, organizationId: string | null, taskId: string): Promise<void> {
   try {
-    if (!(await hasLedger(userId, ['task_first_pass'], taskId))) {
-      await addPoints(userId, organizationId, 'task_first_pass', POINT_RULES.task_first_pass, 'task_template', taskId);
-    }
+    await addPoints(userId, organizationId, 'task_first_pass', POINT_RULES.task_first_pass, 'task_template', taskId);
     await evaluateBadges(userId);
   } catch (error) {
     console.error('[gamification] awardTaskPass failed:', error);
@@ -167,13 +169,8 @@ export async function getGamificationSummary(userId: string, organizationId: str
        (SELECT COUNT(DISTINCT item_id) FROM practice_attempts WHERE user_id=$1 AND item_type='task_template' AND passed) AS task_pass_total`,
     userId,
   );
-  // 当前连对数与授予逻辑同口径: 最近记录从头数连续答对。
-  const recent = await dbQuery<{ passed: boolean }>(
-    `SELECT passed FROM practice_attempts
-      WHERE user_id=$1 AND item_type='theory_question' AND passed IS NOT NULL
-      ORDER BY created_at DESC LIMIT 60`,
-    userId,
-  );
+  // 当前连对数与授予逻辑同口径: 最近有效作答(同题折叠)从头数连续答对。
+  const recent = await dbQuery<{ passed: boolean }>(STREAK_SQL, userId);
   let streak = 0;
   for (const row of recent) {
     if (row.passed) streak++;

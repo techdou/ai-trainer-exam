@@ -218,12 +218,10 @@ const templates:Template[]=[
    numericTolerance:0.5,
   }},
 ];
-const practiceIds:Record<string,string>={},examIds:Record<string,string>={};
 try{
  await db.query('BEGIN');
  for(const [index,t] of templates.entries()){
   const pId=`10000000-0000-4000-8000-${String(index+1).padStart(12,'0')}`; const eId=`20000000-0000-4000-8000-${String(index+1).padStart(12,'0')}`;
-  practiceIds[t.key]=pId;examIds[t.key]=eId;
   await db.query(`INSERT INTO practice_task_templates(id,organization_id,task_type,title,instructions,difficulty,config,answer_key,grading_config,practice_only,review_status,published_version,created_at,updated_at)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,true,'published',1,NOW(),NOW()) ON CONFLICT(id) DO UPDATE SET title=EXCLUDED.title,instructions=EXCLUDED.instructions,config=EXCLUDED.config,answer_key=EXCLUDED.answer_key,grading_config=EXCLUDED.grading_config,review_status='published',updated_at=NOW()`,[pId,org.id,t.type,t.title,t.instructions,t.difficulty??1,t.config,t.answer,t.grading??{}]);
   await db.query(`INSERT INTO exam_task_templates(id,organization_id,task_type,title,instructions,difficulty,config,answer_key,grading_config,practice_only,eligible_for_formal_exam,review_status,published_version,created_at,updated_at)
