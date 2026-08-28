@@ -2,6 +2,7 @@ import { requireRole } from '@/server/auth';
 import { dbNow, dbOne, dbQuery } from '@/server/db';
 import { handler, ok, fail } from '@/lib/api';
 import { assertAttemptOpen, getScheduleForStudent } from '@/server/exam-security';
+import { resolveImageUrl } from '@/server/object-storage';
 
 export const GET = handler(async (request: Request) => {
   const user = await requireRole(request, ['student']);
@@ -39,6 +40,11 @@ export const GET = handler(async (request: Request) => {
       const content = { ...(item.item_snapshot as Record<string, unknown>) };
       delete content.explanation;
       delete content.knowledgePoint;
+      // 与练习端 task 接口同构: config.imageUrl 里的 asset: 引用要解析成代理 URL,否则考试端碎图。
+      if (item.item_type === 'task' && content.config && typeof content.config === 'object') {
+        const cfg = content.config as Record<string, unknown>;
+        if (typeof cfg.imageUrl === 'string') cfg.imageUrl = resolveImageUrl(cfg.imageUrl);
+      }
       return {
         id: item.id,
         sourceItemId: item.item_snapshot?.sourceItemId ?? null,

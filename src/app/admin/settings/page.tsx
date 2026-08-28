@@ -173,9 +173,9 @@ export default function SettingsPage() {
                   try {
                     const res = await apiFetch('/api/admin/seed-theory', { method: 'POST' });
                     if (res.ok && res.data) {
-                      const d = res.data as { deleted?: number; inserted?: number };
+                      const d = res.data as { deletedPractice?: number; deletedExam?: number; practiceInserted?: number; examInserted?: number };
                       toast.success('导入成功', {
-                        description: `清除旧题 ${d.deleted ?? 0} 条，导入新题 ${d.inserted ?? 0} 条`,
+                        description: `清除旧题 ${(d.deletedPractice ?? 0) + (d.deletedExam ?? 0)} 条，导入练习库 ${d.practiceInserted ?? 0} 条 + 考试库 ${d.examInserted ?? 0} 条`,
                       });
                     } else {
                       toast.error('导入失败', { description: String(res.error) });
@@ -220,9 +220,9 @@ export default function SettingsPage() {
                   try {
                     const res = await apiFetch('/api/admin/seed-excel-comprehensive', { method: 'POST' });
                     if (res.ok && res.data) {
-                      const d = res.data as { inserted: number; skipped: number };
+                      const d = res.data as { practiceInserted?: number; examInserted?: number; skipped?: number };
                       toast.success('导入成功', {
-                        description: `新增 ${d.inserted} 条，跳过已存在 ${d.skipped} 条`,
+                        description: `新增 ${(d.practiceInserted ?? 0) + (d.examInserted ?? 0)} 条（练习库 ${d.practiceInserted ?? 0} + 考试库 ${d.examInserted ?? 0}），跳过已存在 ${d.skipped ?? 0} 条`,
                       });
                     } else {
                       toast.error('导入失败', { description: String(res.error) });

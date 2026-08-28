@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { requireRole, requireSameOrg } from '@/server/auth';
 import { dbQuery, dbOne } from '@/server/db';
 import { ok, fail, handler, parseBody } from '@/lib/api';
-import { loadSourceItem, createPaper, type SourceItem } from '@/server/paper-compose';
+import { loadSourceItem, describeSourceItem, createPaper, type SourceItem } from '@/server/paper-compose';
 
 const itemSchema = z.object({
   itemType: z.enum(['question', 'task']),
@@ -55,7 +55,11 @@ export const POST = handler(async (request: Request) => {
   const sources: SourceItem[] = [];
   for (const item of requested) {
     const source = await loadSourceItem(item, organizationId);
-    if (!source) return fail(400, `题目或实操任务不可用于正式考试：${item.itemId}`);
+    if (!source) {
+      // 报错带题干/标题而不是裸 UUID——组卷列表里看不到 UUID,无法定位是哪一条。
+      const label = await describeSourceItem(item, organizationId);
+      return fail(400, `题目或实操任务不可用于正式考试（未发布/不允许用于考试/答案配置缺陷）：${label ?? item.itemId}`);
+    }
     sources.push(source);
   }
   const result = await createPaper({

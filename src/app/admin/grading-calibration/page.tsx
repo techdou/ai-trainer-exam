@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { apiFetch } from '@/lib/session-client';
+import { apiFetch, getToken } from '@/lib/session-client';
 import { AnnotationCanvas, type AnnotationData, type AnnotationTool } from '@/components/annotation-canvas';
 import { SlidersHorizontal, Save, Eye, Loader2, Image as ImageIcon, RefreshCw, Upload } from 'lucide-react';
 
@@ -204,7 +204,8 @@ export default function GradingCalibrationPage() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('category', 'calibration');
-      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('access_token') : null;
+      // token 存在 sessionStorage(全站约定),走统一 getToken();裸 localStorage 读法永远取不到 token。
+      const token = getToken();
       const res = await fetch('/api/admin/media/upload-image', {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},

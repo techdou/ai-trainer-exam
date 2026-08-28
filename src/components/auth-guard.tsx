@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { getToken, getStoredUser, clearSession, type ClientUser } from '@/lib/session-client';
+import { apiFetch, getStoredUser, clearSession, type ClientUser } from '@/lib/session-client';
 import { Loader2 } from 'lucide-react';
 
 interface AuthGuardProps {
@@ -23,22 +23,20 @@ export function AuthGuard({ children, roles, fallback }: AuthGuardProps) {
   const [denied, setDenied] = useState(false);
 
   useEffect(() => {
-    const token = getToken();
-    const stored = getStoredUser();
-    if (!token || !stored) {
+    if (!getStoredUser()) {
       router.replace('/login');
       return;
     }
-    // 服务端二次验证（防止本地伪造）
-    fetch('/api/auth/session', { headers: { Authorization: `Bearer ${token}` } })
-      .then(async (res) => {
-        if (!res.ok) {
+    // 服务端二次验证（防止本地伪造）。走 apiFetch:自带的过期前刷新 + 401 重试
+    // 能救回长停留页面过期的会话,裸 fetch 会把仍有效的 refreshToken 一并丢弃。
+    apiFetch<ClientUser>('/api/auth/session')
+      .then(r => {
+        if (!r.ok || !r.data) {
           clearSession();
           router.replace('/login');
           return;
         }
-        const json = await res.json();
-        const serverUser = json.data as ClientUser;
+        const serverUser = r.data;
         // 强制改密: 未改密用户不得进入任何业务页(改密页本身不挂 AuthGuard, 不会死循环)。
         if (serverUser.mustChangePassword) {
           router.replace('/change-password');

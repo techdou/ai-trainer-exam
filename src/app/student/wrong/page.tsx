@@ -197,7 +197,7 @@ export default function WrongItemsPage() {
               {reviewingItem.question_type === 'dialogue_sentiment' && (
                 <DialogueView dialogue={reviewingItem.options?.dialogue} target={reviewingItem.options?.target} />
               )}
-              {(reviewingItem.question_type === 'true_false' ? ['A', 'B'] : ['A', 'B', 'C', 'D']).map(key => {
+              {(reviewingItem.question_type === 'true_false' ? ['A', 'B'] : Object.keys(reviewingItem.options ?? {}).filter(k => /^[A-F]$/.test(k)).sort()).map(key => {
                 const optionText = reviewingItem.question_type === 'true_false'
                   ? (key === 'A' ? '正确' : '错误')
                   : String(reviewingItem.options?.[key] ?? '');

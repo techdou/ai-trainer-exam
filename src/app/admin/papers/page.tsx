@@ -12,8 +12,8 @@ import { FileText, Plus, Send, Archive, Sparkles } from 'lucide-react';
 import { AutoComposeDialog } from '@/components/auto-compose-dialog';
 
 interface Paper { id:string; title:string; paperKind:string; totalScore:number; passScore:number; durationMinutes:number; status:string; version:number; itemCount:number; createdAt:string }
-interface Question { id:string; question_type:string; stem:string; difficulty:number; knowledge_point:string|null }
-interface Task { id:string; taskType:string; title:string; difficulty:number; instructions?:string }
+interface Question { id:string; question_type:string; stem:string; difficulty:number; knowledge_point:string|null; eligible_for_formal_exam?:boolean }
+interface Task { id:string; taskType:string; title:string; difficulty:number; instructions?:string; eligibleForFormalExam?:boolean }
 type SourceItem = { key:string; itemType:'question'|'task'; itemId:string; title:string; section:'theory'|'cleaning'|'image_annotation'|'text_annotation'|'audio'|'statistics' };
 
 function sectionForTask(type:string): SourceItem['section'] {
@@ -43,8 +43,9 @@ export default function PapersPage() {
   useEffect(()=>{void load()},[load]);
 
   const sources=useMemo<SourceItem[]>(()=>[
-    ...questions.map(q=>({key:`question:${q.id}`,itemType:'question' as const,itemId:q.id,title:q.stem,section:'theory' as const})),
-    ...tasks.map(t=>({key:`task:${t.id}`,itemType:'task' as const,itemId:t.id,title:t.title,section:sectionForTask(t.taskType)})),
+    // 只列出可用于正式考试的条目(eligible=false 的选中后会被组卷接口拒绝,报错还难定位)。
+    ...questions.filter(q=>q.eligible_for_formal_exam!==false).map(q=>({key:`question:${q.id}`,itemType:'question' as const,itemId:q.id,title:q.stem,section:'theory' as const})),
+    ...tasks.filter(t=>t.eligibleForFormalExam!==false).map(t=>({key:`task:${t.id}`,itemType:'task' as const,itemId:t.id,title:t.title,section:sectionForTask(t.taskType)})),
   ],[questions,tasks]);
 
   const toggle=(key:string)=>setSelected(prev=>{const n=new Set(prev);n.has(key)?n.delete(key):n.add(key);return n});

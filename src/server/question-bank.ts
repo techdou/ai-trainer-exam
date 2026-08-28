@@ -519,7 +519,7 @@ export async function retireQuestion(questionId: string): Promise<void> {
 /**
  * 学员端获取练习题（仅已发布，不返回答案）
  */
-export async function listPracticeQuestionsForStudent(opts: { module?: string; limit?: number; offset?: number; organizationId?: string | null }): Promise<StudentQuestionRow[]> {
+export async function listPracticeQuestionsForStudent(opts: { limit?: number; offset?: number; organizationId?: string | null }): Promise<StudentQuestionRow[]> {
   const limit = Math.min(opts.limit ?? 20, 100);
   const offset = opts.offset ?? 0;
   return dbQuery<StudentQuestionRow>(

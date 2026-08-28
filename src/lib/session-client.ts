@@ -118,7 +118,12 @@ export async function apiFetch<T = unknown>(
   if (response.status === 401 && options.retryAuth !== false) {
     const refreshed = await refreshSession();
     if (refreshed) return apiFetch<T>(path, { ...options, retryAuth: false });
+    // 会话彻底失效:清掉残留会话并回登录页,避免用户停留在原页持续报"请先登录"。
     clearSession();
+    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      window.location.assign('/login');
+      return { ok: false, status: 401, error: '登录已过期，请重新登录' };
+    }
   }
 
   // 428: 服务端强制改密门控 —— 任何业务请求被拦截时, 统一跳改密页(改密页自身请求除外)。

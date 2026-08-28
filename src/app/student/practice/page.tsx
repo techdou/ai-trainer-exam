@@ -34,17 +34,23 @@ export default function TheoryPracticePage() {
   const [result, setResult] = useState<CheckResult | null>(null);
   const [checking, setChecking] = useState(false);
   const [stats, setStats] = useState({ correct: 0, total: 0 });
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadQuestions = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await apiFetch<PracticeQuestion[]>('/api/student/practice/questions?module=theory&limit=10');
+      const r = await apiFetch<PracticeQuestion[]>('/api/student/practice/questions?limit=10');
       if (r.ok && r.data) {
         setQuestions(r.data);
         setCurrentIdx(0);
         setSelectedAnswer('');
         setResult(null);
         setStats({ correct: 0, total: 0 });
+        setLoadError(null);
+      } else {
+        // 考试锁定期后端返回 423"练习已锁定"等业务错误,必须透出,不能误显示"暂无题目"。
+        setQuestions([]);
+        setLoadError(r.error || '加载练习题失败，请稍后重试');
       }
     } finally {
       setLoading(false);
@@ -101,6 +107,16 @@ export default function TheoryPracticePage() {
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <div className="text-lg text-muted-foreground text-center px-4">{loadError}</div>
+        <Button onClick={() => loadQuestions()}>重试</Button>
+        <Button variant="outline" onClick={() => router.push('/student/home')}>返回首页</Button>
+      </div>
+    );
+  }
+
   if (questions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
@@ -116,7 +132,8 @@ export default function TheoryPracticePage() {
   const isFillInBlank = q.question_type === 'fill_in_blank';
   const isPromptDescription = q.question_type === 'prompt_description';
   const isDialogue = q.question_type === 'dialogue_sentiment';
-  const optionKeys = isTrueFalse ? ['A', 'B'] : ['A', 'B', 'C', 'D'];
+  // 选项键按题目实际 options 渲染(题库支持 A-F),与考试页动态过滤同构;dialogue/target 等素材键被正则排除。
+  const optionKeys = isTrueFalse ? ['A', 'B'] : Object.keys(q.options ?? {}).filter(k => /^[A-F]$/.test(k)).sort();
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">

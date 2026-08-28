@@ -23,7 +23,8 @@ export interface AnnotationFeedbackDetails {
   threshold?: number;
 }
 
-const ANNOTATION_TASK_KINDS = new Set(['image_annotation', 'point_annotation', 'polyline_annotation', 'polygon_annotation']);
+// bounding_box 与 image_annotation 走同一评分器(details 含 pairs),反馈可视化同样适用。
+const ANNOTATION_TASK_KINDS = new Set(['image_annotation', 'bounding_box', 'point_annotation', 'polyline_annotation', 'polygon_annotation']);
 export function isAnnotationTaskType(taskType: string): boolean {
   return ANNOTATION_TASK_KINDS.has(taskType);
 }

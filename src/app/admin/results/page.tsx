@@ -195,7 +195,8 @@ export default function ResultsPage() {
       body: { scoreId, action: 'approve', note: note.trim() },
     }).then(r => {
       if (r.ok) {
-        toast.success('成绩已发布');
+        // approve 只把成绩置为 reviewed,真正对学员可见还需在考务安排里"释放成绩"——文案必须说清,避免漏第二步。
+        toast.success('复核通过', { description: '该成绩已确认。还需在考务安排中释放成绩，学员才能查看。' });
         loadResults();
         setSelectedScore(null);
       } else {
@@ -363,7 +364,7 @@ export default function ResultsPage() {
                       size="lg"
                     >
                       <CheckCircle2 className="w-4 h-4 mr-1" />
-                      确认并发布成绩
+                      复核通过
                     </Button>
                   )}
                   {selectedScore.score.status === 'published' && (
