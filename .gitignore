@@ -96,3 +96,11 @@ temp/
 
 # AI 素材生成工作目录(临时产物)
 .media-gen/
+
+# 内部文档与开发状态(不入公开仓库,本地保留)
+docs/
+data/
+test-screenshots/
+test-req/
+AGENTS.md
+DESIGN.md

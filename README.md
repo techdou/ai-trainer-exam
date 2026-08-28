@@ -2,7 +2,7 @@
 
 面向职业培训学校、失业人员、高校毕业生及其他零基础社会学员的 Web 培训考试系统。
 
-练习库与正式考试库使用独立数据表，考试题由练习库审核内容复制并冻结为试卷快照。系统覆盖理论题与 15 种实操任务映射，注册 17 个确定性评分器；正式成绩不依赖大语言模型（LLM）、外部网络请求或随机数。
+练习库与正式考试库使用独立数据表，考试题由练习库审核内容复制并冻结为试卷快照。系统覆盖理论题与 15 种实操任务映射，注册 18 个确定性评分器；正式成绩不依赖大语言模型（LLM）、外部网络请求或随机数。
 
 ## 目录
 
@@ -16,6 +16,7 @@
 - [仓库与密钥安全](#仓库与密钥安全)
 - [质量检查与回归验证](#质量检查与回归验证)
 - [部署](#部署)
+- [贡献](#贡献)
 - [开源协议](#开源协议)
 
 ## 核心能力
@@ -95,7 +96,7 @@
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/douknowai/ai-trainer-exam.git
+git clone https://github.com/techdou/ai-trainer-exam.git
 cd ai-trainer-exam
 
 # 2. 安装依赖
@@ -169,17 +170,14 @@ pnpm dev                     # → http://localhost:5000
 │           ├── schema.ts           # 数据库 Schema 定义
 │           └── supabase-client.ts  # Supabase 客户端（service role）
 ├── drizzle/                        # 数据库迁移文件
+├── deploy/selfhosted/              # 自部署包(Supabase 裁剪版 + MinIO + Caddy)
 ├── scripts/
 │   ├── db/                         # 迁移/种子/回归验证脚本
 │   ├── build.sh / dev.sh / start.sh # 构建/开发/启动脚本
 │   └── quality-gate.mjs            # 质量门禁
 ├── public/                         # 静态资源（AI 生图 WebP / TTS 音频 / 演示素材）
-├── docs/                           # 项目文档（架构/部署/安全/评分/手册/测试）
-├── data/raw/                       # 题库源文件（DOCX）
 ├── .github/workflows/              # CI 质量门禁
 ├── .env.example                    # 环境变量模板
-├── AGENTS.md                       # AI 开发助手规范
-├── DESIGN.md                       # 设计规范
 └── package.json
 ```
 
@@ -248,6 +246,7 @@ pnpm dev                     # → http://localhost:5000
 - **服务端时间权威**：考试计时完全以服务器时间为准（`dbNow()` / 事务内 `SELECT now()`），学员修改电脑时间无法作弊。
 - **断线续考**：每答一题 1.2 秒后自动保存，外加每 15 秒兜底保存；关页前最后一次保存带 `keepalive`；刷新/断网后重新进入考试列表会显示"继续考试"按钮，恢复到之前进度。
 - **幂等交卷**：交卷请求按 `submission_hash` 幂等，重复提交只认第一次成功；超过截止时间（含宽限期）服务端拒绝。
+- **超时缺考处理**：断线/掉电超宽限未交卷的 attempt，由成绩发布与考试恢复入口自动判为 `expired` 终态并按 0 分（缺考）生成成绩，单点掉线不会阻塞整场成绩发布。
 - **试卷快照冻结**：组卷时题目、答案、素材 checksum、评分器版本全部冻结到 `exam_paper_items`，事后修改题库不影响已发试卷。
 - **成绩发布门禁**：成绩在管理员发布前对学员三重过滤（`status='published' AND results_released=true AND release_at<=NOW()`）。
 - **训练素材优化**：实操题图片素材统一使用 WebP 格式（quality 82），相比 PNG 节省约 78% 体积，标注题首屏加载更快。
@@ -301,7 +300,7 @@ pnpm build                   # 构建 Next.js 并打包 Node.js 22 服务端
 pnpm start                   # Ubuntu 生产模式启动，默认端口 5000
 ```
 
-生产环境要求 Ubuntu、Node.js 22.13+ 与 pnpm 9+。通过 `PORT` 或 `DEPLOY_RUN_PORT` 指定监听端口，密钥由部署平台环境变量或专用密钥管理服务注入。更完整的上线、回滚与验证流程见 [`docs/DELIVERY.md`](docs/DELIVERY.md)。
+生产环境要求 Ubuntu、Node.js 22.13+ 与 pnpm 9+。通过 `PORT` 或 `DEPLOY_RUN_PORT` 指定监听端口，密钥由部署平台环境变量或专用密钥管理服务注入。自部署方案（Supabase 裁剪版 + MinIO + Caddy，Docker Compose 一键起）见 [`deploy/selfhosted/README.md`](deploy/selfhosted/README.md)。
 
 ### CI/CD
 
