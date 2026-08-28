@@ -527,7 +527,7 @@ export async function listPracticeQuestionsForStudent(opts: { module?: string; l
      FROM practice_question_items
      WHERE review_status = 'published'
        AND (organization_id = $3 OR organization_id IS NULL)
-     ORDER BY created_at ASC
+     ORDER BY created_at DESC
      LIMIT $1 OFFSET $2`,
     limit,
     offset,
