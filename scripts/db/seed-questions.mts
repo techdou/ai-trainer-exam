@@ -37,7 +37,7 @@ try {
     await client.query(`INSERT INTO practice_question_items
       (organization_id,question_type,stem,options,answer_key,explanation,knowledge_point,difficulty,source,review_status,published_version,practice_only,legal_review_required,created_at,updated_at)
       VALUES($1,$2,$3,$4,$5,NULL,NULL,1,$6,'imported_unreviewed',0,true,$7,NOW(),NOW())`,[
-      organizationId,question.questionType,question.stem,options,answer,resolve(file),
+      organizationId,question.questionType,question.stem,options,JSON.stringify(answer),resolve(file),
       /劳动法|劳动合同法|网络安全法|数据安全法|个人信息保护法|反不正当竞争法/.test(question.stem),
     ]);
     inserted++;
