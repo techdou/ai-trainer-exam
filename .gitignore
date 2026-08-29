@@ -104,3 +104,5 @@ test-screenshots/
 test-req/
 AGENTS.md
 DESIGN.md
+# 标注素材像素自检的复核图(本地调试产物)
+public/training/annot2/*_check.png
