@@ -7,7 +7,7 @@
  * - 写操作（INSERT/UPDATE/DELETE）直接路由到 `practice_question_items` 或 `exam_question_items`
  * - 通过 `findQuestionBankType(id)` 确定题目所属表
  */
-import { dbQuery, dbOne, dbExec } from './db';
+import { dbQuery, dbOne, dbExec, getPool } from './db';
 import type { Role } from '@/lib/constants';
 import { ApiError } from '@/server/auth';
 import { allowedStatusesFor, reviewTargetStatus } from '@/server/content-workflow';
@@ -191,69 +191,85 @@ export interface QuestionInsertRow {
   organization_id: string | null;
 }
 
+const OPTION_LETTERS = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i));
+const TF_TRUE_ANSWERS = new Set(['true', '正确', '对', '√', 'a']);
+
+/** 按 (source, source_version, organization) 预查重复导入，返回已存在的条数。 */
+export async function countDuplicateQuestions(
+  source: string, sourceVersion: string, organizationId: string | null, bankType: string,
+): Promise<number> {
+  const row = await dbOne<{ n: string }>(
+    `SELECT count(*)::text n FROM ${tableNameFor(bankType)} WHERE source_version=$1 AND organization_id IS NOT DISTINCT FROM $2`,
+    sourceVersion, organizationId,
+  );
+  return Number(row?.n ?? 0);
+}
+
+/**
+ * 批量入库——事务化「全有或全无」，50 行/批多行 VALUES。
+ * 任何一行失败：整体回滚并抛 ApiError，明细附在 message。成功返回插入条数。
+ */
 export async function bulkInsertQuestions(
   rows: QuestionInsertRow[],
   bankType: string = 'practice',
-): Promise<{ inserted: number; skipped: number; errors: string[] }> {
+): Promise<{ inserted: number }> {
   const table = tableNameFor(bankType);
-  let inserted = 0;
-  let skipped = 0;
-  const errors: string[] = [];
-
-  const OPTION_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
-  for (const row of rows) {
-    try {
-      // Convert string[] options → {A: text, B: text} for JSONB storage
-      let optionsJson: string | null = null;
-      if (row.options && Array.isArray(row.options) && row.options.length > 0) {
-        const optsMap: Record<string, string> = {};
-        for (let i = 0; i < row.options.length && i < OPTION_LETTERS.length; i++) {
-          const text = (row.options[i] || '').trim();
-          if (text) optsMap[OPTION_LETTERS[i]] = text;
+  const pool = await getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    let inserted = 0;
+    for (let batchStart = 0; batchStart < rows.length; batchStart += 50) {
+      const batch = rows.slice(batchStart, batchStart + 50);
+      const values: unknown[] = [];
+      const tuples = batch.map((row, i) => {
+        // options: string[] → {A..Z: text} 映射后 JSON 化
+        let optionsJson: string | null = null;
+        if (row.options && Array.isArray(row.options) && row.options.length > 0) {
+          const optsMap: Record<string, string> = {};
+          for (let j = 0; j < row.options.length && j < OPTION_LETTERS.length; j++) {
+            const text = (row.options[j] || '').trim();
+            if (text) optsMap[OPTION_LETTERS[j]] = text;
+          }
+          optionsJson = JSON.stringify(optsMap);
+        } else if (row.options && typeof row.options === 'object' && !Array.isArray(row.options)) {
+          optionsJson = JSON.stringify(row.options);
         }
-        optionsJson = JSON.stringify(optsMap);
-      } else if (row.options && typeof row.options === 'object' && !Array.isArray(row.options)) {
-        optionsJson = JSON.stringify(row.options);
-      }
-
-      // answer_key: single_choice → JSON string like "C", true_false → JSON boolean
-      let answerKeyJson: string;
-      if (row.question_type === 'true_false') {
-        const val = row.answer_key?.toString().trim().toLowerCase();
-        answerKeyJson = JSON.stringify(val === 'true' || val === '正确' || val === '对' || val === 'a');
-      } else {
-        answerKeyJson = JSON.stringify(row.answer_key);
-      }
-
-      await dbExec(
+        if (optionsJson === null) optionsJson = '[]'; // 判断题无选项,表要求非空
+        // answer_key: 单选 → JSON 字符串; 判断 → JSON 布尔(√/×/对/错等归一)
+        let answerKeyJson: string;
+        if (row.question_type === 'true_false') {
+          const val = row.answer_key?.toString().trim().toLowerCase() ?? '';
+          answerKeyJson = JSON.stringify(TF_TRUE_ANSWERS.has(val));
+        } else {
+          answerKeyJson = JSON.stringify(row.answer_key);
+        }
+        const b = i * 12;
+        values.push(
+          row.question_type, row.stem, optionsJson, answerKeyJson, row.explanation,
+          row.knowledge_point, row.difficulty, row.source, row.source_version,
+          row.practice_only, row.legal_review_required, row.organization_id,
+        );
+        return ` (gen_random_uuid(), $${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8}, $${b + 9}, 'imported_unreviewed', 0, $${b + 10}, $${b + 11}, $${b + 12})`;
+      });
+      await client.query(
         `INSERT INTO ${table}
-          (id, question_type, stem, options, answer_key, explanation,
-           knowledge_point, difficulty, source, source_version, review_status,
-           published_version, practice_only, legal_review_required,
-           organization_id)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9,
-                 'imported_unreviewed', 0, $10, $11, $12)`,
-        row.question_type,
-        row.stem,
-        optionsJson,
-        answerKeyJson,
-        row.explanation,
-        row.knowledge_point,
-        row.difficulty,
-        row.source,
-        row.source_version,
-        row.practice_only,
-        row.legal_review_required,
-        row.organization_id,
+           (id, question_type, stem, options, answer_key, explanation,
+            knowledge_point, difficulty, source, source_version, review_status,
+            published_version, practice_only, legal_review_required, organization_id)
+         VALUES ${tuples.join(',')}`,
+        values,
       );
-      inserted++;
-    } catch (err) {
-      skipped++;
-      errors.push(`题号 ${row.source}: ${(err as Error).message}`);
+      inserted += batch.length;
     }
+    await client.query('COMMIT');
+    return { inserted };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw new ApiError(500, `导入失败，已整体回滚（未写入任何题目）：${(err as Error).message}`);
+  } finally {
+    client.release();
   }
-
-  return { inserted, skipped, errors };
 }
 
 /**

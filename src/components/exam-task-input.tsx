@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -374,20 +374,98 @@ type DrawLine={points:Array<{x:number;y:number}>;label:string;attributes?:Record
 function Annotation({ config, value, onChange, disabled }: { config:Config;value:unknown;onChange:(v:unknown)=>void;disabled:boolean }) {
   const tool=config.annotationTool??'bbox'; const labels=config.targetLabels??['目标'];
   const [label,setLabel]=useState(labels[0]); const [attribute,setAttribute]=useState('');
-  const [start,setStart]=useState<{x:number;y:number}|null>(null); const [draft,setDraft]=useState<Array<{x:number;y:number}>>([]);
+  const [start,setStart]=useState<{x:number;y:number}|null>(null);
+  const [cur,setCur]=useState<{x:number;y:number}|null>(null); // bbox 拖拽实时预览点
+  const [draft,setDraft]=useState<Array<{x:number;y:number}>>([]);
+  const [history,setHistory]=useState<Array<{boxes:DrawBox[];points:DrawPoint[];lines:DrawLine[];polygons:DrawLine[]}>>([]); // 撤销栈(shapes 快照)
   const ref=useRef<HTMLDivElement>(null); const current=record(value);
   const boxes=(Array.isArray(current.boxes)?current.boxes:[]) as DrawBox[];
   const points=(Array.isArray(current.points)?current.points:[]) as DrawPoint[];
   const lines=(Array.isArray(current.lines)?current.lines:[]) as DrawLine[];
   const polygons=(Array.isArray(current.polygons)?current.polygons:[]) as DrawLine[];
-  const relative=(e:React.MouseEvent)=>{if(!ref.current)return{x:0,y:0};const r=ref.current.getBoundingClientRect();return{x:Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),y:Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))}};
-  const attrs=attribute?{state:attribute}:undefined;
-  // 属性选项由 config.attributes 按当前标签驱动; 值与题库答案使用同一文本(如“红灯”), 保证 attrsMatch 判分一致。
-  const attrOptions=config.attributes?.[label]??[];
-  const down=(e:React.MouseEvent)=>{if(disabled)return;const p=relative(e);if(tool==='point'){onChange({points:[...points,{...p,label,attributes:attrs}]});return}if(tool==='bbox'){setStart(p);return}setDraft(d=>[...d,p]);};
-  const up=(e:React.MouseEvent)=>{if(!start||tool!=='bbox'||disabled)return;const p=relative(e);const box={x:Math.min(start.x,p.x),y:Math.min(start.y,p.y),width:Math.abs(start.x-p.x),height:Math.abs(start.y-p.y),label,attributes:attrs};setStart(null);if(box.width>.005&&box.height>.005)onChange({boxes:[...boxes,box]});};
-  const finish=()=>{if(draft.length<(tool==='polygon'?3:2))return;const item={points:draft,label,attributes:attrs};onChange(tool==='polygon'?{polygons:[...polygons,item]}:{lines:[...lines,item]});setDraft([])};
   const shapes=useMemo(()=>({boxes,points,lines,polygons}),[boxes,points,lines,polygons]);
+  const relative=(e:{clientX:number;clientY:number})=>{if(!ref.current)return{x:0,y:0};const r=ref.current.getBoundingClientRect();return{x:Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),y:Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))}};
+  const attrs=attribute?{state:attribute}:undefined;
+  // 属性选项由 config.attributes 按当前标签驱动; 值与题库答案使用同一文本(如"红灯"), 保证 attrsMatch 判分一致。
+  const attrOptions=config.attributes?.[label]??[];
   const toSvg=(pts:Array<{x:number;y:number}>)=>pts.map(p=>`${p.x},${p.y}`).join(' ');
-  return <div className="space-y-3"><div className="flex flex-wrap items-center gap-2"><span className="self-center">标签：</span>{labels.map(x=><Button type="button" key={x} variant={label===x?'default':'outline'} onClick={()=>{setLabel(x);setAttribute('');}}>{x}</Button>)}{attrOptions.length>0&&<select value={attribute} onChange={e=>setAttribute(e.target.value)} className="h-9 rounded border bg-background px-3"><option value="">选择属性</option>{attrOptions.map(o=><option key={o} value={o}>{o}</option>)}</select>}</div><div ref={ref} onMouseDown={down} onMouseUp={up} className="relative min-h-80 cursor-crosshair overflow-hidden rounded-lg border bg-muted">{config.imageUrl?<img src={config.imageUrl} alt="待标注图片" className="block w-full select-none" draggable={false}/>:<div className="flex h-80 items-center justify-center">图片未配置</div>}<svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 1 1" preserveAspectRatio="none">{shapes.polygons.map((l,i)=><polygon key={`pg${i}`} points={toSvg(l.points)} fill="rgba(37,99,235,0.15)" stroke="#2563eb" strokeWidth={2} vectorEffect="non-scaling-stroke"/>)}{shapes.lines.map((l,i)=><polyline key={`pl${i}`} points={toSvg(l.points)} fill="none" stroke="#2563eb" strokeWidth={2} vectorEffect="non-scaling-stroke"/>)}{draft.length>1&&<polyline points={toSvg(draft)} fill="none" stroke="#f59e0b" strokeWidth={2} strokeDasharray="6 4" vectorEffect="non-scaling-stroke"/>}</svg>{shapes.boxes.map((b,i)=><div key={`b${i}`} className="pointer-events-none absolute border-2 border-primary" style={{left:`${b.x*100}%`,top:`${b.y*100}%`,width:`${b.width*100}%`,height:`${b.height*100}%`}}><span className="bg-primary text-sm text-primary-foreground">{b.label}</span></div>)}{shapes.points.map((p,i)=><span key={`p${i}`} className="pointer-events-none absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500" style={{left:`${p.x*100}%`,top:`${p.y*100}%`}}/>)}{draft.map((p,i)=><span key={`d${i}`} className="pointer-events-none absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-600" style={{left:`${p.x*100}%`,top:`${p.y*100}%`}}/>)}</div><div className="flex gap-2">{(tool==='polyline'||tool==='polygon')&&<Button type="button" onClick={finish} disabled={disabled||draft.length<(tool==='polygon'?3:2)}>完成当前{tool==='polygon'?'轮廓':'线'}</Button>}<Button type="button" variant="outline" disabled={disabled} onClick={()=>{setDraft([]);onChange(tool==='bbox'?{boxes:[]} : tool==='point'?{points:[]} : tool==='polygon'?{polygons:[]}:{lines:[]})}}>清空标注</Button></div></div>;
+
+  const pushHistory=()=>setHistory(h=>[...h,{boxes:[...boxes],points:[...points],lines:[...lines],polygons:[...polygons]}]);
+  const undo=()=>{
+    if(disabled)return;
+    if(draft.length>0){setDraft(d=>d.slice(0,-1));return}          // 线/轮廓:先撤上一个点
+    if(start){setStart(null);setCur(null);return}                  // 撤进行中的框
+    if(history.length===0)return;
+    const prev=history[history.length-1];
+    setHistory(h=>h.slice(0,-1));
+    onChange(prev);
+  };
+
+  // Ctrl+Z / Cmd+Z 撤销(组件存活期间监听)
+  useEffect(()=>{
+    const onKey=(e:KeyboardEvent)=>{
+      if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();undo();}
+    };
+    window.addEventListener('keydown',onKey);
+    return()=>window.removeEventListener('keydown',onKey);
+  });
+
+  const down=(e:React.PointerEvent)=>{
+    if(disabled)return;
+    e.preventDefault();
+    const p=relative(e);
+    if(tool==='point'){pushHistory();onChange({points:[...points,{...p,label,attributes:attrs}]});return}
+    if(tool==='bbox'){setStart(p);setCur(p);try{e.currentTarget.setPointerCapture(e.pointerId)}catch{}return}
+    setDraft(d=>[...d,p]);
+  };
+  const move=(e:React.PointerEvent)=>{if(start)setCur(relative(e))};
+  const up=(e:React.PointerEvent)=>{
+    if(!start||tool!=='bbox'||disabled)return;
+    const p=relative(e);
+    const box={x:Math.min(start.x,p.x),y:Math.min(start.y,p.y),width:Math.abs(start.x-p.x),height:Math.abs(start.y-p.y),label,attributes:attrs};
+    setStart(null);setCur(null);
+    if(box.width>.005&&box.height>.005){pushHistory();onChange({boxes:[...boxes,box]})}
+  };
+  const finish=(popLast=false)=>{
+    const d=popLast&&draft.length>=1?draft.slice(0,-1):draft;      // 双击收尾时去掉与双击重复的末点
+    if(d.length<(tool==='polygon'?3:2))return;
+    pushHistory();
+    onChange(tool==='polygon'?{polygons:[...polygons,{points:d,label,attributes:attrs}]}:{lines:[...lines,{points:d,label,attributes:attrs}]});
+    setDraft([]);
+  };
+  const hint=start
+    ? '拖拽画出选框，松手完成'
+    : draft.length>0
+      ? `已标记 ${draft.length} 个点 · 单击继续 · 双击或「完成」结束 · Ctrl+Z 撤销`
+      : (tool==='point'?'在图上单击打点 · Ctrl+Z 撤销':tool==='bbox'?'按住拖拽画出选框 · Ctrl+Z 撤销':'单击逐点标记，双击或「完成」结束 · Ctrl+Z 撤销');
+  const preview=start&&cur?{x:Math.min(start.x,cur.x),y:Math.min(start.y,cur.y),width:Math.abs(start.x-cur.x),height:Math.abs(start.y-cur.y)}:null;
+
+  return <div className="space-y-3">
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="self-center">标签：</span>
+      {labels.map(x=><Button type="button" key={x} variant={label===x?'default':'outline'} disabled={disabled} onClick={()=>{setLabel(x);setAttribute('')}}>{x}</Button>)}
+      {attrOptions.length>0&&<select value={attribute} onChange={e=>setAttribute(e.target.value)} disabled={disabled} className="h-9 rounded border bg-background px-3"><option value="">选择属性</option>{attrOptions.map(o=><option key={o} value={o}>{o}</option>)}</select>}
+    </div>
+    {(draft.length>0||start)&&<p className="text-xs text-muted-foreground" role="status">{hint}</p>}
+    <div ref={ref} onPointerDown={down} onPointerMove={move} onPointerUp={up}
+      onDoubleClick={()=>{if(tool==='polyline'||tool==='polygon')finish(true)}}
+      style={{touchAction:'none'}}
+      className="relative min-h-80 cursor-crosshair select-none overflow-hidden rounded-lg border bg-muted">
+      {config.imageUrl?<img src={config.imageUrl} alt="待标注图片" className="block w-full select-none" draggable={false}/>:<div className="flex h-80 items-center justify-center">图片未配置</div>}
+      <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 1 1" preserveAspectRatio="none">
+        {shapes.polygons.map((l,i)=><polygon key={`pg${i}`} points={toSvg(l.points)} fill="rgba(37,99,235,0.15)" stroke="#2563eb" strokeWidth={2} vectorEffect="non-scaling-stroke"/>)}
+        {shapes.lines.map((l,i)=><polyline key={`pl${i}`} points={toSvg(l.points)} fill="none" stroke="#2563eb" strokeWidth={2} vectorEffect="non-scaling-stroke"/>)}
+        {draft.length>1&&<polyline points={toSvg(draft)} fill="none" stroke="#f59e0b" strokeWidth={2} strokeDasharray="6 4" vectorEffect="non-scaling-stroke"/>}
+      </svg>
+      {shapes.boxes.map((b,i)=><div key={`b${i}`} className="pointer-events-none absolute border-2 border-primary" style={{left:`${b.x*100}%`,top:`${b.y*100}%`,width:`${b.width*100}%`,height:`${b.height*100}%`}}><span className="bg-primary text-sm text-primary-foreground">{b.label}</span></div>)}
+      {preview&&<div className="pointer-events-none absolute border-2 border-dashed border-amber-500" style={{left:`${preview.x*100}%`,top:`${preview.y*100}%`,width:`${preview.width*100}%`,height:`${preview.height*100}%`}}/>}
+      {shapes.points.map((p,i)=><span key={`p${i}`} className="pointer-events-none absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500" style={{left:`${p.x*100}%`,top:`${p.y*100}%`}}/>)}
+      {draft.map((p,i)=><span key={`d${i}`} className="pointer-events-none absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-600" style={{left:`${p.x*100}%`,top:`${p.y*100}%`}}/>)}
+    </div>
+    <div className="flex flex-wrap gap-2">
+      {(tool==='polyline'||tool==='polygon')&&<Button type="button" onClick={()=>finish()} disabled={disabled||draft.length<(tool==='polygon'?3:2)}>完成当前{tool==='polygon'?'轮廓':'线'}</Button>}
+      <Button type="button" variant="outline" disabled={disabled||(!history.length&&draft.length===0&&!start)} onClick={undo}>撤销 Ctrl+Z</Button>
+      <Button type="button" variant="outline" disabled={disabled} onClick={()=>{setDraft([]);setStart(null);setCur(null);pushHistory();onChange(tool==='bbox'?{boxes:[]}:tool==='point'?{points:[]}:tool==='polygon'?{polygons:[]}:{lines:[]})}}>清空标注</Button>
+    </div>
+  </div>;
 }

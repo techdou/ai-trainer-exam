@@ -59,6 +59,7 @@ export function AnnotationCanvas({
   const [activeLabel, setActiveLabel] = useState(labels[0] ?? 'target');
   const [activeAttribute, setActiveAttribute] = useState('');
   const [dragStart, setDragStart] = useState<NormalizedPoint | null>(null);
+  const [dragCur, setDragCur] = useState<NormalizedPoint | null>(null); // bbox 拖拽实时预览点
   const [draftPoints, setDraftPoints] = useState<NormalizedPoint[]>([]);
   const [imgError, setImgError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -98,6 +99,11 @@ export function AnnotationCanvas({
     setDraftPoints((prev) => [...prev, p]);
   };
 
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!dragStart) return;
+    setDragCur(getRelative(e));
+  };
+
   const handleMouseUp = (e: React.MouseEvent) => {
     if (readOnly || !dragStart || tool !== 'bbox') return;
     const p = getRelative(e);
@@ -110,6 +116,7 @@ export function AnnotationCanvas({
       attributes: attrs,
     };
     setDragStart(null);
+    setDragCur(null);
     if (box.width > 0.005 && box.height > 0.005) {
       onChange({ ...value, boxes: [...boxes, box] });
     }
@@ -178,6 +185,7 @@ export function AnnotationCanvas({
       <div
         ref={containerRef}
         onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         className={`relative overflow-hidden rounded-lg border bg-muted ${readOnly ? 'cursor-default' : 'cursor-crosshair'}`}
         style={{ minHeight: `${minHeight}px` }}
@@ -235,6 +243,19 @@ export function AnnotationCanvas({
             />
           )}
         </svg>
+
+        {/* bbox 拖拽实时预览 */}
+        {dragStart && dragCur && (
+          <div
+            className="pointer-events-none absolute border-2 border-dashed border-amber-500"
+            style={{
+              left: `${Math.min(dragStart.x, dragCur.x) * 100}%`,
+              top: `${Math.min(dragStart.y, dragCur.y) * 100}%`,
+              width: `${Math.abs(dragStart.x - dragCur.x) * 100}%`,
+              height: `${Math.abs(dragStart.y - dragCur.y) * 100}%`,
+            }}
+          />
+        )}
 
         {/* Bounding boxes overlay */}
         {shapes.boxes.map((b, i) => (

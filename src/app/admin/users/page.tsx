@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import { apiFetch, getStoredUser } from '@/lib/session-client';
 import { ROLE_LABELS, ROLES, type Role } from '@/lib/constants';
 import { displayAccount } from '@/lib/utils';
-import { UserPlus, KeyRound, UserX, UserCheck, ShieldCheck, Copy } from 'lucide-react';
+import { UserPlus, KeyRound, UserX, UserCheck, ShieldCheck, Copy, ChevronDown, ChevronRight, UsersRound, Search } from 'lucide-react';
 
 interface UserItem {
   id: string;
@@ -36,9 +36,18 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [roleFilter, setRoleFilter] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({}); // 机构组折叠态(默认展开)
+
+  // 搜索防抖 300ms
+  useEffect(() => {
+    const t = setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const limit = 20;
+  const limit = 20; // 分页 + 页内按机构归纳,不受单次拉取上限约束
 
   const me = getStoredUser();
   const isSuper = me?.roles.includes('super_admin') ?? false;
@@ -65,6 +74,7 @@ export default function AdminUsersPage() {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (roleFilter) params.set('role', roleFilter);
+      if (search) params.set('search', search);
       const res = await apiFetch<{ items: UserItem[]; total: number }>(`/api/admin/users?${params}`);
       if (res.ok && res.data) {
         setUsers(res.data.items);
@@ -77,7 +87,7 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, roleFilter]);
+  }, [page, roleFilter, search]);
 
   useEffect(() => {
     loadUsers();
@@ -175,6 +185,17 @@ export default function AdminUsersPage() {
     }
   };
 
+  // 按所属机构归纳展示;无机构归入「未分配机构」。
+  const grouped = useMemo(() => {
+    const map = new Map<string, UserItem[]>();
+    for (const u of users) {
+      const key = u.organizationName || '未分配机构';
+      const bucket = map.get(key);
+      if (bucket) bucket.push(u); else map.set(key, [u]);
+    }
+    return [...map.entries()];
+  }, [users]);
+
   const copyPassword = async () => {
     if (!passwordInfo) return;
     try {
@@ -189,7 +210,16 @@ export default function AdminUsersPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">用户管理</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-1 justify-end gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="搜索姓名 / 账号 / 机构"
+              className="w-64 pl-8"
+            />
+          </div>
           <select
             value={roleFilter}
             onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}
@@ -223,7 +253,30 @@ export default function AdminUsersPage() {
             ) : users.length === 0 ? (
               <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">暂无用户</td></tr>
             ) : (
-              users.map((u) => (
+              grouped.map(([orgName, list]) => {
+                const isCollapsed = collapsed[orgName] ?? false;
+                return (
+                <Fragment key={orgName}>
+                <tr
+                  className="cursor-pointer border-b bg-muted/40 hover:bg-muted/60"
+                  onClick={() => setCollapsed(s => ({ ...s, [orgName]: !isCollapsed }))}
+                >
+                  <td colSpan={7} className="p-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                        <UsersRound className="h-5 w-5 text-primary" />
+                      </div>
+                      <div className="text-base font-medium">{orgName}</div>
+                      <div className="ml-auto flex items-center gap-3">
+                        <span className="rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">本页 {list.length} 人</span>
+                        {isCollapsed
+                          ? <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                          : <ChevronDown className="h-5 w-5 text-muted-foreground" />}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                {!isCollapsed && list.map((u) => (
                 <tr key={u.id} className="border-b last:border-0 hover:bg-muted/30">
                   <td className="p-3">{u.displayName || '-'}</td>
                   <td className="p-3 text-muted-foreground">{displayAccount(u.email)}</td>
@@ -261,7 +314,10 @@ export default function AdminUsersPage() {
                     </div>
                   </td>
                 </tr>
-              ))
+                ))}
+                </Fragment>
+                );
+              })
             )}
           </tbody>
         </table>

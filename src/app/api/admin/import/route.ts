@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { requireRole } from '@/server/auth';
 import { parseDocx } from '@/server/docx-importer';
-import { bulkInsertQuestions, type QuestionInsertRow } from '@/server/question-bank';
+import { bulkInsertQuestions, countDuplicateQuestions, type QuestionInsertRow } from '@/server/question-bank';
 import { insertAudit } from '@/server/audit';
 import { handler, ok, fail } from '@/lib/api';
+import { createHash } from 'node:crypto';
 
 type BankType = 'practice' | 'exam';
 const MAX_DOCX_BYTES = 10 * 1024 * 1024;
@@ -35,6 +36,8 @@ export const POST = handler(async (request: Request) => {
   const result = await parseDocx(buffer);
   if (!result.questions.length) return fail(400, '文档中没有识别到可导入题目');
   const organizationId = user.organizationId ?? null;
+  // 内容指纹(用于去重与 source_version)
+  const fileHash = createHash('sha256').update(buffer).digest('hex');
   const questionsToInsert: QuestionInsertRow[] = result.questions.map(q => ({
     question_type: q.questionType,
     stem: q.stem,
@@ -44,11 +47,15 @@ export const POST = handler(async (request: Request) => {
     knowledge_point: null,
     difficulty: 1,
     source: file.name,
-    source_version: new Date().toISOString(),
+    source_version: fileHash,
     practice_only: bankType === 'practice',
     legal_review_required: /劳动法|劳动合同法|网络安全法|数据安全法|个人信息保护法|反不正当竞争法/.test(q.stem),
     organization_id: organizationId,
   }));
+
+  // 内容指纹去重：同一文件(相同内容)不允许重复导入
+  const dupCount = await countDuplicateQuestions(file.name, fileHash, organizationId, bankType);
+  if (dupCount > 0) return fail(409, `该文件已导入过 ${dupCount} 道题（内容相同），请勿重复导入；如需重导请先在题库清理对应题目`);
 
   const insertResult = await bulkInsertQuestions(questionsToInsert, bankType);
   await insertAudit({
@@ -56,16 +63,16 @@ export const POST = handler(async (request: Request) => {
     action: 'question.import',
     entityType: `${bankType}_question_items`,
     entityId: bankType,
-    details: JSON.stringify({ organizationId, filename: file.name, size: file.size, inserted: insertResult.inserted, skipped: insertResult.skipped, parsed: result.questions.length }),
+    details: JSON.stringify({ organizationId, filename: file.name, size: file.size, inserted: insertResult.inserted, skipped: result.skipped.length, parsed: result.questions.length }),
   });
 
   return ok({
     inserted: insertResult.inserted,
-    skipped: insertResult.skipped,
+    skipped: result.skipped.length,
     // 前端统计卡片需要解析总数; 历史上不返回导致卡片恒空白。
     totalParsed: result.questions.length,
     parserIssues: result.issues,
-    errors: insertResult.errors.slice(0, 100),
+    errors: result.skipped.map(s => s.reason).slice(0, 100),
     stats: result.stats,
     reviewStatus: 'imported_unreviewed',
   });

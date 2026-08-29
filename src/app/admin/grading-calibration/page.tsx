@@ -38,11 +38,18 @@ const TOOL_FROM_TYPE: Record<string, AnnotationTool> = {
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  image_annotation: 'box annotation (IoU)',
-  bounding_box: 'box annotation (IoU)',
-  point_annotation: 'point annotation',
-  polyline_annotation: 'polyline annotation (Chamfer)',
-  polygon_annotation: 'contour annotation (IoU)',
+  image_annotation: '框选标注（IoU）',
+  bounding_box: '框选标注（IoU）',
+  point_annotation: '打点标注',
+  polyline_annotation: '折线标注（Chamfer）',
+  polygon_annotation: '轮廓标注（IoU）',
+};
+
+const TOOL_LABELS: Record<string, string> = {
+  bbox: '框选',
+  point: '打点',
+  polyline: '折线',
+  polygon: '轮廓',
 };
 
 function extractImageUrl(config: Record<string, unknown>): string | undefined {
@@ -109,11 +116,11 @@ export default function GradingCalibrationPage() {
       if (res.ok && res.data) {
         setTasks(res.data);
       } else {
-        toast.error(res.error ?? 'failed to load tasks');
+        toast.error(res.error ?? '加载任务列表失败');
         setTasks([]);
       }
     } catch {
-      toast.error('failed to load tasks');
+      toast.error('加载任务列表失败');
       setTasks([]);
     } finally {
       setLoading(false);
@@ -156,15 +163,15 @@ export default function GradingCalibrationPage() {
         body: { bankType, id: currentTask.id, answerKey },
       });
       if (res.ok) {
-        toast.success('Answer Key saved');
+        toast.success('标准答案已保存');
         // Update local state
         const updated = tasks.map(t => t.id === currentTask.id ? { ...t, answerKey } : t);
         setTasks(updated);
       } else {
-        toast.error(res.error ?? 'save failed');
+        toast.error(res.error ?? '保存失败');
       }
     } catch {
-      toast.error('save failed');
+      toast.error('保存失败');
     } finally {
       setSaving(false);
     }
@@ -179,7 +186,7 @@ export default function GradingCalibrationPage() {
         body: { bankType, id: currentTask.id, config: { imageUrl: imageUrlInput.trim() } },
       });
       if (res.ok) {
-        toast.success('Image updated — please re-calibrate annotations for the new image');
+        toast.success('图片已更新——请在新图上重新校准标注');
         // Update local state
         const newConfig = { ...currentTask.config, imageUrl: imageUrlInput.trim() };
         const updated = tasks.map(t => t.id === currentTask.id ? { ...t, config: newConfig } : t);
@@ -189,10 +196,10 @@ export default function GradingCalibrationPage() {
         setAnnotation({});
         setShowImagePanel(false);
       } else {
-        toast.error(res.error ?? 'failed to update image');
+        toast.error(res.error ?? '更新图片失败');
       }
     } catch {
-      toast.error('failed to update image');
+      toast.error('更新图片失败');
     } finally {
       setSavingImage(false);
     }
@@ -214,13 +221,13 @@ export default function GradingCalibrationPage() {
       const json = await res.json();
       if (json.success && json.data?.imageUrl) {
         setImageUrlInput(json.data.imageUrl);
-        toast.success(`Uploaded: ${json.data.fileName ?? file.name}`);
+        toast.success(`已上传：${json.data.fileName ?? file.name}`);
         await fetchImages();
       } else {
-        toast.error(json.error ?? 'upload failed');
+        toast.error(json.error ?? '上传失败');
       }
     } catch {
-      toast.error('upload failed');
+      toast.error('上传失败');
     } finally {
       setUploading(false);
     }
@@ -238,8 +245,8 @@ export default function GradingCalibrationPage() {
       <div className="flex items-center gap-3">
         <SlidersHorizontal className="h-6 w-6 text-primary" />
         <div>
-          <h1 className="text-2xl font-bold">Grading Calibration</h1>
-          <p className="text-sm text-muted-foreground">Calibrate answer keys for annotation tasks</p>
+          <h1 className="text-2xl font-bold">评分校准</h1>
+          <p className="text-sm text-muted-foreground">为标注类实操任务校准标准答案</p>
         </div>
       </div>
 
@@ -248,7 +255,7 @@ export default function GradingCalibrationPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <ImageIcon className="h-5 w-5" />
-            Select Task
+            选择任务
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -256,18 +263,18 @@ export default function GradingCalibrationPage() {
             <Select value={bankType} onValueChange={(v) => setBankType(v as 'practice' | 'exam')}>
               <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="practice">Practice</SelectItem>
-                <SelectItem value="exam">Exam</SelectItem>
+                <SelectItem value="practice">练习</SelectItem>
+                <SelectItem value="exam">考试</SelectItem>
               </SelectContent>
             </Select>
             <Select value={selectedId} onValueChange={setSelectedId}>
               <SelectTrigger className="min-w-[280px] flex-1">
-                <SelectValue placeholder="-- select task --" />
+                <SelectValue placeholder="—— 选择任务 ——" />
               </SelectTrigger>
               <SelectContent>
                 {tasks.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
-                    {t.title} ({t.difficulty}*)
+                    {t.title}（难度 {t.difficulty}）
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -285,15 +292,15 @@ export default function GradingCalibrationPage() {
               <span>{currentTask.title}</span>
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">{TYPE_LABELS[currentTask.taskType] ?? currentTask.taskType}</Badge>
-                <Badge variant="outline">{tool}</Badge>
-                <Badge variant="outline">D{currentTask.difficulty}</Badge>
+                <Badge variant="outline">{TOOL_LABELS[tool] ?? tool}</Badge>
+                <Badge variant="outline">难度 {currentTask.difficulty}</Badge>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowImagePanel(s => !s)}
                 >
                   <ImageIcon className="mr-1 h-4 w-4" />
-                  Change Image
+                  更换图片
                 </Button>
               </div>
             </CardTitle>
@@ -305,7 +312,7 @@ export default function GradingCalibrationPage() {
             {/* Image change panel */}
             {showImagePanel && (
               <div className="mb-4 rounded-lg border bg-muted/30 p-4 space-y-3">
-                <div className="text-sm font-medium">Change Image</div>
+                <div className="text-sm font-medium">更换图片</div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Input
                     value={imageUrlInput}
@@ -319,20 +326,20 @@ export default function GradingCalibrationPage() {
                     disabled={savingImage || !imageUrlInput.trim() || imageUrlInput.trim() === imageUrl}
                   >
                     {savingImage ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />}
-                    Apply Image
+                    应用图片
                   </Button>
                 </div>
                 {/* Available images dropdown */}
                 <div className="flex items-center gap-2">
                   <Select onValueChange={(v) => setImageUrlInput(v)}>
                     <SelectTrigger className="min-w-[280px]">
-                      <SelectValue placeholder="Pick from available images" />
+                      <SelectValue placeholder="从可用图片中选择" />
                     </SelectTrigger>
                     <SelectContent>
-                      {loadingImages && <SelectItem value="__loading" disabled>Loading...</SelectItem>}
+                      {loadingImages && <SelectItem value="__loading" disabled>加载中...</SelectItem>}
                       {availableImages.map((img) => (
                         <SelectItem key={img.url} value={img.url}>
-                          {img.label} ({img.source === 'local' ? 'local' : 'studio'})
+                          {img.label} ({img.source === 'local' ? '本地' : '工作台'})
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -343,14 +350,14 @@ export default function GradingCalibrationPage() {
                 </div>
                 {availableImages.length === 0 && !loadingImages && (
                   <p className="text-xs text-muted-foreground">
-                    No images found yet. Upload a file below or generate via Media Studio.
+                    暂无可用图片。可在下方上传文件，或通过媒体工作台生成。
                   </p>
                 )}
                 {/* Upload new image */}
                 <div className="flex items-center gap-2 border-t pt-3">
                   <label className="inline-flex items-center gap-1.5 cursor-pointer rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
                     {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                    {uploading ? 'Uploading...' : 'Upload Image'}
+                    {uploading ? '上传中...' : '上传图片'}
                     <input
                       type="file"
                       accept="image/jpeg,image/png,image/webp,image/gif"
@@ -364,12 +371,12 @@ export default function GradingCalibrationPage() {
                     />
                   </label>
                   <span className="text-xs text-muted-foreground">
-                    JPG / PNG / WebP, max 10MB. Uploaded to cloud storage, available immediately.
+                    支持 JPG / PNG / WebP，最大 10MB。上传至云存储后立即可用。
                   </span>
                 </div>
                 {imageUrlInput.trim() !== imageUrl && imageUrlInput.trim() && (
                   <p className="text-xs text-amber-600">
-                    Changing image will clear existing annotations — please re-calibrate after applying.
+                    更换图片会清除已画的标注——应用后请重新校准。
                   </p>
                 )}
               </div>
@@ -378,7 +385,7 @@ export default function GradingCalibrationPage() {
             {/* Current image preview */}
             {imageUrl ? (
               <div className="flex items-center gap-2 mb-3 text-xs text-muted-foreground">
-                <span>Current image:</span>
+                <span>当前图片：</span>
                 <code className="rounded bg-muted px-1.5 py-0.5">{imageUrl}</code>
               </div>
             ) : null}
@@ -395,9 +402,9 @@ export default function GradingCalibrationPage() {
               />
             ) : (
               <div className="flex h-40 flex-col items-center justify-center gap-3 rounded-lg border border-dashed text-muted-foreground">
-                <span>This task has no image configured.</span>
+                <span>该任务尚未配置图片。</span>
                 <Button variant="outline" size="sm" onClick={() => setShowImagePanel(true)}>
-                  <ImageIcon className="mr-1 h-4 w-4" /> Set Image URL
+                  <ImageIcon className="mr-1 h-4 w-4" /> 设置图片地址
                 </Button>
               </div>
             )}
@@ -410,11 +417,11 @@ export default function GradingCalibrationPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between text-lg">
-              <span>Answer Key</span>
+              <span>标准答案</span>
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setShowJson((s) => !s)}>
                   <Eye className="mr-1 h-4 w-4" />
-                  {showJson ? 'hide JSON' : 'view JSON'}
+                  {showJson ? '收起 JSON' : '查看 JSON'}
                 </Button>
                 <Button
                   size="sm"
@@ -422,18 +429,18 @@ export default function GradingCalibrationPage() {
                   disabled={saving || totalAnnotations === 0}
                 >
                   {saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />}
-                  Save Answer Key
+                  保存标准答案
                 </Button>
               </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="mb-3 flex flex-wrap gap-2">
-              {annotation.boxes?.length ? <Badge>boxes: {annotation.boxes.length}</Badge> : null}
-              {annotation.points?.length ? <Badge>points: {annotation.points.length}</Badge> : null}
-              {annotation.lines?.length ? <Badge>lines: {annotation.lines.length}</Badge> : null}
-              {annotation.polygons?.length ? <Badge>contours: {annotation.polygons.length}</Badge> : null}
-              {totalAnnotations === 0 && <span className="text-sm text-muted-foreground">No annotations yet. Draw on the canvas above.</span>}
+              {annotation.boxes?.length ? <Badge>选框 {annotation.boxes.length}</Badge> : null}
+              {annotation.points?.length ? <Badge>点 {annotation.points.length}</Badge> : null}
+              {annotation.lines?.length ? <Badge>折线 {annotation.lines.length}</Badge> : null}
+              {annotation.polygons?.length ? <Badge>轮廓 {annotation.polygons.length}</Badge> : null}
+              {totalAnnotations === 0 && <span className="text-sm text-muted-foreground">暂无标注，请在上方画布中绘制。</span>}
             </div>
             {showJson && (
               <pre className="max-h-64 overflow-auto rounded-lg border bg-muted p-4 text-xs">

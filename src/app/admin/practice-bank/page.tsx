@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/session-client';
 import { Card, CardContent } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -17,6 +18,14 @@ interface Question {
   review_status: string;
   practice_only: boolean;
   created_at: string;
+}
+
+interface QuestionDetail extends Question {
+  options: Record<string, string> | string[] | null;
+  answer_key: unknown;
+  explanation: string | null;
+  organization_id: string | null;
+  published_version: number | null;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -64,6 +73,46 @@ export default function PracticeBankPage() {
   };
 
   useEffect(() => { fetchQuestions(); }, [page]);
+
+  const [preview, setPreview] = useState<QuestionDetail | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const handlePreview = async (id: string) => {
+    setPreviewLoading(true);
+    setPreview(null);
+    const r = await apiFetch<QuestionDetail>(`/api/admin/questions/${id}`);
+    if (r.ok && r.data) setPreview(r.data);
+    else toast.error('加载题目详情失败', { description: r.error });
+    setPreviewLoading(false);
+  };
+
+  const renderAnswer = (d: QuestionDetail | null): string => {
+    if (!d) return '-';
+    const a = d.answer_key;
+    if (typeof a === 'string') return a;
+    if (a && typeof a === 'object') return JSON.stringify(a);
+    return a == null ? '-' : String(a);
+  };
+
+  const renderOptions = (d: QuestionDetail | null) => {
+    if (!d) return null;
+    const ans = renderAnswer(d);
+    if (Array.isArray(d.options)) {
+      return d.options.map((t, i) => (
+        <div key={i} className={`rounded-md border px-3 py-2 text-sm ${String.fromCharCode(65 + i) === ans ? 'border-green-500 bg-green-50 font-medium' : ''}`}>
+          {String.fromCharCode(65 + i)}. {t}
+        </div>
+      ));
+    }
+    if (d.options && typeof d.options === 'object') {
+      return Object.entries(d.options).map(([k, v]) => (
+        <div key={k} className={`rounded-md border px-3 py-2 text-sm ${k === ans ? 'border-green-500 bg-green-50 font-medium' : ''}`}>
+          {k}. {v}
+        </div>
+      ));
+    }
+    return <div className="text-sm text-gray-500">该题型无选项（判断/描述类）</div>;
+  };
 
   const handleRetire = async (id: string) => {
     const r = await apiFetch(`/api/admin/questions/${id}`, {
@@ -115,6 +164,9 @@ export default function PracticeBankPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                  <Button variant="ghost" size="sm" onClick={() => handlePreview(q.id)} title="预览完整题目">
+                    <Eye className="w-4 h-4 mr-1" /> 预览
+                  </Button>
                   {q.review_status === 'published' && (
                     <Button variant="ghost" size="sm" onClick={() => handleRetire(q.id)} className="text-orange-600 hover:text-orange-700">
                       <ToggleRight className="w-4 h-4 mr-1" /> 下架
@@ -134,6 +186,38 @@ export default function PracticeBankPage() {
           <Button variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>下一页</Button>
         </div>
       )}
+
+      <Dialog open={!!preview || previewLoading} onOpenChange={(o) => { if (!o) { setPreview(null); } }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>题目详情</DialogTitle>
+            <DialogDescription>{preview ? `${TYPE_LABELS[preview.question_type] || preview.question_type} · 难度 ${preview.difficulty} · ${preview.knowledge_point || '无知识点'}` : '加载中...'}</DialogDescription>
+          </DialogHeader>
+          {previewLoading && <div className="py-8 text-center text-gray-500">加载中...</div>}
+          {preview && (
+            <div className="space-y-4">
+              <div className="rounded-lg bg-muted/50 p-3 text-base whitespace-pre-wrap">{preview.stem}</div>
+              <div>
+                <h3 className="text-sm font-medium mb-2 text-gray-500">选项（正确答案已高亮）</h3>
+                <div className="space-y-1.5">{renderOptions(preview)}</div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><span className="text-gray-500">答案：</span><span className="font-medium">{renderAnswer(preview)}</span></div>
+                <div><span className="text-gray-500">版本：</span>{preview.published_version ?? '-'}</div>
+              </div>
+              {preview.explanation && (
+                <div>
+                  <h3 className="text-sm font-medium mb-1 text-gray-500">解析</h3>
+                  <div className="rounded-lg border p-3 text-sm whitespace-pre-wrap">{preview.explanation}</div>
+                </div>
+              )}
+              <div className="text-xs text-gray-400 border-t pt-2">
+                ID：{preview.id} · 创建于 {new Date(preview.created_at).toLocaleString('zh-CN')}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

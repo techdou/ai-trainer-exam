@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, Number(p.get('page') || 1));
     const limit = Math.min(100, Math.max(1, Number(p.get('limit') || 20)));
     const role = p.get('role');
+    const search = p.get('search')?.trim();
     const offset = (page - 1) * limit;
     // profiles 表没有 deleted_at 列(软停用走 status='disabled'), 曾经照抄 cohorts 的
     // 软删条件导致整接口 500。停用账号仍列出, 由前端按 status 标识。
@@ -31,6 +32,7 @@ export async function GET(request: NextRequest) {
     const scopedOrg = organizationScope(user);
     if (scopedOrg) { args.push(scopedOrg); clauses.push(`p.organization_id=$${args.length}`); }
     if (role) { args.push(role); clauses.push(`EXISTS(SELECT 1 FROM user_roles x WHERE x.user_id=p.id AND x.role=$${args.length})`); }
+    if (search) { args.push(`%${search}%`); clauses.push(`(p.display_name ILIKE $${args.length} OR p.email ILIKE $${args.length} OR o.name ILIKE $${args.length})`); }
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const users = await dbQuery<{ id:string;email:string;display_name:string;created_at:string;status:string;organization_id:string|null;organization_name:string|null;roles:string[] }>(
       `SELECT p.id,p.email,p.display_name,p.created_at,p.status,p.organization_id,o.name organization_name,
@@ -38,7 +40,7 @@ export async function GET(request: NextRequest) {
          FROM profiles p LEFT JOIN organizations o ON o.id=p.organization_id LEFT JOIN user_roles ur ON ur.user_id=p.id
         ${where} GROUP BY p.id,o.name ORDER BY p.created_at DESC LIMIT $${args.length+1} OFFSET $${args.length+2}`,
       ...args,limit,offset);
-    const count = await dbQuery<{count:string}>(`SELECT count(*)::text count FROM profiles p ${where}`, ...args);
+    const count = await dbQuery<{count:string}>(`SELECT count(*)::text count FROM profiles p LEFT JOIN organizations o ON o.id=p.organization_id ${where}`, ...args);
     return ok({ items: users.map(u=>({ id:u.id,email:u.email,displayName:u.display_name,role:u.roles[0]??null,roles:u.roles,status:u.status,organizationId:u.organization_id,organizationName:u.organization_name,createdAt:u.created_at })), total:Number(count[0]?.count||0),page,pageSize:limit });
   } catch (error) { return catchError(error); }
 }

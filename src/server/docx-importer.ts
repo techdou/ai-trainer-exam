@@ -11,6 +11,9 @@
  * 导入后题目进入 imported_unreviewed 状态，不直接发布。
  */
 
+const OPTION_LETTERS = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i));
+const TF_VALID_ANSWERS = new Set(['true', 'false', 'a', 'b', '正确', '错误', '对', '错', '√', '×']);
+
 /** 解析出的原始题目（导入前中间态） */
 export interface ParsedQuestion {
   sourceIndex: number; // 在原文中的序号
@@ -100,6 +103,19 @@ export function parsePlainText(text: string): ParseResult {
     stemSet.set(normalized, c + 1);
     if (c >= 1) {
       q.warnings.push('近似重复题：题干与已有题目高度相似');
+    }
+  }
+
+  // 无有效答案的题不允许进入题库——学生端会拿到判不出分的题。移入 skipped 并说明原因。
+  for (let i = questions.length - 1; i >= 0; i--) {
+    const q = questions[i];
+    const a = (q.answerKey || '').toString().trim().toLowerCase();
+    const bad = q.questionType === 'true_false'
+      ? !TF_VALID_ANSWERS.has(a)
+      : !(/^[a-z]$/.test(a) && OPTION_LETTERS.includes(a.toUpperCase()));
+    if (bad) {
+      skipped.push({ rawText: q.rawText.slice(0, 200), reason: `答案缺失或非法（"${q.answerKey || '空'}"），已拦截未入库` });
+      questions.splice(i, 1);
     }
   }
 
@@ -275,7 +291,7 @@ function parseSingleChoice(
   }
 
   // 过滤出 A/B/C/D 四个选项
-  const validOptions = optionMatches.filter((o) => ['A', 'B', 'C', 'D'].includes(o.letter));
+  const validOptions = optionMatches.filter((o) => OPTION_LETTERS.includes(o.letter));
   const optionMap = new Map<string, string>();
   for (const o of validOptions) {
     let text = allText.slice(o.startPos, o.endPos).trim();
@@ -312,11 +328,11 @@ function parseSingleChoice(
 
   if (!answerKey) {
     warnings.push('答案缺失');
-  } else if (!['A', 'B', 'C', 'D'].includes(answerKey)) {
+  } else if (!OPTION_LETTERS.includes(answerKey)) {
     warnings.push(`答案异常: ${answerKey}`);
   }
 
-  const options = ['A', 'B', 'C', 'D'].map((k) => optionMap.get(k) ?? '').filter((s) => s.length > 0);
+  const options = [...optionMap.keys()].sort().map((k) => optionMap.get(k) ?? '').filter((s) => s.length > 0);
 
   return {
     sourceIndex: 0,

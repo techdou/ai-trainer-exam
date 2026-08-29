@@ -17,6 +17,18 @@ const schema = z.object({
 const REVIEW_ROLES = ['question_reviewer','school_admin','super_admin'];
 const EDIT_ROLES = ['question_editor','school_admin','super_admin'];
 
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await requireRole(request, ['school_admin','super_admin','question_editor','question_reviewer','teacher','auditor']);
+    const { id } = await params;
+    if (!z.string().uuid().safeParse(id).success) return fail(400, '题目 ID 不正确');
+    const current = await getQuestionById(id);
+    if (!current) return fail(404, '题目不存在');
+    assertOrganizationScope(user, current.organization_id);
+    return ok(current);
+  } catch (e) { return catchError(e); }
+}
+
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireRole(request, ['school_admin','super_admin','question_editor','question_reviewer']);
