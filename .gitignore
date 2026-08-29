@@ -48,7 +48,7 @@ uploads/
 .fleet/
 .zed/
 .windsurf/
-.coze/
+.coze
 .cozeproj/
 .codegraph/
 *.swp
@@ -59,6 +59,8 @@ uploads/
 .DS_Store
 Thumbs.db
 desktop.ini
+# Windows 保留设备名: Git Bash 重定向误建的空文件
+nul
 
 # 平台与预览临时文件
 .preview
@@ -88,8 +90,6 @@ yarn-error.log*
 *.pid.lock
 tmp/
 temp/
-.cozeproj/reduction
-.codegraph
 
 # UI 评审截图(本地临时产物)
 .ui-review/
