@@ -23,7 +23,6 @@ export const POST = handler(async (request: Request) => {
   const lowerName = file.name.toLowerCase();
   const allowedMime = new Set([
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/octet-stream',
   ]);
   if (!lowerName.endsWith('.docx') || (file.type && !allowedMime.has(file.type))) return fail(400, '只允许上传 .docx 文件');
   if (file.size <= 0 || file.size > MAX_DOCX_BYTES) return fail(400, '文件大小必须在 1 字节至 10MB 之间');

@@ -146,15 +146,11 @@ export default function ImportPage() {
               <div className="text-2xl font-bold text-warning">{result.skipped}</div>
               <div className="text-sm text-muted-foreground">跳过</div>
             </div>
-            <div className="rounded-md bg-warning/10 p-3 text-center">
-              <div className="text-2xl font-bold text-warning">{result.errors.length}</div>
-              <div className="text-sm text-muted-foreground">错误数</div>
-            </div>
           </div>
           {result.errors.length > 0 && (
-            <div className="rounded-md bg-destructive/10 border border-destructive/30 p-3">
-              <p className="text-sm font-medium text-destructive mb-1">错误详情：</p>
-              <ul className="text-sm text-destructive space-y-1 max-h-40 overflow-y-auto">
+            <div className="rounded-md bg-warning/10 border border-warning/30 p-3">
+              <p className="text-sm font-medium text-warning mb-1">跳过原因（质量闸门拦截，未入库）：</p>
+              <ul className="text-sm text-warning space-y-1 max-h-40 overflow-y-auto">
                 {result.errors.slice(0, 20).map((e, i) => (
                   <li key={i}>• {e}</li>
                 ))}
