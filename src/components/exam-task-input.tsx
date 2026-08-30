@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import UniverSheet, { buildSheetWorkbook, extractCellData, parseCellKey, cellBg, cellHasBorder } from './univer-sheet';
 import FileSortBoard from './file-sort-board';
+import { sourceGroupLabel } from './univer-sheet';
 import type { IWorkbookData } from '@univerjs/core';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -98,22 +99,84 @@ export function StatsTable({ config, value, onChange, disabled }: { config:Confi
   const rows = config.rows ?? config.dataRows ?? [];
   const columns = config.columns ?? [];
   const editable = config.editableCells ?? [];
-  const wb = useMemo(() => buildSheetWorkbook({ columns, rows, highlightCells: new Set(editable as string[]), dataOffset: 1 }), []);
+  const cfgExt = config as { sourceSummary?: Record<string, string[]>; sourceMode?: 'records' | 'sheet' };
+  const sourceGroups = (cfgExt.sourceSummary && typeof cfgExt.sourceSummary === 'object' ? cfgExt.sourceSummary : {});
+  const sheetMode = cfgExt.sourceMode === 'sheet';
+  // 点击计数辅助: 已划掉的记录(仅界面辅助,不进提交)
+  const [struck, setStruck] = useState<Set<string>>(new Set());
+  const [filledCount, setFilledCount] = useState(0);
+
+  const toggleStruck = (key: string) => {
+    setStruck((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  const wb = useMemo(() => buildSheetWorkbook({
+    columns, rows,
+    highlightCells: new Set(editable as string[]),
+    dataOffset: 1,
+    ...(sheetMode ? { sourceGroups } : {}),
+  }), []);
+
   const handleSnap = (getSnap: () => IWorkbookData | null) => {
     const snap = getSnap(); if (!snap) return;
     const cd = extractCellData(snap);
     const cells: Record<string, string | number> = {};
+    let filled = 0;
     for (const key of editable as string[]) {
       const { col, row } = parseCellKey(key);
       const v = cd[row + 1]?.[col]?.v; // +1: 表头占第 0 行,题型坐标从数据行起算
-      if (v !== undefined && v !== null && v !== '') cells[key] = typeof v === 'number' ? v : String(v);
+      if (v !== undefined && v !== null && v !== '') { cells[key] = typeof v === 'number' ? v : String(v); filled++; }
     }
+    setFilledCount(filled);
     onChange({ cells });
   };
+
   return (
-    <div className="space-y-2">
-      <p className="text-xs text-muted-foreground">在浅黄色单元格中直接输入统计结果，支持公式（如 =AVERAGE(B2:B6)、=SUM(C2:C6)）。</p>
+    <div className="space-y-3">
+      {!sheetMode && Object.keys(sourceGroups).length > 0 && (
+        <div className="rounded-lg border bg-muted/30 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm font-medium">源记录（点击划掉辅助计数，可再点恢复）</span>
+            <span className="text-xs text-muted-foreground">已划 {struck.size} 条</span>
+          </div>
+          <div className="space-y-2">
+            {Object.entries(sourceGroups).map(([key, list]) => (
+              <div key={key} className="flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 text-xs font-medium text-muted-foreground">{sourceGroupLabel(key)}：</span>
+                {list.map((item, i) => {
+                  const uk = `${key}:${i}`;
+                  const isStruck = struck.has(uk);
+                  return (
+                    <button
+                      key={uk} type="button" disabled={disabled}
+                      onClick={() => toggleStruck(uk)}
+                      className={`rounded-full border px-2.5 py-1 text-sm transition-all ${
+                        isStruck ? 'border-transparent bg-muted text-muted-foreground line-through opacity-60' : 'bg-card hover:border-primary/60'
+                      } ${disabled ? 'pointer-events-none' : ''}`}
+                    >
+                      {item}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {sheetMode
+        ? <p className="text-xs text-muted-foreground">在「统计表」填写结果；可切到「源数据」工作表查看原始记录，支持跨表公式（如 =COUNTIF(源数据!A:A,"好评")）。按 Tab 跳到下一格。</p>
+        : <p className="text-xs text-muted-foreground">在浅黄色单元格中填写统计结果（支持公式，如 =AVERAGE(B2:B6)），按 Tab 跳到下一格。</p>}
       <UniverSheet initialWorkbook={wb} onChange={handleSnap} disabled={disabled} height={440} />
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">已填 {filledCount} / {editable.length} 项</span>
+        <span className={filledCount === editable.length ? 'font-medium text-green-600' : 'text-muted-foreground'}>
+          {filledCount === editable.length ? '✓ 已全部填写' : '还有未填项'}
+        </span>
+      </div>
     </div>
   );
 }

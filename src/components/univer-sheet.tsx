@@ -91,7 +91,15 @@ export default function UniverSheet({
 /* ─────────────── 题型数据构建与语义导出工具 ─────────────── */
 
 /** 用行列二维数据构建最小 IWorkbookData；highlightCells: "B2" 式坐标集合(浅黄底提示可编辑)。 */
-export function buildSheetWorkbook({ columns, rows, highlightCells, extraRows, dataOffset }: {
+const GROUP_LABELS: Record<string, string> = {
+  records: '数据记录', reviews: '评论', trafficLights: '红绿灯', targets: '标注目标',
+};
+
+export function sourceGroupLabel(key: string): string {
+  return GROUP_LABELS[key] ?? key;
+}
+
+export function buildSheetWorkbook({ columns, rows, highlightCells, extraRows, dataOffset, sourceGroups }: {
   columns: string[];
   rows: (string | number)[][];
   highlightCells?: Set<string>;
@@ -99,6 +107,8 @@ export function buildSheetWorkbook({ columns, rows, highlightCells, extraRows, d
   extraRows?: (string | number)[][];
   /** 高亮坐标相对数据首行(row=1)的额外偏移: stats_table 类题型坐标系不含表头行 */
   dataOffset?: number;
+  /** 源数据分组: 生成「源数据」第二工作表(stats_table 的 sourceMode:'sheet' 进阶模式, 可跨表 COUNTIF) */
+  sourceGroups?: Record<string, string[]>;
 }): IWorkbookData {
   const cellData: Record<number, Record<number, { v: string | number; s?: string }>> = {};
   const styles: Record<string, Record<string, unknown>> = {};
@@ -120,10 +130,25 @@ export function buildSheetWorkbook({ columns, rows, highlightCells, extraRows, d
     });
   });
 
+  const sheets: IWorkbookData['sheets'] = {
+    'sheet-1': { id: 'sheet-1', name: '统计表', cellData, rowCount: rows.length + 2, columnCount: Math.max(columns.length, 8) },
+  };
+  const order = ['sheet-1'];
+  if (sourceGroups && Object.keys(sourceGroups).length > 0) {
+    const srcCd: Record<number, Record<number, { v: string; s?: string }>> = {};
+    let r = 0;
+    for (const [key, list] of Object.entries(sourceGroups)) {
+      (srcCd[r] ??= {})[0] = { v: sourceGroupLabel(key), s: 'hd' };
+      r++;
+      list.forEach((item) => { (srcCd[r] ??= {})[0] = { v: item }; r++; });
+      r++; // 组间空行
+    }
+    sheets['sheet-src'] = { id: 'sheet-src', name: '源数据', cellData: srcCd, rowCount: r + 2, columnCount: 4 };
+    order.push('sheet-src');
+  }
   return {
     id: 'exam-wb', name: '工作簿', appVersion: '0.0.0', locale: LocaleType.ZH_CN,
-    styles, sheetOrder: ['sheet-1'],
-    sheets: { 'sheet-1': { id: 'sheet-1', name: 'Sheet1', cellData, rowCount: rows.length + 2, columnCount: Math.max(columns.length, 8) } },
+    styles, sheetOrder: order, sheets,
   } as unknown as IWorkbookData;
 }
 
