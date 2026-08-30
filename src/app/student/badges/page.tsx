@@ -32,17 +32,70 @@ const CATEGORY_LABEL: Record<BadgeView['category'], string> = {
   exam: '考试荣誉',
 };
 
-function progressOf(badge: BadgeView, stats: GamificationData['stats']): string {
-  if (badge.earnedAt) return '已获得';
+// 各勋章的进度目标值;考试类勋章无量化进度,不入表
+const PROGRESS_TARGET: Record<string, number> = {
+  first_practice: 1,
+  correct_50: 50,
+  correct_200: 200,
+  streak_10: 10,
+  task_first: 1,
+  task_pass_10: 10,
+};
+
+function progressPctOf(badge: BadgeView, stats: GamificationData['stats']): number | null {
+  const target = PROGRESS_TARGET[badge.key];
+  if (target === undefined) return null;
+  const current = badge.key === 'streak_10'
+    ? stats.streak
+    : badge.key.startsWith('task_')
+      ? stats.taskPassTotal
+      : stats.correctTotal;
+  return Math.min(100, Math.round((current / target) * 100));
+}
+
+function progressTextOf(badge: BadgeView, stats: GamificationData['stats']): string {
   switch (badge.key) {
-    case 'first_practice': return `进度 ${Math.min(stats.correctTotal, 1)}/1`;
-    case 'correct_50': return `进度 ${Math.min(stats.correctTotal, 50)}/50`;
-    case 'correct_200': return `进度 ${Math.min(stats.correctTotal, 200)}/200`;
-    case 'streak_10': return `当前连对 ${stats.streak}/10`;
-    case 'task_first': return `进度 ${Math.min(stats.taskPassTotal, 1)}/1`;
-    case 'task_pass_10': return `进度 ${Math.min(stats.taskPassTotal, 10)}/10`;
-    default: return '参加考试争取吧';
+    case 'first_practice': return `${Math.min(stats.correctTotal, 1)}/1`;
+    case 'correct_50': return `${Math.min(stats.correctTotal, 50)}/50`;
+    case 'correct_200': return `${Math.min(stats.correctTotal, 200)}/200`;
+    case 'streak_10': return `连对 ${stats.streak}/10`;
+    case 'task_first': return `${Math.min(stats.taskPassTotal, 1)}/1`;
+    case 'task_pass_10': return `${Math.min(stats.taskPassTotal, 10)}/10`;
+    default: return '参加考试,争取解锁';
   }
+}
+
+function BadgeCard({ badge, stats }: { badge: BadgeView; stats: GamificationData['stats'] }) {
+  const earned = Boolean(badge.earnedAt);
+  const pct = earned ? 100 : progressPctOf(badge, stats);
+  return (
+    <div className={`flex items-start gap-3 rounded-2xl border p-4 ${earned ? 'border-primary/40 bg-primary/5' : 'border-border'}`}>
+      <span
+        aria-hidden
+        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-2xl ${earned ? 'bg-primary/10' : 'border border-dashed border-primary/60 bg-muted'}`}
+      >
+        {earned ? badge.emoji : <span className="grayscale opacity-50">{badge.emoji}</span>}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-lg font-semibold leading-snug">{badge.name}</div>
+        <p className="text-base leading-snug text-muted-foreground">{badge.description}</p>
+        {earned ? (
+          <p className="mt-1.5 text-sm font-medium text-success">
+            ✓ 已获得{badge.earnedAt ? ` · ${new Date(badge.earnedAt).toLocaleDateString('zh-CN')}` : ''}
+          </p>
+        ) : pct !== null ? (
+          <div className="mt-2 flex items-center gap-2">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-primary/15">
+              <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+            </div>
+            <span className="shrink-0 text-sm text-muted-foreground">{progressTextOf(badge, stats)}</span>
+          </div>
+        ) : (
+          <p className="mt-1.5 text-sm text-muted-foreground">{progressTextOf(badge, stats)}</p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function BadgesPage() {
@@ -64,27 +117,43 @@ export default function BadgesPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6">
-      <h1 className="mb-1 text-2xl font-bold">我的勋章</h1>
+      <h1 className="mb-1 text-3xl font-bold">我的勋章</h1>
       <p className="mb-6 text-base text-muted-foreground">坚持练习、提高正确率，收集全部 {data.badges.length} 枚勋章</p>
 
-      {/* 积分与进度总览 */}
-      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-4">
-        <Card><CardContent className="flex items-center gap-3 py-4">
-          <Star className="h-8 w-8 text-warning" aria-hidden />
-          <div><div className="text-2xl font-bold">{data.points}</div><div className="text-sm text-muted-foreground">我的积分</div></div>
-        </CardContent></Card>
-        <Card><CardContent className="flex items-center gap-3 py-4">
-          <Trophy className="h-8 w-8 text-primary" aria-hidden />
-          <div><div className="text-2xl font-bold">{earnedCount}/{data.badges.length}</div><div className="text-sm text-muted-foreground">已获勋章</div></div>
-        </CardContent></Card>
-        <Card><CardContent className="flex items-center gap-3 py-4">
-          <Flame className="h-8 w-8 text-destructive" aria-hidden />
-          <div><div className="text-2xl font-bold">{data.stats.streak}</div><div className="text-sm text-muted-foreground">当前连对</div></div>
-        </CardContent></Card>
-        <Card><CardContent className="flex items-center gap-3 py-4">
-          <Wrench className="h-8 w-8 text-success" aria-hidden />
-          <div><div className="text-2xl font-bold">{data.stats.taskPassTotal}</div><div className="text-sm text-muted-foreground">实操通过</div></div>
-        </CardContent></Card>
+      {/* 积分与进度总览:已获勋章为主卡,其余为次卡 */}
+      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-2xl bg-primary p-5 text-primary-foreground">
+          <div className="flex items-center gap-2 text-sm opacity-90">
+            <Trophy className="h-4 w-4" aria-hidden /> 已获勋章
+          </div>
+          <div className="mt-2 leading-none">
+            <span className="text-3xl font-bold">{earnedCount}</span>
+            <span className="text-xl font-semibold"> / {data.badges.length}</span>
+          </div>
+          <div className="mt-3 flex gap-1.5" aria-hidden>
+            {data.badges.map((_, i) => (
+              <span key={i} className={`h-2 flex-1 rounded-full ${i < earnedCount ? 'bg-primary-foreground' : 'bg-primary-foreground/40'}`} />
+            ))}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-5">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Star className="h-4 w-4 text-warning" aria-hidden /> 我的积分
+          </div>
+          <div className="mt-2 text-2xl font-bold leading-none">{data.points}</div>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-5">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Flame className="h-4 w-4 text-accent" aria-hidden /> 当前连对
+          </div>
+          <div className="mt-2 text-2xl font-bold leading-none">{data.stats.streak}</div>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-5">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Wrench className="h-4 w-4 text-success" aria-hidden /> 实操通过
+          </div>
+          <div className="mt-2 text-2xl font-bold leading-none">{data.stats.taskPassTotal}</div>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -92,29 +161,11 @@ export default function BadgesPage() {
         <div className="space-y-6">
           {categories.map(category => (
             <div key={category}>
-              <h2 className="mb-3 text-lg font-semibold">{CATEGORY_LABEL[category]}</h2>
+              <h2 className="mb-3 text-xl font-semibold">{CATEGORY_LABEL[category]}</h2>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {data.badges.filter(b => b.category === category).map(badge => {
-                  const earned = Boolean(badge.earnedAt);
-                  return (
-                    <div
-                      key={badge.key}
-                      className={`flex items-center gap-3 rounded-xl border p-4 ${earned ? 'border-primary/40 bg-primary/5' : 'border-border opacity-70'}`}
-                    >
-                      <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-2xl ${earned ? 'bg-primary/10' : 'bg-muted grayscale'}`} aria-hidden>
-                        {badge.emoji}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{badge.name}</span>
-                          {earned && <span className="text-xs text-success">✓ 已获得</span>}
-                        </div>
-                        <p className="text-sm text-muted-foreground">{badge.description}</p>
-                        {!earned && <p className="mt-0.5 text-xs text-muted-foreground">{progressOf(badge, data.stats)}</p>}
-                      </div>
-                    </div>
-                  );
-                })}
+                {data.badges.filter(b => b.category === category).map(badge => (
+                  <BadgeCard key={badge.key} badge={badge} stats={data.stats} />
+                ))}
               </div>
             </div>
           ))}
@@ -123,7 +174,7 @@ export default function BadgesPage() {
         {/* 班级排行榜 */}
         <Card className="h-fit">
           <CardContent className="py-5">
-            <h2 className="mb-1 flex items-center gap-2 text-lg font-semibold">
+            <h2 className="mb-1 flex items-center gap-2 text-xl font-semibold">
               <Award className="h-5 w-5 text-primary" aria-hidden /> 班级排行
             </h2>
             <p className="mb-4 text-sm text-muted-foreground">
