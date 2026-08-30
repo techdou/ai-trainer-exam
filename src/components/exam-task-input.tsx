@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import UniverSheet, { buildSheetWorkbook, extractCellData, parseCellKey, cellBg, cellHasBorder } from './univer-sheet';
+import type { IWorkbookData } from '@univerjs/core';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -12,7 +14,7 @@ interface Props {
   disabled?: boolean;
 }
 
-type Config = {
+export type Config = {
   columns?: string[];
   dataRows?: string[][];
   rowIds?: string[];
@@ -60,20 +62,59 @@ export function ExamTaskInput({ content, value, onChange, disabled = false }: Pr
   return <div className="rounded-lg border border-warning/40 bg-warning/10 p-4 text-warning">该实操类型暂无法在当前浏览器作答，请联系考务人员：{taskType}</div>;
 }
 
-function ExcelRows({ config, value, onChange, disabled }: { config:Config;value:unknown;onChange:(v:unknown)=>void;disabled:boolean }) {
+export function ExcelRows({ config, value, onChange, disabled }: { config:Config;value:unknown;onChange:(v:unknown)=>void;disabled:boolean }) {
+  const columns = config.columns ?? [];
   const rows = config.dataRows ?? [];
-  const ids = config.rowIds?.length === rows.length ? config.rowIds : rows.map((_,i)=>String(i));
-  const existing = record(value);
-  const retained = new Set(Array.isArray(existing.retainedRowIds) ? existing.retainedRowIds.map(String) : ids);
-  const toggle = (id:string) => { const next = new Set(retained); next.has(id) ? next.delete(id) : next.add(id); onChange({ retainedRowIds: ids.filter(x=>next.has(x)) }); };
-  return <div className="overflow-x-auto rounded-lg border"><table className="w-full text-base"><thead><tr className="bg-muted"><th className="p-3">删除</th>{(config.columns??[]).map(x=><th key={x} className="p-3 text-left">{x}</th>)}</tr></thead><tbody>{rows.map((row,i)=><tr key={ids[i]} className={`border-t ${retained.has(ids[i])?'':'bg-red-50 opacity-70'}`}><td className="p-3 text-center"><input type="checkbox" checked={!retained.has(ids[i])} disabled={disabled} onChange={()=>toggle(ids[i])} aria-label={`删除第${i+1}行`} className="h-5 w-5" /></td>{row.map((cell,j)=><td key={j} className="p-3">{cell}</td>)}</tr>)}</tbody></table></div>;
+  const ids = config.rowIds?.length === rows.length ? config.rowIds : rows.map((_, i) => String(i));
+  const rowKeyToId = useMemo(() => {
+    const m = new Map<string, string>();
+    rows.forEach((cells, i) => m.set(cells.map((c) => String(c)).join('\u0001'), ids[i]));
+    return m;
+  }, []);
+  const wb = useMemo(() => buildSheetWorkbook({ columns, rows }), []);
+  const handleSnap = (getSnap: () => IWorkbookData | null) => {
+    const snap = getSnap(); if (!snap) return;
+    const cd = extractCellData(snap);
+    const retained: string[] = [];
+    for (let r = 1; cd[r]; r++) {
+      const row = cd[r];
+      const vals: string[] = [];
+      for (let c = 0; row[c] !== undefined; c++) vals.push(String(row[c].v ?? ''));
+      const id = rowKeyToId.get(vals.join('\u0001'));
+      if (id !== undefined) retained.push(id);
+    }
+    onChange({ retainedRowIds: retained });
+  };
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">像真实 Excel 一样：点击行号选中要删除的行，右键选择「删除行」。误删可按 Ctrl+Z 撤销。</p>
+      <UniverSheet initialWorkbook={wb} feature={{ contextMenu: true, toolbar: true }} onChange={handleSnap} disabled={disabled} height={440} />
+    </div>
+  );
 }
 
-function StatsTable({ config, value, onChange, disabled }: { config:Config;value:unknown;onChange:(v:unknown)=>void;disabled:boolean }) {
-  const rows=config.rows??config.dataRows??[]; const editable=new Set(config.editableCells??[]); const cells=record(record(value).cells);
-  const key=(r:number,c:number)=>`${String.fromCharCode(65+c)}${r+1}`;
-  const set=(k:string,v:string)=>onChange({cells:{...cells,[k]:v}});
-  return <div className="overflow-x-auto rounded-lg border"><table className="w-full"><thead><tr className="bg-muted">{(config.columns??[]).map(c=><th key={c} className="p-3 text-left">{c}</th>)}</tr></thead><tbody>{rows.map((row,r)=><tr key={r} className="border-t">{row.map((cell,c)=>{const k=key(r,c);return <td key={k} className="p-2">{editable.has(k)?<Input disabled={disabled} value={String(cells[k]??'')} onChange={e=>set(k,e.target.value)} aria-label={`单元格${k}`} className="min-w-[6rem]" />:cell}</td>})}</tr>)}</tbody></table></div>;
+export function StatsTable({ config, value, onChange, disabled }: { config:Config;value:unknown;onChange:(v:unknown)=>void;disabled:boolean }) {
+  const rows = config.rows ?? config.dataRows ?? [];
+  const columns = config.columns ?? [];
+  const editable = config.editableCells ?? [];
+  const wb = useMemo(() => buildSheetWorkbook({ columns, rows, highlightCells: new Set(editable as string[]), dataOffset: 1 }), []);
+  const handleSnap = (getSnap: () => IWorkbookData | null) => {
+    const snap = getSnap(); if (!snap) return;
+    const cd = extractCellData(snap);
+    const cells: Record<string, string | number> = {};
+    for (const key of editable as string[]) {
+      const { col, row } = parseCellKey(key);
+      const v = cd[row + 1]?.[col]?.v; // +1: 表头占第 0 行,题型坐标从数据行起算
+      if (v !== undefined && v !== null && v !== '') cells[key] = typeof v === 'number' ? v : String(v);
+    }
+    onChange({ cells });
+  };
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">在浅黄色单元格中直接输入统计结果，支持公式（如 =AVERAGE(B2:B6)、=SUM(C2:C6)）。</p>
+      <UniverSheet initialWorkbook={wb} onChange={handleSnap} disabled={disabled} height={440} />
+    </div>
+  );
 }
 
 function FileClassify({ config, value, onChange, disabled }: { config:Config;value:unknown;onChange:(v:unknown)=>void;disabled:boolean }) {
@@ -202,172 +243,85 @@ function formatDecimal(value: string, places: number | null): string {
   if (Number.isNaN(n)) return value;
   return n.toFixed(places);
 }
-function ExcelComprehensive({ config, value, onChange, disabled }: { config: Config; value: unknown; onChange: (v: unknown) => void; disabled: boolean }) {
+function ExcelComprehensive({ config, value, onChange, disabled }: { config:Config;value:unknown;onChange:(v:unknown)=>void;disabled:boolean }) {
   const columns = config.columns ?? [];
   const initialRows = config.dataRows ?? [];
   const rowIds = config.rowIds?.length === initialRows.length ? config.rowIds : initialRows.map((_, i) => String(i));
-  const classColIdx = config.classColumnIndex ?? -1;
   const scoreColIndices = config.scoreColumnIndices ?? [];
-  const totalColIdx = config.totalColumnIndex ?? -1;
-  const colorOptions = config.colorOptions ?? ['蓝色', '红色', '绿色', '黄色'];
-
-  const existing = record(value) as Partial<ExcelSubmission>;
-  const [rows, setRows] = useState<ExcelRowState[]>(() => {
-    if (Array.isArray(existing.rows)) return existing.rows as ExcelRowState[];
-    return initialRows.map((cells, i) => ({ id: rowIds[i], cells: [...cells] }));
-  });
-  const [borderApplied, setBorderApplied] = useState<boolean>(existing.borderApplied === true);
-  const [headerColor, setHeaderColor] = useState<string>(existing.headerColor ?? '');
-  const [decimalPlaces, setDecimalPlaces] = useState<number | null>(typeof existing.decimalPlaces === 'number' ? existing.decimalPlaces : null);
-  const [showSummary, setShowSummary] = useState<boolean>(Array.isArray(existing.summaryGroups) && (existing.summaryGroups as unknown[]).length > 0);
-
-  const emit = (patch: Partial<ExcelSubmission>) => {
-    onChange({ ...existing, rows, borderApplied, headerColor, decimalPlaces, showSummary, ...patch });
-  };
-
-  // 格式化显示：应用小数位设置
-  const displayCell = (raw: string): string => decimalPlaces !== null ? formatDecimal(raw, decimalPlaces) : raw;
-
-  // ── 操作 1: 设置边框 ──
-  const toggleBorder = () => { const next = !borderApplied; setBorderApplied(next); emit({ borderApplied: next }); };
-
-  // ── 操作 2: 用公式求班级（从学号提取）──
-  const applyFormula = () => {
-    if (classColIdx < 0) return;
-    const next = rows.map(r => {
-      const studentId = r.cells[0] ?? '';
-      // 学号如 120305 → 班级 "3班" (第3-4位)
-      const match = studentId.match(/^\d{2}(\d{1,2})/);
-      const classNum = match ? String(parseInt(match[1], 10)) : '';
-      const newCells = [...r.cells];
-      newCells[classColIdx] = classNum ? `${classNum}班` : '';
-      return { ...r, cells: newCells };
-    });
-    setRows(next); emit({ rows: next });
-  };
-
-  // ── 操作 3: 排序（班级降序，成绩降序）──
-  const sortRows = () => {
-    const sortKey = (r: ExcelRowState): [number, number] => {
-      const classStr = classColIdx >= 0 ? (r.cells[classColIdx] ?? '') : '';
-      const classNum = parseInt(classStr.replace(/[^\d]/g, ''), 10) || 0;
-      const totalStr = totalColIdx >= 0 ? (r.cells[totalColIdx] ?? '0') : '0';
-      const score = parseFloat(totalStr) || 0;
-      return [classNum, score];
-    };
-    const next = [...rows].sort((a, b) => {
-      const [ac, as] = sortKey(a), [bc, bs] = sortKey(b);
-      if (bc !== ac) return bc - ac;
-      return bs - as;
-    });
-    setRows(next); emit({ rows: next, rowOrder: next.map(r => r.id) });
-  };
-
-  // ── 操作 4: 分类汇总（按班级求平均值）──
-  const toggleSummary = () => {
-    const nextShow = !showSummary;
-    setShowSummary(nextShow);
-    if (!nextShow) { emit({ summaryGroups: [] }); return; }
-    // 按班级分组
-    const groups = new Map<string, ExcelRowState[]>();
-    for (const r of rows) {
-      const key = classColIdx >= 0 ? (r.cells[classColIdx] ?? '未知') : '未知';
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(r);
+  // 学号→班级推导(与判分语义一致: 学号第 3-4 位), 用于预置汇总区班级标签行
+  const classNames = useMemo(() => {
+    const s = new Set<string>();
+    for (const row of initialRows) {
+      const m = /^\d{2}(\d{1,2})/.exec(String(row[0] ?? ''));
+      if (m) s.add(`${parseInt(m[1], 10)}班`);
     }
-    const summaryGroups: Array<{ key: string; averages: Record<string, string | number> }> = [];
-    // averages 的 key 用列索引字符串(与 answer_key.summaryAverages 配置语义一致), 而非列名,
-    // 避免评分器 actual.averages[col] 恒为 undefined。组件与种子双方必须使用同一语义。
-    for (const [key, groupRows] of groups) {
-      const averages: Record<string, string | number> = {};
-      for (const colIdx of scoreColIndices) {
-        const values = groupRows.map(r => parseFloat(r.cells[colIdx] ?? '0')).filter(n => !isNaN(n));
-        const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-        averages[String(colIdx)] = decimalPlaces !== null ? parseFloat(avg.toFixed(decimalPlaces)) : parseFloat(avg.toFixed(2));
-      }
-      if (totalColIdx >= 0) {
-        const values = groupRows.map(r => parseFloat(r.cells[totalColIdx] ?? '0')).filter(n => !isNaN(n));
-        const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-        averages[String(totalColIdx)] = decimalPlaces !== null ? parseFloat(avg.toFixed(decimalPlaces)) : parseFloat(avg.toFixed(2));
-      }
-      summaryGroups.push({ key, averages });
+    return [...s].sort();
+  }, []);
+  const wb = useMemo(() => buildSheetWorkbook({
+    columns, rows: initialRows,
+    extraRows: classNames.map((cn) => [cn, ...columns.slice(1).map(() => '')]),
+  }), []);
+  const idToRowId = useMemo(() => {
+    const m = new Map<string, string>();
+    initialRows.forEach((cells, i) => m.set(String(cells[0] ?? ''), rowIds[i]));
+    return m;
+  }, []);
+  const hexToName = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const [name, hex] of Object.entries(COLOR_MAP)) m.set(String(hex).toUpperCase(), name);
+    return m;
+  }, []);
+  const handleSnap = (getSnap: () => IWorkbookData | null) => {
+    const snap = getSnap(); if (!snap) return;
+    const cd = extractCellData(snap);
+    const rows: Array<{ id: string; cells: string[] }> = [];
+    const order: string[] = [];
+    for (let r = 1; cd[r]; r++) {
+      const row = cd[r];
+      const vals: string[] = [];
+      for (let c = 0; c < columns.length; c++) vals.push(row[c]?.v == null ? '' : String(row[c].v));
+      const rid = idToRowId.get(vals[0]);
+      if (rid !== undefined) { rows.push({ id: rid, cells: vals }); order.push(rid); }
     }
-    emit({ summaryGroups });
+    const bg = cellBg(snap, 0, 0);
+    const headerColor = bg ? (hexToName.get(bg.toUpperCase()) ?? bg) : '';
+    const borderApplied = cellHasBorder(snap, 0, 0) || cellHasBorder(snap, 1, 1);
+    // 汇总区: 数据区(隔一空行)之后的行,A 列班级名匹配预置标签,数值列读平均
+    const summaryGroups: Array<{ key: string; averages: Record<string, number> }> = [];
+    for (let r = initialRows.length + 2; cd[r]; r++) {
+      const row = cd[r];
+      const label = String(row[0]?.v ?? '').trim();
+      if (!label || !label.endsWith('班')) continue;
+      const averages: Record<string, number> = {};
+      for (const ci of scoreColIndices) {
+        const v = parseFloat(String(row[ci]?.v ?? ''));
+        if (!Number.isNaN(v)) averages[String(ci)] = v;
+      }
+      summaryGroups.push({ key: label, averages });
+    }
+    // decimalPlaces: 从成绩列数字格式 pattern("0.00"→2)推断
+    let decimalPlaces: number | undefined;
+    const scoreCol = scoreColIndices[0];
+    if (scoreCol !== undefined) {
+      const stylesMap = (snap?.styles ?? {}) as Record<string, { p?: { pattern?: string } }>;
+      for (let r = 1; r <= initialRows.length && decimalPlaces === undefined; r++) {
+        const cell = cd[r]?.[scoreCol];
+        if (!cell?.s) continue;
+        const st = typeof cell.s === 'string' ? stylesMap[cell.s] : (cell.s as { p?: { pattern?: string } });
+        const pat = st?.p?.pattern;
+        if (pat) { const m = /\.(0+)/.exec(pat); decimalPlaces = m ? m[1].length : 0; }
+      }
+    }
+    onChange({ rows, rowOrder: order, ...(headerColor ? { headerColor } : {}), borderApplied,
+      ...(summaryGroups.length ? { summaryGroups } : {}), ...(decimalPlaces !== undefined ? { decimalPlaces } : {}) });
   };
-
-  // ── 操作 5: 标题行填充颜色 ──
-  const pickColor = (color: string) => { setHeaderColor(color); emit({ headerColor: color }); };
-
-  // ── 操作 6: 设置成绩保留小数位 ──
-  const setDecimals = (places: number) => { setDecimalPlaces(places); emit({ decimalPlaces: places }); };
-
-  const headerBg = COLOR_MAP[headerColor] ?? '';
-
   return (
-    <div className="space-y-4">
-      {/* 工具栏 */}
-      <div className="flex flex-wrap gap-2 rounded-lg border bg-secondary/30 p-3">
-        <Button type="button" size="sm" variant={borderApplied ? 'default' : 'outline'} disabled={disabled} onClick={toggleBorder}>表格边框</Button>
-        {classColIdx >= 0 && <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={applyFormula}>fx 求班级</Button>}
-        <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={sortRows}>排序 ↕</Button>
-        <Button type="button" size="sm" variant={showSummary ? 'default' : 'outline'} disabled={disabled} onClick={toggleSummary}>分类汇总 Σ</Button>
-        <span className="flex items-center gap-1">
-          <span className="text-sm text-muted-foreground">标题色:</span>
-          {colorOptions.map(c => (
-            <button key={c} type="button" disabled={disabled} onClick={() => pickColor(c)}
-              className={`h-7 w-7 rounded border-2 ${headerColor === c ? 'ring-2 ring-primary ring-offset-1' : 'border-gray-300'}`}
-              style={{ backgroundColor: COLOR_MAP[c] || 'transparent' }}
-              aria-label={`标题填充${c}色`} title={c} />
-          ))}
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="text-sm text-muted-foreground">小数:</span>
-          {[0, 1, 2].map(d => (
-            <Button key={d} type="button" size="sm" variant={decimalPlaces === d ? 'default' : 'outline'} disabled={disabled} onClick={() => setDecimals(d)}>{d}位</Button>
-          ))}
-        </span>
-      </div>
-
-      {/* 数据表 */}
-      <div className={`overflow-x-auto rounded-lg ${borderApplied ? 'border-2 border-gray-400' : 'border'}`}>
-        <table className="w-full text-base">
-          <thead>
-            <tr style={headerBg ? { backgroundColor: headerBg } : undefined}>
-              {columns.map((col, ci) => (
-                <th key={ci} className={`px-3 py-2 text-left font-medium whitespace-nowrap ${borderApplied ? 'border border-gray-400' : 'border-b'}`}>
-                  {col}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, ri) => (
-              <tr key={row.id} className={showSummary && ri === 0 ? '' : ''}>
-                {row.cells.map((cell, ci) => (
-                  <td key={ci} className={`px-3 py-2 whitespace-nowrap ${borderApplied ? 'border border-gray-400' : 'border-b'}`}>
-                    {displayCell(cell)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-            {/* 分类汇总行 */}
-            {showSummary && Array.isArray(existing.summaryGroups) && (existing.summaryGroups as Array<{ key: string; averages: Record<string, string | number> }>).map((grp, gi) => (
-              <tr key={`summary-${gi}`} className="bg-secondary/40 font-medium">
-                {columns.map((_, ci) => {
-                  const val = grp.averages[String(ci)];
-                  if (ci === 0) return <td key={ci} className={`px-3 py-2 ${borderApplied ? 'border border-gray-400' : 'border-b'}`}>{grp.key} 平均值</td>;
-                  if (val !== undefined) return <td key={ci} className={`px-3 py-2 ${borderApplied ? 'border border-gray-400' : 'border-b'}`}>{decimalPlaces !== null ? formatDecimal(String(val), decimalPlaces) : val}</td>;
-                  return <td key={ci} className={`px-3 py-2 ${borderApplied ? 'border border-gray-400' : 'border-b'}`}>—</td>;
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">像真实 Excel 一样操作：单击单元格直接编辑；在编辑栏输入公式（班级列、汇总区平均值可用 AVERAGE）；用工具栏完成排序、标题行填充色与边框。表格下方的汇总区已按班级预置标签，请填入各科平均值。</p>
+      <UniverSheet initialWorkbook={wb} feature={{ toolbar: true, formulaBar: true, contextMenu: true }} onChange={handleSnap} disabled={disabled} height={480} />
     </div>
   );
 }
-
 type DrawBox={x:number;y:number;width:number;height:number;label:string;attributes?:Record<string,string>};
 type DrawPoint={x:number;y:number;label:string;attributes?:Record<string,string>};
 type DrawLine={points:Array<{x:number;y:number}>;label:string;attributes?:Record<string,string>};

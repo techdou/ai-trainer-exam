@@ -5,7 +5,7 @@ import { apiFetch } from '@/lib/session-client';
 import { toast } from 'sonner';
 import { Image as ImageIcon, Music } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ExamTaskInput } from '@/components/exam-task-input';
+import { ExamTaskInput, ExcelRows, StatsTable, type Config } from '@/components/exam-task-input';
 import { AnnotationFeedback, isAnnotationTaskType } from '@/components/annotation-feedback';
 
 // ─── 类型 ──────────────────────────────────────────────────────
@@ -438,75 +438,15 @@ interface TaskProps {
 }
 
 function ExcelDeleteRowsTask({ config, submitting, onSubmit }: TaskProps) {
-  const columns = config?.columns ?? ['序号', '姓名', '年龄', '成绩', '备注'];
-  const dataRows = config?.dataRows ?? [];
-  const [selectedIndexes, setSelectedIndexes] = useState<Set<number>>(new Set());
-
-  const toggleRow = (idx: number) => {
-    setSelectedIndexes(prev => {
-      const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx);
-      else next.add(idx);
-      return next;
-    });
-  };
-
-  const handleSubmit = () => {
-    // grader expects: retainedRowIndexes = 保留的行（未被删除的）
-    const retainedRowIndexes = dataRows.map((_, idx) => idx).filter(idx => !selectedIndexes.has(idx));
-    const retainedRowIds = (config?.rowIds ?? []).filter((_, idx) => !selectedIndexes.has(idx));
-    onSubmit(retainedRowIds.length === dataRows.length - selectedIndexes.size ? { retainedRowIds } : { retainedRowIndexes });
-  };
-
+  // 统一走 ExamTaskInput 同款组件(Univer 内核), 练习与考试同构。
+  // 显式提交: onChange 只更新本地状态,由提交按钮触发 onSubmit,防止初始化命令自动提交。
+  const [answer, setAnswer] = useState<unknown>(null);
   return (
     <div className="space-y-4">
-      <div className="bg-card overflow-hidden rounded-xl border">
-        <table className="w-full text-base">
-          <thead>
-            <tr className="bg-secondary/60 border-b">
-              <th className="px-3 py-2 text-center font-medium" style={{ width: 48 }}>删除</th>
-              {columns.map((col, ci) => (
-                <th key={ci} className="px-3 py-2 text-left font-medium">{col}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {dataRows.map((row, ri) => {
-              const selected = selectedIndexes.has(ri);
-              return (
-                <tr
-                  key={ri}
-                  className={`border-b transition-colors last:border-0 ${selected ? 'bg-destructive/10 opacity-60' : 'hover:bg-secondary/30'}`}
-                >
-                  <td className="px-3 py-2 text-center">
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      onChange={() => toggleRow(ri)}
-                      className="h-5 w-5 cursor-pointer accent-[var(--destructive)]"
-                      aria-label={`选中第 ${ri + 1} 行删除`}
-                    />
-                  </td>
-                  {row.map((cell, ci) => (
-                    <td key={ci} className="px-3 py-2">{cell}</td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      {selectedIndexes.size > 0 && (
-        <p className="text-muted-foreground text-sm">
-          已选中 {selectedIndexes.size} 行待删除
-        </p>
-      )}
-      <SubmitButton
-        submitting={submitting}
-        disabled={selectedIndexes.size === 0}
-        onClick={handleSubmit}
-        label="提交评分"
-      />
+      <ExcelRows config={(config ?? {}) as Config} value={null} onChange={setAnswer} disabled={submitting} />
+      <Button size="lg" className="w-full" disabled={submitting || answer == null} onClick={() => onSubmit(answer)}>
+        {submitting ? '评分中…' : '提交答案'}
+      </Button>
     </div>
   );
 }
@@ -514,74 +454,13 @@ function ExcelDeleteRowsTask({ config, submitting, onSubmit }: TaskProps) {
 // ─── 2. 统计表填写任务 ────────────────────────────────────────
 
 function StatsTableFillTask({ config, submitting, onSubmit }: TaskProps) {
-  const columns = config?.columns ?? [];
-  const rows = config?.dataRows ?? config?.rows ?? [];
-  const editableCells = new Set(config?.editableCells ?? []);
-  const [cellValues, setCellValues] = useState<Record<string, string>>({});
-
-  const cellKey = (rowIdx: number, colIdx: number): string => {
-    const colLetter = String.fromCharCode(65 + colIdx);
-    return `${colLetter}${rowIdx + 1}`;
-  };
-
-  const handleCellChange = (key: string, val: string) => {
-    setCellValues(prev => ({ ...prev, [key]: val }));
-  };
-
-  const handleSubmit = () => {
-    // grader expects: { cells: { "E2": value, ... } }
-    const cells: Record<string, string | number> = {};
-    for (const [k, v] of Object.entries(cellValues)) cells[k] = v.trim();
-    onSubmit({ cells });
-  };
-
-  const hasContent = Object.values(cellValues).some(v => v.trim() !== '');
-
+  const [answer, setAnswer] = useState<unknown>(null);
   return (
     <div className="space-y-4">
-      <div className="bg-card overflow-x-auto rounded-xl border">
-        <table className="w-full text-base">
-          <thead>
-            <tr className="bg-secondary/60 border-b">
-              {columns.map((col, ci) => (
-                <th key={ci} className="px-3 py-2 text-left font-medium whitespace-nowrap">{col}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, ri) => (
-              <tr key={ri} className="border-b last:border-0">
-                {row.map((cell, ci) => {
-                  const key = cellKey(ri, ci);
-                  const isEditable = editableCells.has(key);
-                  return (
-                    <td key={ci} className="px-3 py-2 whitespace-nowrap">
-                      {isEditable ? (
-                        <input
-                          type="text"
-                          value={cellValues[key] ?? ''}
-                          onChange={e => handleCellChange(key, e.target.value)}
-                          className="bg-secondary/30 focus:border-primary w-24 rounded border px-2 py-1 text-base outline-none transition-colors"
-                          placeholder="填写"
-                          aria-label={`单元格 ${key}`}
-                        />
-                      ) : (
-                        cell
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <SubmitButton
-        submitting={submitting}
-        disabled={!hasContent}
-        onClick={handleSubmit}
-        label="提交评分"
-      />
+      <StatsTable config={(config ?? {}) as Config} value={null} onChange={setAnswer} disabled={submitting} />
+      <Button size="lg" className="w-full" disabled={submitting || answer == null} onClick={() => onSubmit(answer)}>
+        {submitting ? '评分中…' : '提交答案'}
+      </Button>
     </div>
   );
 }
