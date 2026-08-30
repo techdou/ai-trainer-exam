@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+
 /**
  * 判分反馈可视化：学员标注 vs 标准答案叠加对比。
  * 颜色全部走设计 token(CSS 变量), 与全站墨青绿/暖橙体系一致:
@@ -119,9 +121,7 @@ export function AnnotationFeedback({
   return (
     <div className="space-y-3">
       <div className="relative overflow-hidden rounded-lg border">
-        {imageUrl ? (
-          <img src={imageUrl} alt="标注对比" className="block w-full select-none" draggable={false} />
-        ) : (
+        {imageUrl ? <FeedbackImage src={imageUrl} /> : (
           <div className="flex h-64 items-center justify-center text-muted-foreground">图片未配置</div>
         )}
         <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 1 1" preserveAspectRatio="none">
@@ -161,5 +161,30 @@ export function AnnotationFeedback({
         </div>
       )}
     </div>
+  );
+}
+
+
+/** 反馈对比图: 加载失败自动重试两次,仍失败给「点击重试」占位,绝不静默空白。 */
+function FeedbackImage({ src }: { src: string }) {
+  const [attempt, setAttempt] = useState(0);
+  const [failed, setFailed] = useState(false);
+  return failed ? (
+    <button
+      type="button"
+      onClick={() => { setFailed(false); setAttempt((a) => a + 1); }}
+      className="flex h-64 w-full items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+    >
+      🖼 图片加载失败（网络抖动或服务重启窗口），点击重试
+    </button>
+  ) : (
+    <img
+      key={attempt}
+      src={src}
+      alt="标注对比"
+      className="block w-full select-none"
+      draggable={false}
+      onError={() => { setAttempt((a) => { if (a >= 2) setFailed(true); return a + 1; }); }}
+    />
   );
 }
