@@ -1,0 +1,2383 @@
+[
+ {
+  "question_type": "single_choice",
+  "stem": "图灵测试最早由谁在哪一年提出",
+  "options": [
+   "图灵 1950",
+   "图灵 1956",
+   "麦卡锡 1950",
+   "麦卡锡 1956"
+  ],
+  "answerKey": "A",
+  "explanation": null,
+  "knowledge_point": "开班与人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "电脑着火了,第一步应该",
+  "options": [
+   "浇水",
+   "先断电",
+   "用湿抹布盖",
+   "打开窗户"
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "开班与人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "使用干粉灭火器要对准火焰的",
+  "options": [
+   "尖端",
+   "根部",
+   "中间",
+   "上方"
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "开班与人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "`<p>` 标签的语义是",
+  "options": [
+   "大标题",
+   "段落",
+   "链接",
+   "图片"
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "开班与人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "DOM 树里,`<li>` 是 `<ul>` 的",
+  "options": [
+   "父节点",
+   "子节点",
+   "兄弟节点",
+   "树根"
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "开班与人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "爬虫三步曲的正确顺序是",
+  "options": [
+   "解析→请求→保存",
+   "请求→解析→保存",
+   "保存→请求→解析",
+   "请求→保存→解析"
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "数据采集与爬虫"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "下列哪个行为踩了合规红线",
+  "options": [
+   "先看 robots.txt 再采集",
+   "只采集公开数据且频率克制",
+   "爬取 robots.txt 明确禁止的页面",
+   "不采集任何个人信息"
+  ],
+  "answerKey": "C",
+  "explanation": null,
+  "knowledge_point": "数据采集与爬虫"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "JSON 里方括号 `[...]` 代表",
+  "options": [
+   "一条记录",
+   "一批记录",
+   "一个字段",
+   "注释"
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "数据采集与爬虫"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "\"五大脏\"不包括以下哪项",
+  "options": [
+   "重复",
+   "缺失",
+   "格式不一",
+   "合法"
+  ],
+  "answerKey": "D",
+  "explanation": null,
+  "knowledge_point": "数据采集与爬虫"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "清洗四步法的顺序是?(查→___→修→验,横线处填什么?)?",
+  "options": [
+   "去",
+   "删",
+   "排",
+   "补"
+  ],
+  "answerKey": "A",
+  "explanation": null,
+  "knowledge_point": "数据采集与爬虫"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "人工智能训练师的职业编码是",
+  "options": [
+   "4-04-05-05",
+   "4-05-04-05",
+   "5-04-05-04",
+   "4-04-04-05"
+  ],
+  "answerKey": "A",
+  "explanation": null,
+  "knowledge_point": "结构化数据与大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "大模型生成回答的本质是",
+  "options": [
+   "联网搜索后复制",
+   "从内置数据库查询",
+   "随机拼字",
+   "一个词一个词\"预测下一个词\""
+  ],
+  "answerKey": "D",
+  "explanation": null,
+  "knowledge_point": "结构化数据与大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "换一个新对话,AI 还记得上一个对话里聊的内容吗",
+  "options": [
+   "不记得,除非平台另外做了记忆功能",
+   "完全记得",
+   "记得最近三条",
+   "记得关键词"
+  ],
+  "answerKey": "A",
+  "explanation": null,
+  "knowledge_point": "结构化数据与大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "以下哪个属于结构化数据",
+  "options": [
+   "一段闲聊语音",
+   "一张 Excel 表",
+   "一张随手拍的照片",
+   "一篇没排版的文章"
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "结构化数据与大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "\"AI 预处理 + 人工把关\"模式里,AI 拿不准的条目应该",
+  "options": [
+   "直接跳过",
+   "单独列出交给人处理",
+   "随便标一个"
+  ],
+  "answerKey": "C",
+  "explanation": null,
+  "knowledge_point": "结构化数据与大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "按照国家职业技能标准,下列哪项属于人工智能训练师的工作内容",
+  "options": [
+   "招聘培训、绩效管理、薪酬核算",
+   "数据库管理、算法参数设置、人机交互设计、性能测试跟踪",
+   "网络架设、机房布线、设备采购",
+   "市场调研、广告投放、渠道拓展"
+  ],
+  "answerKey": "B",
+  "explanation": "2021 版职业定义:数据库管理、算法参数设置、人机交互设计、性能测试跟踪及其他辅助作业。",
+  "knowledge_point": "结构化数据与大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "下列哪一项最接近人工智能训练师的日常工作流",
+  "options": [
+   "提需求给开发 → 验收产品 → 上线推广",
+   "接听客户来电 → 记录问题 → 转交处理",
+   "写论文 → 做实验 → 投稿发表",
+   "采集数据 → 清洗整理 → 标注 → 质检 → 统计交付"
+  ],
+  "answerKey": "D",
+  "explanation": "训练师工作流七步:采→分→洗→标→检→统→交。",
+  "knowledge_point": "结构化数据与大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "小张刚取得人工智能训练师五级证书,他最能胜任的起步岗位是",
+  "options": [
+   "首席算法科学家",
+   "数据标注员 / 数据采集执行岗",
+   "大学教师"
+  ],
+  "answerKey": "C",
+  "explanation": "五级=初级工,从标注/采集执行岗起步;三级以上才涉及项目管理与方案设计。",
+  "knowledge_point": "结构化数据与大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "下列哪个场景属于\"把非结构化数据转成结构化数据\"",
+  "options": [
+   "把一段客服聊天记录整理成 JSON,每条含说话人、内容、情绪字段",
+   "把 Excel 表截成一张图片发群里",
+   "给照片加一个滤镜",
+   "把文件夹压缩成 zip 包"
+  ],
+  "answerKey": "A",
+  "explanation": "非结构化(纯文本)→结构化(JSON),让大模型当\"格式翻译官\"。",
+  "knowledge_point": "结构化数据与大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "JSON 中一个对象 { } 代表",
+  "options": [
+   "一批记录",
+   "一个网页",
+   "一个文件夹"
+  ],
+  "answerKey": "B",
+  "explanation": "花括号一条记录=一个实例;方括号数组=一批实例。",
+  "knowledge_point": "结构化数据与大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "拉框四原则**不包括**以下哪项",
+  "options": [
+   "贴边",
+   "完整",
+   "不漏",
+   "框越大越保险"
+  ],
+  "answerKey": "D",
+  "explanation": null,
+  "knowledge_point": "数据标注核心实战"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "两个标注员对同一批数据标出不同结果、但各自都有道理,应该首先",
+  "options": [
+   "批评标注员",
+   "怀疑规范有歧义,上报补充判例",
+   "以先标的人为准",
+   "抽签决定"
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "数据标注核心实战"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "\"呵呵,客服可真是'太热情'了\"应标情感",
+  "options": [
+   "正面",
+   "中性",
+   "负面",
+   "存疑"
+  ],
+  "answerKey": "C",
+  "explanation": null,
+  "knowledge_point": "数据标注核心实战"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "语音转写遇到口癖\"那个那个\",正确做法",
+  "options": [
+   "删掉更干净",
+   "逐字保留",
+   "改成书面语",
+   "换成\"嗯\""
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "数据标注核心实战"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "AI 预标注的结果可以",
+  "options": [
+   "直接交付",
+   "人工复核后才能交付",
+   "抽 5% 看一眼就行"
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "数据标注核心实战"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "发现 API Key 泄露,正确做法",
+  "options": [
+   "改个文件名",
+   "发群里问问",
+   "立刻去控制台作废重发",
+   "观察几天再说"
+  ],
+  "answerKey": "C",
+  "explanation": null,
+  "knowledge_point": "训练师全流程与智能运维"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "MCP 解决的问题是",
+  "options": [
+   "让表格变干净",
+   "让图片更清晰"
+  ],
+  "answerKey": "A",
+  "explanation": null,
+  "knowledge_point": "训练师全流程与智能运维"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "智能系统维护记录的\"两表\"是指",
+  "options": [
+   "工资表和考勤表",
+   "入库表和出库表",
+   "日程表和会议表",
+   "功能应用情况表和数据情况表"
+  ],
+  "answerKey": "D",
+  "explanation": null,
+  "knowledge_point": "训练师全流程与智能运维"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "API 响应里 `usage.prompt_tokens` 字段告诉你什么",
+  "options": [
+   "免费额度还剩多少",
+   "图片数量",
+   "用户编号"
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "训练师全流程与智能运维"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "让 AI 自动执行的任务涉及删除、覆盖等操作,必须",
+  "options": [
+   "保留人工确认环节",
+   "全自动更高效",
+   "先执行再汇报",
+   "发到群里公示"
+  ],
+  "answerKey": "A",
+  "explanation": null,
+  "knowledge_point": "训练师全流程与智能运维"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "关于 API 和 API Key,下列说法正确的是",
+  "options": [
+   "Key 是模型的名称",
+   "Key 可以发到工作群共用"
+  ],
+  "answerKey": "B",
+  "explanation": "API 是调取服务商模型服务的通道,Key 用来鉴权(证明调用者身份)。",
+  "knowledge_point": "训练师全流程与智能运维"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "调用大模型 API 时为什么要带上 API Key",
+  "options": [
+   "加快网速",
+   "提高模型智商",
+   "鉴权:让服务商知道是谁在调用,据此计费和控制权限",
+   "防止电脑中毒"
+  ],
+  "answerKey": "C",
+  "explanation": "Key 的作用:鉴权、计费、控权限。",
+  "knowledge_point": "训练师全流程与智能运维"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "API Key 泄露的最直接后果是",
+  "options": [
+   "别人冒用你的身份调用服务,费用算在你头上",
+   "电脑会被远程锁死",
+   "模型从此回答变慢",
+   "没有任何后果"
+  ],
+  "answerKey": "A",
+  "explanation": "Key 泄露=别人拿你的钱干活;第一时间作废重发。",
+  "knowledge_point": "训练师全流程与智能运维"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "同事发来一个 Python 脚本,运行时报\"python 不是内部或外部命令\",最可能的原因是",
+  "options": [
+   "文件名太长",
+   "电脑内存不足",
+   "需要重装系统"
+  ],
+  "answerKey": "D",
+  "explanation": "Python 是编程语言,运行需要环境;没装环境(或没配环境变量)就报\"不是内部或外部命令\"。",
+  "knowledge_point": "训练师全流程与智能运维"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "让 Agent 写一个爬虫脚本帮你抓数据,正确的做法是",
+  "options": [
+   "拿到就直接运行,不用看内容",
+   "说清需求 → 检查脚本逻辑 → 确认后再运行",
+   "让它自动反复运行一百遍",
+   "自己从零手写一遍"
+  ],
+  "answerKey": "B",
+  "explanation": "AI 生产、人把关:说清需求→看得懂→确认后再运行。",
+  "knowledge_point": "训练师全流程与智能运维"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "CREATE 框架六个字母分别代表?(背景、角色、____、任务、语气、格式——横线处填什么?)?",
+  "options": [
+   "示例",
+   "数量",
+   "评价",
+   "编辑"
+  ],
+  "answerKey": "A",
+  "explanation": null,
+  "knowledge_point": "提示词工程与智能体"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "少样本练习里,给的例子**最好**包含",
+  "options": [
+   "最简单直白的",
+   "越多越好",
+   "只给正面的"
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "提示词工程与智能体"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "RAG(配了知识库)的 AI 回答问题前会",
+  "options": [
+   "全凭记忆",
+   "先检索你上传的资料再回答",
+   "联网搜索",
+   "拒绝回答"
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "提示词工程与智能体"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "\"顾问 vs 助理\"类比中,Agent 区别于普通 LLM 的关键是",
+  "options": [
+   "回答更长",
+   "能自主拆步骤、调工具、执行交付",
+   "更便宜",
+   "只会聊天"
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "提示词工程与智能体"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "给 AI 配了文件读取权限,是否等于它也能删文件",
+  "options": [
+   "是,权限都是通用的",
+   "不是,授权要最小化,删除等危险操作要单独把关",
+   "无所谓"
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "提示词工程与智能体"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "Agent 与大模型最本质的区别是",
+  "options": [],
+  "answerKey": "B",
+  "explanation": "LLM 是大脑只会\"说\";Agent=大脑+工具的手+自主流程。",
+  "knowledge_point": "提示词工程与智能体"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "Agent 完成具体任务,主要靠",
+  "options": [
+   "只靠聊天回答",
+   "靠运气",
+   "人工代替操作"
+  ],
+  "answerKey": "D",
+  "explanation": "Agent 靠调用 Skill(技能包)驱动执行。",
+  "knowledge_point": "提示词工程与智能体"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "Skill(技能包)的组成是",
+  "options": [
+   "一段提示词模板",
+   "一组参考图片",
+   "一段语音说明"
+  ],
+  "answerKey": "B",
+  "explanation": "Skill=MD 说明书(给 AI 看的用法)+script 脚本(可执行动作)。",
+  "knowledge_point": "提示词工程与智能体"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "\"渐进式披露\"指的是",
+  "options": [
+   "逐字朗读说明书",
+   "技能分免费和付费",
+   "只展示一半内容"
+  ],
+  "answerKey": "A",
+  "explanation": "平时只看摘要,要用才展开——省上下文、按需加载。",
+  "knowledge_point": "提示词工程与智能体"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "Skill 中执行任务的 script 脚本,现在的常见来源是",
+  "options": [
+   "必须逐字手抄",
+   "随机生成,无法查看",
+   "只能购买获得"
+  ],
+  "answerKey": "C",
+  "explanation": "脚本如今大多由 Agent 撰写,人审核确认后使用。",
+  "knowledge_point": "提示词工程与智能体"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "生图、生视频的提示词中,必须写清楚的是",
+  "options": [
+   "主体",
+   "价格",
+   "作者",
+   "文件大小"
+  ],
+  "answerKey": "A",
+  "explanation": "主体是必选项,再补场景、风格、细节、参数。",
+  "knowledge_point": "提示词工程与智能体"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "漫剧生产线的成败关键是",
+  "options": [
+   "剧情多反转",
+   "角色一致性",
+   "背景音乐",
+   "格子数量"
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "AIGC 作品创作实战"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "口播稿一句话尽量不超过",
+  "options": [
+   "30 字",
+   "25 字",
+   "15 字",
+   "50 字"
+  ],
+  "answerKey": "C",
+  "explanation": null,
+  "knowledge_point": "AIGC 作品创作实战"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "关于\"AI 生成图片里的文字\",正确认知是",
+  "options": [
+   "常有错别字,台词靠后期加字幕",
+   "不能生成带字图片",
+   "重生几次就一定对"
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "AIGC 作品创作实战"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "AI 生成的短视频发布到平台,正确做法",
+  "options": [
+   "不用管",
+   "只在标题说明",
+   "看平台心情"
+  ],
+  "answerKey": "B",
+  "explanation": null,
+  "knowledge_point": "AIGC 作品创作实战"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "数字人生成排队很慢,最聪明的做法",
+  "options": [
+   "干等到好",
+   "反复重新提交",
+   "放弃数字人"
+  ],
+  "answerKey": "C",
+  "explanation": null,
+  "knowledge_point": "AIGC 作品创作实战"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "漫剧制作的正确流程是",
+  "options": [
+   "分镜 → 脚本 → 资产 → 视频 → 剪辑",
+   "资产 → 剪辑 → 脚本 → 视频 → 分镜",
+   "脚本 → 角色资产图 → 分镜图 → 生成视频 → 剪辑",
+   "脚本 → 剪辑 → 分镜 → 资产 → 视频"
+  ],
+  "answerKey": "C",
+  "explanation": "脚本→角色资产图→分镜图→生成视频→剪辑。",
+  "knowledge_point": "AIGC 作品创作实战"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "画布式工作流(类 ComfyUI)中,节点之间的\"连线\"表示",
+  "options": [
+   "页面装饰",
+   "数据流:上一节点的输出喂给下一节点",
+   "制作顺序备注",
+   "文件大小关系"
+  ],
+  "answerKey": "B",
+  "explanation": "连线即数据流:上一节点的输出喂给下一节点。",
+  "knowledge_point": "AIGC 作品创作实战"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "漫剧的\"资产图\"应包括",
+  "options": [
+   "只有主角设定图",
+   "只有背景音乐",
+   "只有台词字幕",
+   "角色设定 + 场景背景 + 关键道具"
+  ],
+  "answerKey": "D",
+  "explanation": "资产图=角色设定+场景背景+关键道具,全剧的\"美术字典\"。",
+  "knowledge_point": "AIGC 作品创作实战"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "画布里只改了某个文本节点的提示词,需要重跑的是",
+  "options": [
+   "从头重跑整条流水线",
+   "只重跑该节点和它的下游",
+   "只重跑上游节点",
+   "全部不用动"
+  ],
+  "answerKey": "B",
+  "explanation": "节点式工作流:只重跑该节点和下游,上游资产不动。",
+  "knowledge_point": "AIGC 作品创作实战"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "数字人口播稿的正确写法是",
+  "options": [
+   "为声音而写作:短句、口语、有钩子、留气口",
+   "书面美文长句",
+   "全部用书面语",
+   "字数越多越好"
+  ],
+  "answerKey": "A",
+  "explanation": "为声音而写作:短句、口语、钩子、气口。",
+  "knowledge_point": "AIGC 作品创作实战"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "\"机器预标注的结果可以直接交付\"——这个说法对吗?",
+  "options": [],
+  "answerKey": "false",
+  "explanation": "AI 预标注必须人工复核后才能交付。",
+  "knowledge_point": "职业道德法规与结业考核"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "数据去重后,流程记录表要不要更新?",
+  "options": [
+   "不用,去重不影响记录",
+   "要,每个环节数量变化都要记录"
+  ],
+  "answerKey": "B",
+  "explanation": "每个环节的数量变化都要留痕——实操采分点。",
+  "knowledge_point": "职业道德法规与结业考核"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "试用期最长不超过几个月?",
+  "options": [
+   "3 个月",
+   "6 个月",
+   "12 个月",
+   "没有上限"
+  ],
+  "answerKey": "B",
+  "explanation": "3 年以上或无固定期限合同对应最长 6 个月。",
+  "knowledge_point": "职业道德法规与结业考核"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "AI 生成的短视频可以不加标识直接发布吗?",
+  "options": [
+   "可以,没人管",
+   "不可以,2025.9.1 起施行标识办法"
+  ],
+  "answerKey": "B",
+  "explanation": "《人工智能生成合成内容标识办法》2025.9.1 施行。",
+  "knowledge_point": "职业道德法规与结业考核"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "Agent 要删一批文件,你已经检查过方案,还需要人工确认吗?",
+  "options": [
+   "需要,不可逆操作必须人工确认",
+   "不需要,检查过就行"
+  ],
+  "answerKey": "A",
+  "explanation": "不可逆操作(删除/覆盖)必须人工确认。",
+  "knowledge_point": "职业道德法规与结业考核"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "两个标注员对同一批数据结果不同但各自合理,首先应该?",
+  "options": [
+   "处罚先交的那个人",
+   "怀疑规范有歧义,上报补充判例"
+  ],
+  "answerKey": "B",
+  "explanation": "先怀疑规范有歧义,不急着怪人。",
+  "knowledge_point": "职业道德法规与结业考核"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "标注素材里出现了用户的真实手机号,正确的做法是?",
+  "options": [
+   "按项目规范脱敏,绝不外传",
+   "发到同行群问问大家"
+  ],
+  "answerKey": "A",
+  "explanation": "真实个人信息一律按规范脱敏,不进群、不截图、不外传。",
+  "knowledge_point": "职业道德法规与结业考核"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "为了赶交付进度,可以把质检抽检比例从 10% 悄悄降到 2% 吗?",
+  "options": [
+   "可以,进度优先",
+   "不可以,质检比例是规范要求,擅自降低属违规"
+  ],
+  "answerKey": "B",
+  "explanation": "质检比例是规范要求,擅自降低=数据质量失控。",
+  "knowledge_point": "职业道德法规与结业考核"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "离职时,可以把自己整理的标注规范文档拷走备用吗?",
+  "options": [
+   "可以,是我自己写的",
+   "不可以,未公开的项目规范属于保密范围"
+  ],
+  "answerKey": "B",
+  "explanation": "保守秘密是职业守则;未公开的规范与模型信息不外传。",
+  "knowledge_point": "职业道德法规与结业考核"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "把项目数据拷到个人网盘\"回家加班\",可以吗?",
+  "options": [
+   "可以,只要不删原文件",
+   "不可以,未经书面授权不得带出工作环境"
+  ],
+  "answerKey": "B",
+  "explanation": "项目数据不出工作环境,除非有书面授权。",
+  "knowledge_point": "职业道德法规与结业考核"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "发现 API Key 泄露了,第一时间应该?",
+  "options": [
+   "作废并重新生成,排查使用记录",
+   "不管它,继续用"
+  ],
+  "answerKey": "A",
+  "explanation": "Key 泄露=别人拿你的钱干活;先作废止损,再排查。",
+  "knowledge_point": "职业道德法规与结业考核"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "同事说\"就一条数据,标错了没事吧\",正确的态度是?",
+  "options": [
+   "没事,一条而已",
+   "侥幸心理就是职业风险,拿不准就存疑上报"
+  ],
+  "answerKey": "B",
+  "explanation": "\"就一条\"的侥幸心理=职业风险;存疑是流程的一部分。",
+  "knowledge_point": "职业道德法规与结业考核"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "人工智能的主要目标是让机器",
+  "options": [
+   "代替人类全部工作",
+   "模拟和延伸人的智能",
+   "跑得比人快",
+   "永久不出错"
+  ],
+  "answerKey": "B",
+  "explanation": "AI 是模拟、延伸人的智能的技术,不是全盘替代。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "\"机器学习\"与\"传统程序\"的最大区别是",
+  "options": [
+   "机器学习必须用 Python",
+   "传统程序规则由人写死,机器学习从数据中学规律",
+   "机器学习不需要代码",
+   "传统程序不能做数学计算"
+  ],
+  "answerKey": "B",
+  "explanation": "传统程序=人写规则;机器学习=数据+算法自动学出规则。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "训练一个识别猫狗图片的模型,最需要准备的是",
+  "options": [
+   "大量标注好的猫狗图片",
+   "一台高清打印机",
+   "猫和狗的实体",
+   "音乐文件"
+  ],
+  "answerKey": "A",
+  "explanation": "监督学习需要\"数据+标注\"作为学习材料。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "人工智能三要素通常指",
+  "options": [
+   "CPU、内存、硬盘",
+   "算力、数据、算法",
+   "鼠标、键盘、显示器",
+   "网速、带宽、流量"
+  ],
+  "answerKey": "B",
+  "explanation": "算力(硬件)+数据(原料)+算法(方法)是 AI 三要素。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "下列哪项不属于人工智能的典型应用",
+  "options": [
+   "人脸识别门禁",
+   "语音助手",
+   "购物推荐",
+   "微波炉转盘旋转"
+  ],
+  "answerKey": "D",
+  "explanation": "转盘旋转是纯机械结构,与智能无关。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "\"深度学习\"中的\"深度\"指的是",
+  "options": [
+   "学问深奥",
+   "神经网络的层数多",
+   "数据存得深",
+   "程序员资历深"
+  ],
+  "answerKey": "B",
+  "explanation": "深度=多层神经网络结构。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "手机相册自动把照片按\"人物/风景/美食\"分类,用到的技术是",
+  "options": [
+   "蓝牙",
+   "图像识别(计算机视觉)",
+   "红外遥控",
+   "无线充电"
+  ],
+  "answerKey": "B",
+  "explanation": "图像识别是计算机视觉的典型能力。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "语音转文字主要依赖的技术是",
+  "options": [
+   "语音识别",
+   "图像分割",
+   "数据脱敏",
+   "负载均衡"
+  ],
+  "answerKey": "A",
+  "explanation": "语音识别(ASR)把语音转成文本。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "机器学习模型训练好后,就永远不需要再更新了——这个说法对吗?",
+  "options": [],
+  "answerKey": "false",
+  "explanation": "数据和场景会变化,模型需要持续迭代更新。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "数据质量比数据数量更重要,脏数据训练不出好模型——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "Garbage in, garbage out——垃圾进垃圾出。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "1956 年达特茅斯会议的历史意义是",
+  "options": [
+   "发明了计算机",
+   "首次提出\"人工智能\"一词",
+   "发布第一部手机",
+   "建立互联网"
+  ],
+  "answerKey": "B",
+  "explanation": "麦卡锡等人在此会议首次使用 Artificial Intelligence。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "关于\"强人工智能\"与\"弱人工智能\",下列说法正确的是",
+  "options": [
+   "弱人工智能只能完成特定任务",
+   "强人工智能已经普及",
+   "弱人工智能会自我意识觉醒",
+   "两者没有区别"
+  ],
+  "answerKey": "A",
+  "explanation": "当前全部是弱人工智能(特定任务);强人工智能尚不存在。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "下列哪项是常见的开源机器学习框架",
+  "options": [
+   "微信",
+   "TensorFlow",
+   "支付宝",
+   "计算器"
+  ],
+  "answerKey": "B",
+  "explanation": "TensorFlow、PyTorch 是主流开源框架。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "人工智能训练师的日常工作就是训练机器人走路——这个说法对吗?",
+  "options": [],
+  "answerKey": "false",
+  "explanation": "训练师核心工作是数据采集、标注、质量管理和模型评估等。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "模型\"过拟合\"的表现是",
+  "options": [
+   "训练数据上效果好,新数据上效果差",
+   "什么都学不会",
+   "只在测试集好",
+   "运行速度快"
+  ],
+  "answerKey": "A",
+  "explanation": "过拟合=死记硬背训练数据,泛化能力差。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "给模型\"喂\"从未见过的数据来检验真实水平,这批数据叫",
+  "options": [
+   "训练集",
+   "验证集",
+   "测试集",
+   "复习集"
+  ],
+  "answerKey": "C",
+  "explanation": "测试集用于最终评估泛化能力。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "算力越强,模型效果就一定越好——这个说法对吗?",
+  "options": [],
+  "answerKey": "false",
+  "explanation": "算力只是条件之一,数据和算法同样关键。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "人工智能伦理原则不包括",
+  "options": [
+   "公平公正",
+   "透明可解释",
+   "隐私保护",
+   "数据越贵越好"
+  ],
+  "answerKey": "D",
+  "explanation": "价格不是伦理原则。",
+  "knowledge_point": "人工智能基础"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "下列数据采集方式中,合法合规的是",
+  "options": [
+   "爬取明确禁止爬取的私人数据",
+   "使用官方公开 API 获取数据",
+   "盗用他人账号导出数据",
+   "购买来路不明的个人信息"
+  ],
+  "answerKey": "B",
+  "explanation": "官方 API 是授权通道,合法合规。",
+  "knowledge_point": "数据采集"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "robots.txt 的作用是",
+  "options": [
+   "加密网站",
+   "告诉爬虫哪些页面可以/不可以抓取",
+   "给网站加速",
+   "存放密码"
+  ],
+  "answerKey": "B",
+  "explanation": "robots 协议是爬虫礼仪的基本约定。",
+  "knowledge_point": "数据采集"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "爬虫抓取频率过高导致网站瘫痪,这种行为",
+  "options": [
+   "值得表扬",
+   "可能构成违规甚至违法",
+   "与技术无关",
+   "网站活该"
+  ],
+  "answerKey": "B",
+  "explanation": "高频请求影响服务可用性,可能违反法规。",
+  "knowledge_point": "数据采集"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "下列属于结构化数据的是",
+  "options": [
+   "一张自拍照片",
+   "Excel 里的成绩表",
+   "一段采访录音",
+   "一段监控视频"
+  ],
+  "answerKey": "B",
+  "explanation": "行列结构的数据表是典型结构化数据。",
+  "knowledge_point": "数据采集"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "API 的通俗理解是",
+  "options": [
+   "程序之间约定好的数据通道",
+   "一种编程语言",
+   "电脑型号",
+   "杀毒软件"
+  ],
+  "answerKey": "A",
+  "explanation": "API=应用间通信的标准化接口。",
+  "knowledge_point": "数据采集"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "采集数据时发现目标网站需要登录才能看内容,正确的做法是",
+  "options": [
+   "破解登录",
+   "注册自己的正规账号按规则使用",
+   "借用他人 cookie",
+   "放弃一切网络活动"
+  ],
+  "answerKey": "B",
+  "explanation": "用正规账号并遵守服务条款。",
+  "knowledge_point": "数据采集"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "公开网页上的数据可以随意 commercial 使用,不需要考虑版权——这个说法对吗?",
+  "options": [],
+  "answerKey": "false",
+  "explanation": "公开≠可任意商用,需注意版权与授权。",
+  "knowledge_point": "数据采集"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "网络爬虫的基本工作流程是",
+  "options": [
+   "请求网页→解析内容→存储数据",
+   "打印→复印→装订",
+   "开机→关机",
+   "上传→下载→删除"
+  ],
+  "answerKey": "A",
+  "explanation": "请求-解析-存储三步。",
+  "knowledge_point": "数据采集"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "下列哪项不是常见的数据存储格式",
+  "options": [
+   "CSV",
+   "JSON",
+   "Excel",
+   "PPT 动画"
+  ],
+  "answerKey": "D",
+  "explanation": "PPT 是演示格式,不是数据存储格式。",
+  "knowledge_point": "数据采集"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "做数据采集前应先明确采集目的和范围,做到最小必要——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "最小必要原则是数据合规的基本要求。",
+  "knowledge_point": "数据采集"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "断点续传的价值是",
+  "options": [
+   "让文件更小",
+   "下载中断后从断点继续,不必重头来",
+   "提高 CPU 主频",
+   "美化界面"
+  ],
+  "answerKey": "B",
+  "explanation": "大文件下载中断后可继续。",
+  "knowledge_point": "数据采集"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "下列行为属于侵犯个人信息权益的是",
+  "options": [
+   "公开他人手机号用于推销",
+   "使用自己发布的内容",
+   "阅读公开新闻",
+   "存储自己的照片"
+  ],
+  "answerKey": "A",
+  "explanation": "未经同意处理他人个人信息属侵权。",
+  "knowledge_point": "数据采集"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "爬虫只是一种技术工具,是否违规取决于使用方式——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "技术中立,关键看用途是否合规。",
+  "knowledge_point": "数据采集"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "数据采集的\"时效性\"指的是",
+  "options": [
+   "数据要新鲜、反映当前情况",
+   "采集速度要慢",
+   "数据越旧越值钱",
+   "采集时间随意"
+  ],
+  "answerKey": "A",
+  "explanation": "时效性=数据反映现实的新鲜程度。",
+  "knowledge_point": "数据采集"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "多来源采集同一指标的数据后,应该",
+  "options": [
+   "随便选一个",
+   "交叉验证、核对一致性",
+   "全部丢弃",
+   "只信最贵的来源"
+  ],
+  "answerKey": "B",
+  "explanation": "交叉验证提高数据可信度。",
+  "knowledge_point": "数据采集"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "采集涉及个人信息的数据时,匿名化/脱敏是保护隐私的重要手段——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "脱敏后无法识别特定个人,降低隐私风险。",
+  "knowledge_point": "数据采集"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "Excel 中求一列数字的平均值,常用函数是",
+  "options": [
+   "=SUM()",
+   "=AVERAGE()",
+   "=COUNT()",
+   "=MAX()"
+  ],
+  "answerKey": "B",
+  "explanation": "AVERAGE 求平均。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "CSV 文件的特点是",
+  "options": [
+   "带动画效果",
+   "纯文本、逗号分隔、通用性强",
+   "只能存图片",
+   "必须联网打开"
+  ],
+  "answerKey": "B",
+  "explanation": "CSV 是最通用的表格交换格式。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "Excel 中\"删除重复项\"功能的作用是",
+  "options": [
+   "删除空白行",
+   "按指定列去掉完全重复的记录",
+   "删除所有公式",
+   "给表格加密"
+  ],
+  "answerKey": "B",
+  "explanation": "按列组合判断重复并去重。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "数据清洗通常不包括",
+  "options": [
+   "处理缺失值",
+   "纠正错误格式",
+   "删除重复记录",
+   "给数据加上虚假记录"
+  ],
+  "answerKey": "D",
+  "explanation": "加假数据是造假,不是清洗。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "Excel 中想把\"文本型数字\"转换为可计算的数字,可以用",
+  "options": [
+   "换个字体",
+   "分列或 VALUE 函数",
+   "加粗",
+   "改变行高"
+  ],
+  "answerKey": "B",
+  "explanation": "VALUE()/分列可转类型。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "单元格显示\"####\"通常表示",
+  "options": [
+   "公式错误",
+   "列宽不够放不下数字",
+   "文件损坏",
+   "中了病毒"
+  ],
+  "answerKey": "B",
+  "explanation": "拉宽列即可显示。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "关于筛选与排序的区别,正确的是",
+  "options": [
+   "筛选改变数据内容,排序不改变",
+   "排序重排行序,筛选只显示满足条件的行",
+   "两者完全相同",
+   "排序会删除数据"
+  ],
+  "answerKey": "B",
+  "explanation": "排序=重排;筛选=按条件显示子集。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "Excel 里 =VLOOKUP 是用来查字典单词的函数——这个说法对吗?",
+  "options": [],
+  "answerKey": "false",
+  "explanation": "VLOOKUP 用于按关键字在表中纵向查找匹配值。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "缺失值常见的处理方式不包括",
+  "options": [
+   "填充默认值/均值",
+   "删除该记录",
+   "标记保留",
+   "当作正常值直接发布"
+  ],
+  "answerKey": "D",
+  "explanation": "缺失必须处理或标记,不能装作没有。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "JSON 格式中,数组([])通常用来表示",
+  "options": [
+   "一个键值对",
+   "一批同类型的数据记录",
+   "注释",
+   "图片"
+  ],
+  "answerKey": "B",
+  "explanation": "数组=列表,常对应一批记录。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "Excel 中锁定公式里的某行某列不随拖动变化,用符号",
+  "options": [
+   "$",
+   "#",
+   "@",
+   "&"
+  ],
+  "answerKey": "A",
+  "explanation": "$A$1 是绝对引用。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "数据清洗时发现明显异常的离群值,应该直接悄悄删除不留记录——这个说法对吗?",
+  "options": [],
+  "answerKey": "false",
+  "explanation": "异常值处理要留痕,记录处理方式以备审计。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "一列数据想快速看出最大值,用",
+  "options": [
+   "=MIN()",
+   "=MAX()",
+   "=LEN()",
+   "=TODAY()"
+  ],
+  "answerKey": "B",
+  "explanation": "MAX 求最大。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "Excel 中\"分类汇总\"前一般要先做什么",
+  "options": [
+   "先按分类字段排序",
+   "先删除表头",
+   "先合并单元格",
+   "先改字体颜色"
+  ],
+  "answerKey": "A",
+  "explanation": "同类记录排在一起才能正确分组汇总。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "下列哪种做法能保证原始数据不被误改",
+  "options": [
+   "把原始数据另存备份并设为只读",
+   "直接在原表上改",
+   "凭记忆恢复",
+   "每天重做一遍"
+  ],
+  "answerKey": "A",
+  "explanation": "原始数据留档是数据管理铁律。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "在 Excel 中,合并单元格通常有利于后期数据分析和筛选——这个说法对吗?",
+  "options": [],
+  "answerKey": "false",
+  "explanation": "合并单元格会给排序、筛选、公式带来麻烦,分析前应尽量避免。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "数据透视表最核心的用途是",
+  "options": [
+   "画自画像",
+   "快速分组统计汇总",
+   "播放视频",
+   "压缩文件"
+  ],
+  "answerKey": "B",
+  "explanation": "透视表=拖拽式分组汇总工具。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "记录数据清洗过程(处理了什么、处理了多少)的意义是",
+  "options": [
+   "好看而已",
+   "可追溯、可审计、可复现",
+   "领导要求的形式主义",
+   "没有意义"
+  ],
+  "answerKey": "B",
+  "explanation": "流程留痕是数据质量管理的核心。",
+  "knowledge_point": "结构化数据"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "大语言模型(LLM)生成内容出现\"一本正经地胡说八道\",这种现象叫",
+  "options": [
+   "幻觉",
+   "感冒",
+   "死机",
+   "越狱"
+  ],
+  "answerKey": "A",
+  "explanation": "幻觉是 LLM 的已知局限,重要内容必须人工核实。",
+  "knowledge_point": "大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "使用大模型 API 时,\"API Key\"的作用是",
+  "options": [
+   "加速网络",
+   "证明调用者身份的凭证",
+   "翻译语言",
+   "压缩文本"
+  ],
+  "answerKey": "B",
+  "explanation": "Key=鉴权凭证,不可泄露。",
+  "knowledge_point": "大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "向大模型提问时,提供越具体、越清楚的上下文,回答通常",
+  "options": [
+   "更差",
+   "更好",
+   "不变",
+   "直接报错"
+  ],
+  "answerKey": "B",
+  "explanation": "上下文越充分,生成越贴合需求。",
+  "knowledge_point": "大模型使用"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "大模型输出的内容可以直接原样发布,不需要人工核对——这个说法对吗?",
+  "options": [],
+  "answerKey": "false",
+  "explanation": "可能有幻觉和错误,必须人工审核。",
+  "knowledge_point": "大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "\"上下文长度\"指的是",
+  "options": [
+   "论文页数",
+   "模型一次能参考的对话/文本规模",
+   "WiFi 覆盖半径",
+   "硬盘容量"
+  ],
+  "answerKey": "B",
+  "explanation": "上下文窗口决定单次能\"记住\"的内容量。",
+  "knowledge_point": "大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "把大模型接入自己的应用,最常见的方式是",
+  "options": [
+   "给模型写信",
+   "调用官方 API",
+   "手抄输出",
+   "打电话客服"
+  ],
+  "answerKey": "B",
+  "explanation": "API 是标准接入方式。",
+  "knowledge_point": "大模型使用"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "API Key 泄露可能导致别人盗用你的额度产生费用——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "Key 即身份,泄露即风险。",
+  "knowledge_point": "大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "想让大模型稳定输出指定格式(如 JSON),最好的做法是",
+  "options": [
+   "祈祷",
+   "在提示词里明确给出格式要求和示例",
+   "提高音量",
+   "多问几遍听天由命"
+  ],
+  "answerKey": "B",
+  "explanation": "明确格式约定+示例是稳定结构化输出的关键。",
+  "knowledge_point": "大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "大模型\"微调\"的通俗意思是",
+  "options": [
+   "调大音量",
+   "用自有数据进一步训练,让模型更擅长特定任务",
+   "更换电源",
+   "清理缓存"
+  ],
+  "answerKey": "B",
+  "explanation": "微调=在通用模型上做定向强化。",
+  "knowledge_point": "大模型使用"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "同一个问题问大模型两遍,答案完全相同的可能性很低,这属于正常现象——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "生成式模型带随机性(温度参数),答案有波动正常。",
+  "knowledge_point": "大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "下列内容不适合直接提交给外部大模型服务",
+  "options": [
+   "公开新闻",
+   "公司机密数据和客户个人信息",
+   "天气查询",
+   "菜谱"
+  ],
+  "answerKey": "B",
+  "explanation": "敏感数据外发有合规风险。",
+  "knowledge_point": "大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "提示词(Prompt)工程的核心是",
+  "options": [
+   "写得越长越好",
+   "把任务、要求、格式说清楚",
+   "全用英文",
+   "用表情符号"
+  ],
+  "answerKey": "B",
+  "explanation": "清晰表达意图比长度重要。",
+  "knowledge_point": "大模型使用"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "大模型可以完全替代人工审核数据质量——这个说法对吗?",
+  "options": [],
+  "answerKey": "false",
+  "explanation": "可作为辅助,最终把关仍需人工。",
+  "knowledge_point": "大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "模型输出的内容\"看起来很流畅\"意味着",
+  "options": [
+   "一定正确",
+   "不一定正确,仍需核实",
+   "绝对权威",
+   "可以免责"
+  ],
+  "answerKey": "B",
+  "explanation": "流畅≠正确,幻觉内容也可能很流畅。",
+  "knowledge_point": "大模型使用"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "图像标注中\"拉框\"的\"贴\"原则指",
+  "options": [
+   "框要紧贴目标边缘",
+   "框越大越好",
+   "只框一半",
+   "随便画"
+  ],
+  "answerKey": "A",
+  "explanation": "拉框四原则:贴、完、不漏、不重。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "\"漏标\"指的是",
+  "options": [
+   "标了两次",
+   "图里有目标但没有标注出来",
+   "标签拼错",
+   "框太大"
+  ],
+  "answerKey": "B",
+  "explanation": "漏标=该标没标。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "同一张图给两个标注员,结果差异很大,说明",
+  "options": [
+   "标注规范不清晰或培训不足",
+   "图片太好看",
+   "电脑太快",
+   "没问题"
+  ],
+  "answerKey": "A",
+  "explanation": "一致性差通常指向规范与培训问题。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "文本情感标注中,中性评论应该标为",
+  "options": [
+   "好评",
+   "差评",
+   "中性",
+   "删除"
+  ],
+  "answerKey": "C",
+  "explanation": "情感三分法:正/负/中。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "标注质检中\"抽检\"的合理做法是",
+  "options": [
+   "只检查第一张",
+   "随机抽取一定比例复核",
+   "全部跳过",
+   "只看谁标得快"
+  ],
+  "answerKey": "B",
+  "explanation": "随机抽样+足够比例才有统计意义。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "标注规范文档应该在实际开工前就写清楚并培训到位——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "规范先行是质量的第一道闸。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "图片数据清洗中,发现明显与任务无关的图片应该",
+  "options": [
+   "保留并标注",
+   "按规范剔除或标记",
+   "偷偷留下",
+   "改成别的任务"
+  ],
+  "answerKey": "B",
+  "explanation": "无关数据按规范处理并留痕。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "下列哪项不是\"高质量标注\"的特征",
+  "options": [
+   "边界准确",
+   "类别正确",
+   "标准统一",
+   "速度最快越快越好"
+  ],
+  "answerKey": "D",
+  "explanation": "质量优先,速度不能牺牲准确性。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "音频转写标注中,语气词(嗯、啊)的处理应遵循",
+  "options": [
+   "凭个人喜好",
+   "项目规范统一(保留或删除)",
+   "随机",
+   "全部改成文字游戏"
+  ],
+  "answerKey": "B",
+  "explanation": "一致性是关键,按规范执行。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "当标注标准存在歧义时,应先与项目负责人确认再继续标注——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "歧义不清就标=批量返工。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "数据集通常划分为",
+  "options": [
+   "训练集/验证集/测试集",
+   "早班/中班/晚班",
+   "一级/二级/三级",
+   "红/黄/绿"
+  ],
+  "answerKey": "A",
+  "explanation": "三分法各司其职。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "标注任务中发现无法判断的疑难样本,正确做法是",
+  "options": [
+   "猜一个",
+   "标记为疑难并提交讨论",
+   "跳过不记录",
+   "全部标同一类"
+  ],
+  "answerKey": "B",
+  "explanation": "疑难样本单独标记,专人裁定。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "标好的数据不需要任何检查就可以直接交付训练——这个说法对吗?",
+  "options": [],
+  "answerKey": "false",
+  "explanation": "交付前必须质检,错误标注会污染模型。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "\"点标注\"适合标注",
+  "options": [
+   "关键点位置(如人脸五官)",
+   "整段文字情感",
+   "音频时长",
+   "表格公式"
+  ],
+  "answerKey": "A",
+  "explanation": "点标注=关键点定位。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "多边形标注相比矩形框的优势是",
+  "options": [
+   "更快",
+   "对不规则目标边缘贴合更精确",
+   "不需要规范",
+   "可以随便画"
+  ],
+  "answerKey": "B",
+  "explanation": "不规则轮廓用多边形更准。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "标注人员的熟练度会影响标注质量,因此培训和试标环节很重要——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "试标合格再上岗。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "发现前面批次标错了很多,应该",
+  "options": [
+   "假装没看见",
+   "上报并按流程返工修正",
+   "把错的说成对的",
+   "删库跑路"
+  ],
+  "answerKey": "B",
+  "explanation": "及时上报、批量修正、留痕。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "标注平台上的\"标注+审核\"双角色分离是为了",
+  "options": [
+   "多招人",
+   "职责分离互相把关",
+   "好看",
+   "拖延工期"
+  ],
+  "answerKey": "B",
+  "explanation": "标注员与审核员分离保证质量。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "同一批数据让新人单独标注且无人审核,是可接受的做法——这个说法对吗?",
+  "options": [],
+  "answerKey": "false",
+  "explanation": "新人需试标+审核兜底。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "标注进度与质量冲突时,正确的取舍是",
+  "options": [
+   "只赶进度",
+   "质量优先,进度通过流程优化提升",
+   "都不管",
+   "随便选"
+  ],
+  "answerKey": "B",
+  "explanation": "低质量数据训出的模型没有价值。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "命名实体标注中,\"北京\"最可能的类型是",
+  "options": [
+   "时间",
+   "地点",
+   "金额",
+   "情绪"
+  ],
+  "answerKey": "B",
+  "explanation": "地名属于地点类实体。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "标注规范应根据实际遇到的问题持续修订并同步给全组——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "规范是活文档。",
+  "knowledge_point": "数据标注"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "数据标注项目的一般流程是",
+  "options": [
+   "需求确认→标注规范→试标→正式标注→质检→交付",
+   "直接标→直接交",
+   "交付→标注→需求",
+   "随意进行"
+  ],
+  "answerKey": "A",
+  "explanation": "先规范后标注,先质检后交付。",
+  "knowledge_point": "训练师流程"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "数据质量评估维度不包括",
+  "options": [
+   "准确性",
+   "完整性",
+   "一致性",
+   "文件名是否好听"
+  ],
+  "answerKey": "D",
+  "explanation": "好听不是质量维度。",
+  "knowledge_point": "训练师流程"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "\"数据脱敏\"指的是",
+  "options": [
+   "给数据加密备份",
+   "隐藏/替换敏感个人信息",
+   "删除全部数据",
+   "把数据变漂亮"
+  ],
+  "answerKey": "B",
+  "explanation": "脱敏让数据无法识别到个人。",
+  "knowledge_point": "训练师流程"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "模型上线后效果变差,第一步应该",
+  "options": [
+   "立刻删库",
+   "排查数据分布是否变化(drift)",
+   "换电脑",
+   "不管它"
+  ],
+  "answerKey": "B",
+  "explanation": "数据漂移是线上退化的常见原因。",
+  "knowledge_point": "智能运维"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "重要数据应该定期备份,并验证备份真的可以恢复——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "没验证过恢复的备份不算有效备份。",
+  "knowledge_point": "智能运维"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "模型评估指标\"准确率\"的含义是",
+  "options": [
+   "预测正确的比例",
+   "运行速度",
+   "占用内存",
+   "界面美观度"
+  ],
+  "answerKey": "A",
+  "explanation": "正确数/总数。",
+  "knowledge_point": "训练师流程"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "类别不平衡数据中,只看准确率可能误导,还应关注",
+  "options": [
+   "召回率/F1 等指标",
+   "字体大小",
+   "图标颜色",
+   "电脑品牌"
+  ],
+  "answerKey": "A",
+  "explanation": "不平衡场景需要多指标综合评估。",
+  "knowledge_point": "训练师流程"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "业务人员反馈模型预测错误,收集这些 badcase 反哺数据是改进模型的正道——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "badcase 驱动迭代。",
+  "knowledge_point": "训练师流程"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "交付数据集时,随附的文档应包含",
+  "options": [
+   "数据来源、规模、格式、标注规范版本",
+   "交付人的星座",
+   "无关八卦",
+   "空白"
+  ],
+  "answerKey": "A",
+  "explanation": "数据说明文档保障可用性与可追溯。",
+  "knowledge_point": "训练师流程"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "版本管理对数据集的意义是",
+  "options": [
+   "记录每次变更,可回溯",
+   "让文件更大",
+   "没有意义",
+   "防止复制"
+  ],
+  "answerKey": "A",
+  "explanation": "数据集也要版本化。",
+  "knowledge_point": "训练师流程"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "标注工具或平台升级后,旧标注数据的格式迁移需要验证一致性——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "格式迁移可能引入错位。",
+  "knowledge_point": "训练师流程"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "项目延期风险出现时,首先应该",
+  "options": [
+   "隐瞒不报",
+   "如实同步并调整计划/资源",
+   "直接放弃",
+   "甩锅"
+  ],
+  "answerKey": "B",
+  "explanation": "透明同步是项目管理基本要求。",
+  "knowledge_point": "训练师流程"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "个人敏感信息包括",
+  "options": [
+   "身份证号、手机号、银行卡号",
+   "今天天气",
+   "公开新闻标题",
+   "公交线路"
+  ],
+  "answerKey": "A",
+  "explanation": "可直接识别个人或账户的信息。",
+  "knowledge_point": "训练师流程"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "数据处理环境应做好权限控制,不是所有人都能下载全量敏感数据——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "最小权限原则。",
+  "knowledge_point": "训练师流程"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "一条结构良好的提示词通常包含",
+  "options": [
+   "角色+任务+要求+输出格式",
+   "只要一个字",
+   "乱码",
+   "全部大写字母"
+  ],
+  "answerKey": "A",
+  "explanation": "结构化提示词四要素。",
+  "knowledge_point": "提示词工程"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "让 AI\"扮演资深数据分析师\"再提问,这利用的是",
+  "options": [
+   "角色设定技巧",
+   "威胁",
+   "贿赂",
+   "延时"
+  ],
+  "answerKey": "A",
+  "explanation": "角色设定约束回答视角与深度。",
+  "knowledge_point": "提示词工程"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "Agent(智能体)与大模型对话的本质区别是",
+  "options": [
+   "Agent 能自主调用工具完成多步任务",
+   "Agent 更贵",
+   "没有区别",
+   "Agent 不能说话"
+  ],
+  "answerKey": "A",
+  "explanation": "工具调用+自主规划是 Agent 的标志。",
+  "knowledge_point": "智能体"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "\"少样本提示(Few-shot)\"指的是",
+  "options": [
+   "在提示词里给几个示例让模型模仿",
+   "少用电脑",
+   "答案写短一点",
+   "只问一次"
+  ],
+  "answerKey": "A",
+  "explanation": "示例引导输出格式与风格。",
+  "knowledge_point": "提示词工程"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "提示词写一次就完美,不需要迭代打磨——这个说法对吗?",
+  "options": [],
+  "answerKey": "false",
+  "explanation": "提示词工程是试错-迭代过程。",
+  "knowledge_point": "提示词工程"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "Skill(技能)与普通提示词模板的区别在于",
+  "options": [
+   "Skill 是结构化说明书+可执行脚本的组合",
+   "Skill 更长",
+   "完全一样",
+   "Skill 不能修改"
+  ],
+  "answerKey": "A",
+  "explanation": "Skill=MD 说明书+script 脚本。",
+  "knowledge_point": "智能体"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "想让输出更稳定可复现,可以",
+  "options": [
+   "降低随机性(如温度参数)",
+   "大喊大叫",
+   "重启路由器",
+   "换键盘"
+  ],
+  "answerKey": "A",
+  "explanation": "低温度输出更确定。",
+  "knowledge_point": "大模型使用"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "Agent 调用外部工具前,应确认工具有权限边界和安全限制——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "防止越权操作。",
+  "knowledge_point": "智能体"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "提示词中要求\"分点、分步、给例子\"属于",
+  "options": [
+   "格式约束",
+   "人身攻击",
+   "无意义行为",
+   "加密"
+  ],
+  "answerKey": "A",
+  "explanation": "对输出结构做约束。",
+  "knowledge_point": "提示词工程"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "多轮对话中,想让模型记住前面的约定,应该",
+  "options": [
+   "把关键约定在后续提示中重申",
+   "每轮重新自我介绍",
+   "关掉对话重开",
+   "删除历史"
+  ],
+  "answerKey": "A",
+  "explanation": "关键信息重申防遗忘。",
+  "knowledge_point": "提示词工程"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "把公司机密粘贴进第三方 AI 工具是可接受的做法——这个说法对吗?",
+  "options": [],
+  "answerKey": "false",
+  "explanation": "敏感信息外发有泄露风险。",
+  "knowledge_point": "智能体"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "AI 生成的代码正确的使用姿势是",
+  "options": [
+   "直接上生产",
+   "人工审查、测试后再用",
+   "不看不问直接合并",
+   "删掉重写"
+  ],
+  "answerKey": "B",
+  "explanation": "AI 代码必须 review。",
+  "knowledge_point": "智能体"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "评测一组提示词好坏的可靠方法是",
+  "options": [
+   "凭感觉",
+   "用同一批测试问题对比效果",
+   "看谁字数多",
+   "随机选"
+  ],
+  "answerKey": "B",
+  "explanation": "评测集对比是客观方法。",
+  "knowledge_point": "提示词工程"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "提示词工程的目标是让模型更准确、稳定地完成你的任务——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "一切技巧服务于任务效果。",
+  "knowledge_point": "提示词工程"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "《网络安全法》施行年份是",
+  "options": [
+   "2017",
+   "2010",
+   "2023",
+   "1999"
+  ],
+  "answerKey": "A",
+  "explanation": "2017 年 6 月 1 日施行。",
+  "knowledge_point": "法规伦理"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "《数据安全法》施行年份是",
+  "options": [
+   "2021",
+   "2015",
+   "2008",
+   "2024"
+  ],
+  "answerKey": "A",
+  "explanation": "2021 年 9 月 1 日施行。",
+  "knowledge_point": "法规伦理"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "《个人信息保护法》施行年份是",
+  "options": [
+   "2021",
+   "2012",
+   "2019",
+   "2026"
+  ],
+  "answerKey": "A",
+  "explanation": "2021 年 11 月 1 日施行。",
+  "knowledge_point": "法规伦理"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "生成式 AI 服务管理规定要求 AI 生成内容",
+  "options": [
+   "无需任何标识",
+   "添加标识以区分合成内容",
+   "必须手写",
+   "全部删除"
+  ],
+  "answerKey": "B",
+  "explanation": "AI 生成内容需标识。",
+  "knowledge_point": "法规伦理"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "处理个人信息应当遵循\"合法、正当、必要\"原则——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "个保法的基本原则。",
+  "knowledge_point": "法规伦理"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "以下属于\"敏感个人信息\"的是",
+  "options": [
+   "生物识别信息、宗教信仰、医疗健康",
+   " favorite 颜色",
+   "公开的天气",
+   "公交路线"
+  ],
+  "answerKey": "A",
+  "explanation": "敏感信息处理要求更严格。",
+  "knowledge_point": "法规伦理"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "数据分类分级管理有助于对不同敏感程度的数据采取不同保护措施——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "分级分类是数据安全管理基础。",
+  "knowledge_point": "法规伦理"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "发现标注数据中混入他人身份证照片,应",
+  "options": [
+   "发到群里讨论",
+   "立即按安全规范上报处理",
+   "自己留着",
+   "卖给中介"
+  ],
+  "answerKey": "B",
+  "explanation": "敏感信息泄露风险须上报。",
+  "knowledge_point": "法规伦理"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "职业操守中,\"保密义务\"意味着",
+  "options": [
+   "离职后也应对在职期间接触的数据保密",
+   "只保一天",
+   "只对工资保密",
+   "没有意义"
+  ],
+  "answerKey": "A",
+  "explanation": "保密义务延续。",
+  "knowledge_point": "法规伦理"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "为了赶工期可以把未脱敏的真实用户数据发给外包标注团队——这个说法对吗?",
+  "options": [],
+  "answerKey": "false",
+  "explanation": "敏感数据外发须脱敏并签协议。",
+  "knowledge_point": "法规伦理"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "学员/用户数据的保存期限原则是",
+  "options": [
+   "永久保存",
+   "实现处理目的所必要的最短时间",
+   "越久越好",
+   "随机删除"
+  ],
+  "answerKey": "B",
+  "explanation": "最短期限原则。",
+  "knowledge_point": "法规伦理"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "AI 训练数据若包含受版权保护的内容,应",
+  "options": [
+   "无视版权直接用",
+   "确认授权许可或合规使用范围",
+   "只要不被抓就行",
+   "改成繁体字规避"
+  ],
+  "answerKey": "B",
+  "explanation": "版权合规。",
+  "knowledge_point": "法规伦理"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "人工智能训练师应如实记录数据处理过程,不得伪造标注或质检记录——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "诚信是职业底线。",
+  "knowledge_point": "法规伦理"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "个人信息主体要求删除其数据时,合规的做法是",
+  "options": [
+   "装聋作哑",
+   "按法定流程核验并处理删除请求",
+   "加价再删",
+   "拉黑用户"
+  ],
+  "answerKey": "B",
+  "explanation": "尊重个人信息主体权利。",
+  "knowledge_point": "法规伦理"
+ },
+ {
+  "question_type": "true_false",
+  "stem": "公司规定禁止将标注平台账号借给他人使用,这类规定应当遵守——这个说法对吗?",
+  "options": [],
+  "answerKey": "true",
+  "explanation": "账号权限管理是基本安全要求。",
+  "knowledge_point": "法规伦理"
+ },
+ {
+  "question_type": "single_choice",
+  "stem": "收尾一个数据项目后,含个人信息的临时文件应该",
+  "options": [
+   "随手扔在公共盘",
+   "按规范安全删除或归档",
+   "拷到私人U盘带回家",
+   "发朋友圈"
+  ],
+  "answerKey": "B",
+  "explanation": "项目收尾的数据处置也要合规。",
+  "knowledge_point": "法规伦理"
+ }
+]
