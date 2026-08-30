@@ -322,4 +322,4 @@ quality-gate → ts-check → lint:build → lint:style → test → build
 
 ## 开源协议
 
-[MIT](LICENSE)
+[Apache License 2.0](LICENSE)
