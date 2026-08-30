@@ -535,7 +535,7 @@ export async function retireQuestion(questionId: string): Promise<void> {
 /**
  * 学员端获取练习题（仅已发布，不返回答案）
  */
-export async function listPracticeQuestionsForStudent(opts: { limit?: number; offset?: number; organizationId?: string | null }): Promise<StudentQuestionRow[]> {
+export async function listPracticeQuestionsForStudent(opts: { limit?: number; offset?: number; organizationId?: string | null; excludePassedForUserId?: string | null }): Promise<StudentQuestionRow[]> {
   const limit = Math.min(opts.limit ?? 20, 100);
   const offset = opts.offset ?? 0;
   return dbQuery<StudentQuestionRow>(
@@ -545,11 +545,15 @@ export async function listPracticeQuestionsForStudent(opts: { limit?: number; of
        AND (organization_id = $3 OR organization_id IS NULL
             OR id IN (SELECT resource_id FROM question_bank_shares
                       WHERE resource_type = 'practice_question' AND organization_id = $3))
+       AND ($4::text IS NULL OR id NOT IN (
+            SELECT item_id FROM practice_attempts
+             WHERE user_id = $4 AND item_type = 'theory_question' AND passed))
      ORDER BY created_at DESC
      LIMIT $1 OFFSET $2`,
     limit,
     offset,
     opts.organizationId ?? null,
+    opts.excludePassedForUserId ?? null,
   );
 }
 

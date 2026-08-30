@@ -48,7 +48,7 @@ export default function TheoryPracticePage() {
         setStats({ correct: 0, total: 0 });
         setLoadError(null);
       } else {
-        // 考试锁定期后端返回 423"练习已锁定"等业务错误,必须透出,不能误显示"暂无题目"。
+        // 考试锁定期后端返回 423"练习已锁定"等业务错误,必须透出,不能误显示"🎉 全部题目已刷完！做对的题已自动跳过，做错的题都在「错题本」里，去复习吧。"。
         setQuestions([]);
         setLoadError(r.error || '加载练习题失败，请稍后重试');
       }
@@ -301,7 +301,7 @@ export default function TheoryPracticePage() {
           </Button>
         ) : (
           <Button size="lg" className="flex-1 text-lg" onClick={handleNext}>
-            {currentIdx < questions.length - 1 ? '下一题 →' : '再来一组'}
+            {currentIdx < questions.length - 1 ? '下一题 →' : '继续刷下一批（自动跳过已做对的题）'}
           </Button>
         )}
       </div>

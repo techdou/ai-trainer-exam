@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(50, parseInt(searchParams.get('limit') || '20', 10));
 
     // 注意:历史版本接受过 module 参数但 SQL 从未使用,已连同参数一起移除,避免契约假象。
-    const rows = await listPracticeQuestionsForStudent({ limit, organizationId: user.organizationId });
+    const rows = await listPracticeQuestionsForStudent({ limit, organizationId: user.organizationId, excludePassedForUserId: user.id });
 
     return ok(rows);
   } catch (e) {
