@@ -51,6 +51,12 @@ uploads/
 .coze
 .cozeproj/
 .codegraph/
+.aider*
+.copilot/
+.gemini/
+.continue/
+.codeium/
+.trae/
 *.swp
 *.swo
 *~
