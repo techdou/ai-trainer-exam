@@ -39,15 +39,15 @@ export default function AdminUsersPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({}); // 机构组折叠态(默认展开)
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const limit = 20; // 分页 + 页内按机构归纳,不受单次拉取上限约束
 
-  // 搜索防抖 300ms
+  // 搜索防抖 300ms(触发搜索时回到第 1 页)
   useEffect(() => {
     const t = setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 300);
     return () => clearTimeout(t);
   }, [searchInput]);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const limit = 20; // 分页 + 页内按机构归纳,不受单次拉取上限约束
 
   const me = getStoredUser();
   const isSuper = me?.roles.includes('super_admin') ?? false;
