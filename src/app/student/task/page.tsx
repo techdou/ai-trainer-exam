@@ -5,7 +5,7 @@ import { apiFetch } from '@/lib/session-client';
 import { toast } from 'sonner';
 import { Image as ImageIcon, Music } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ExamTaskInput, ExcelRows, StatsTable, type Config } from '@/components/exam-task-input';
+import { ExamTaskInput, ExcelRows, StatsTable, FileClassify, type Config } from '@/components/exam-task-input';
 import { AnnotationFeedback, isAnnotationTaskType } from '@/components/annotation-feedback';
 
 // ─── 类型 ──────────────────────────────────────────────────────
@@ -468,101 +468,17 @@ function StatsTableFillTask({ config, submitting, onSubmit }: TaskProps) {
 // ─── 3. 文件分类任务 ──────────────────────────────────────────
 
 function FileClassificationTask({ config, submitting, onSubmit }: TaskProps) {
-  const categories = config?.categories ?? [];
-  const files = config?.files ?? [];
-  const [classifications, setClassifications] = useState<Record<string, string>>({});
-  const [draggedFile, setDraggedFile] = useState<string | null>(null);
-
-  const assignFile = (fileId: string, category: string) => {
-    setClassifications(prev => ({ ...prev, [fileId]: category }));
-  };
-
-  const handleSubmit = () => {
-    onSubmit({ classifications });
-  };
-
-  const fileId = (file: { id?: string; name: string }) => file.id ?? file.name;
-  const unclassifiedFiles = files.filter(f => !classifications[fileId(f)]);
-
+  // 统一走 FileSortBoard(拖拽归档), 显式提交
+  const [answer, setAnswer] = useState<unknown>(null);
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="mb-2 text-base font-semibold">待分类文件</h3>
-        <div className="flex flex-wrap gap-2">
-          {unclassifiedFiles.length === 0 && (
-            <span className="text-muted-foreground text-sm">全部文件已分类</span>
-          )}
-          {unclassifiedFiles.map(f => (
-            <div
-              key={fileId(f)}
-              draggable
-              onDragStart={() => setDraggedFile(fileId(f))}
-              onDragEnd={() => setDraggedFile(null)}
-              className="bg-card hover:border-primary flex cursor-grab items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors active:cursor-grabbing"
-            >
-              <span className="font-medium">{f.name}</span>
-              <span className="text-muted-foreground text-xs">{f.size}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        {categories.map(cat => {
-          const items = files.filter(f => classifications[fileId(f)] === cat);
-          return (
-            <div
-              key={cat}
-              onDragOver={e => e.preventDefault()}
-              onDrop={() => {
-                if (draggedFile) assignFile(draggedFile, cat);
-                setDraggedFile(null);
-              }}
-              className="bg-secondary/30 min-h-[120px] rounded-xl border-2 border-dashed p-3"
-            >
-              <p className="mb-2 text-sm font-semibold">{cat}</p>
-              <div className="space-y-1">
-                {items.map(f => (
-                  <div
-                    key={fileId(f)}
-                    className="bg-card flex items-center justify-between rounded border px-2 py-1 text-sm"
-                  >
-                    <span>{f.name}</span>
-                    <button
-                      onClick={() =>
-                        setClassifications(prev => {
-                          const next = { ...prev };
-                          delete next[fileId(f)];
-                          return next;
-                        })
-                      }
-                      className="text-muted-foreground hover:text-destructive text-xs"
-                    >
-                      移除
-                    </button>
-                  </div>
-                ))}
-                {items.length === 0 && (
-                  <p className="text-muted-foreground py-4 text-center text-xs">
-                    拖放文件到此
-                  </p>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <SubmitButton
-        submitting={submitting}
-        disabled={unclassifiedFiles.length > 0}
-        onClick={handleSubmit}
-        label="提交评分"
-      />
+      <FileClassify config={(config ?? {}) as Config} value={null} onChange={setAnswer} disabled={submitting} />
+      <Button size="lg" className="w-full" disabled={submitting || answer == null} onClick={() => onSubmit(answer)}>
+        {submitting ? '评分中…' : '提交答案'}
+      </Button>
     </div>
   );
 }
-
-// ─── 4. 图片清洗任务 ──────────────────────────────────────────
-
 function ImageCleaningTask({ config, submitting, onSubmit }: TaskProps) {
   const images = config?.images ?? [];
   const [decisions, setDecisions] = useState<Record<string, 'keep' | 'discard'>>({});

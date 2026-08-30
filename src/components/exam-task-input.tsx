@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import UniverSheet, { buildSheetWorkbook, extractCellData, parseCellKey, cellBg, cellHasBorder } from './univer-sheet';
+import FileSortBoard from './file-sort-board';
 import type { IWorkbookData } from '@univerjs/core';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -117,10 +118,9 @@ export function StatsTable({ config, value, onChange, disabled }: { config:Confi
   );
 }
 
-function FileClassify({ config, value, onChange, disabled }: { config:Config;value:unknown;onChange:(v:unknown)=>void;disabled:boolean }) {
-  const classifications=record(record(value).classifications); const files=config.files??[];
-  const set=(id:string,cat:string)=>onChange({classifications:{...classifications,[id]:cat}});
-  return <div className="space-y-3">{files.map(f=>{const id=f.id??f.name;return <div key={id} className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center"><div className="flex-1"><div className="font-medium">{f.name}</div><div className="text-sm text-muted-foreground">{f.size}</div></div><select disabled={disabled} value={String(classifications[id]??'')} onChange={e=>set(id,e.target.value)} className="h-11 rounded-md border bg-background px-3 text-base"><option value="">请选择文件夹</option>{(config.categories??[]).map(c=><option key={c}>{c}</option>)}</select></div>})}</div>;
+export function FileClassify({ config, value, onChange, disabled }: { config:Config;value:unknown;onChange:(v:unknown)=>void;disabled:boolean }) {
+  // 拖拽归档板: 拖拽优先 + 触屏两步降级, 提交结构与判分器对齐(classifications 映射)
+  return <FileSortBoard config={config} value={value} onChange={onChange} disabled={disabled} />;
 }
 
 function ImageClean({ config, value, onChange, disabled }: { config:Config;value:unknown;onChange:(v:unknown)=>void;disabled:boolean }) {
