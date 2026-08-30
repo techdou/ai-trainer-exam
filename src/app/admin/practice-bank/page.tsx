@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/session-client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Button as Btn } from '@/components/ui/button';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { BookOpen, Eye, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react';
+import { BookOpen, Eye, ToggleLeft, ToggleRight, Trash2, Share2, Globe, Building2, X } from 'lucide-react';
 
 interface Question {
   id: string;
@@ -18,6 +19,7 @@ interface Question {
   review_status: string;
   practice_only: boolean;
   created_at: string;
+  organizationId: string | null;
 }
 
 interface QuestionDetail extends Question {
@@ -75,6 +77,45 @@ export default function PracticeBankPage() {
   useEffect(() => { fetchQuestions(); }, [page]);
 
   const [preview, setPreview] = useState<QuestionDetail | null>(null);
+
+  // 开放制管理
+  interface ShareInfo { visibility: 'global' | 'private'; ownerOrganizationId: string | null; sharedOrganizations: { organization_id: string; name: string }[] }
+  const [shareTarget, setShareTarget] = useState<Question | null>(null);
+  const [shareInfo, setShareInfo] = useState<ShareInfo | null>(null);
+  const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
+  const [shareOrgPick, setShareOrgPick] = useState('');
+  const [shareBusy, setShareBusy] = useState(false);
+
+  useEffect(() => {
+    if (orgs.length === 0) void apiFetch<{ id: string; name: string }[]>('/api/admin/organizations').then(r => {
+      if (r.ok && r.data) setOrgs(r.data);
+    });
+  }, [orgs.length]);
+
+  const loadShareInfo = async (q: Question) => {
+    setShareTarget(q); setShareInfo(null); setShareOrgPick('');
+    const r = await apiFetch<ShareInfo>(`/api/admin/shares?resource_type=practice_question&resource_id=${q.id}`);
+    if (r.ok && r.data) setShareInfo(r.data);
+  };
+
+  const shareAction = async (body: Record<string, unknown>, done: () => void) => {
+    if (!shareTarget || shareBusy) return;
+    setShareBusy(true);
+    const r = await apiFetch('/api/admin/shares', { method: 'POST', body: { resourceType: 'practice_question', resourceIds: [shareTarget.id], ...body } });
+    setShareBusy(false);
+    if (r.ok) { await loadShareInfo(shareTarget); fetchQuestions(); done(); }
+    else toast.error('操作失败', { description: r.error });
+  };
+
+  const globalizeAll = async () => {
+    const r = await apiFetch<{ items: Question[] }>('/api/admin/questions?bank_type=practice&limit=100');
+    if (!r.ok || !r.data) { toast.error('拉取题库失败'); return; }
+    const ids = r.data.items.map(q => q.id);
+    const res = await apiFetch('/api/admin/shares', { method: 'POST', body: { action: 'set_visibility', resourceType: 'practice_question', resourceIds: ids, visibility: 'global' } });
+    if (res.ok) { toast.success(`已将 ${ids.length} 道题设为全局开放`); fetchQuestions(); }
+    else toast.error('批量操作失败', { description: res.error });
+  };
+
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const handlePreview = async (id: string) => {
@@ -139,9 +180,14 @@ export default function PracticeBankPage() {
           <h1 className="text-2xl font-bold">练习题库</h1>
           <p className="text-base text-gray-500 mt-1">共 {total} 道练习题</p>
         </div>
-        <Button onClick={() => { window.location.href = '/admin/import'; }} size="lg" className="text-base">
-          导入题目
-        </Button>
+        <div className="flex gap-2">
+          <Btn variant="outline" size="lg" className="text-base" onClick={globalizeAll}>
+            <Globe className="w-4 h-4 mr-1" /> 全部设为全局开放
+          </Btn>
+          <Button onClick={() => { window.location.href = '/admin/import'; }} size="lg" className="text-base">
+            导入题目
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -161,11 +207,17 @@ export default function PracticeBankPage() {
                     <Badge variant="outline">{q.knowledge_point}</Badge>
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${st.color}`}>{st.label}</span>
                     {q.practice_only && <Badge variant="outline" className="text-blue-600">仅练习</Badge>}
+                    {q.organizationId == null
+                      ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700"><Globe className="w-3 h-3" />全局开放</span>
+                      : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600"><Building2 className="w-3 h-3" />机构私有</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <Button variant="ghost" size="sm" onClick={() => handlePreview(q.id)} title="预览完整题目">
                     <Eye className="w-4 h-4 mr-1" /> 预览
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => loadShareInfo(q)} title="开放管理">
+                    <Share2 className="w-4 h-4 mr-1" /> 开放
                   </Button>
                   {q.review_status === 'published' && (
                     <Button variant="ghost" size="sm" onClick={() => handleRetire(q.id)} className="text-orange-600 hover:text-orange-700">
@@ -213,6 +265,59 @@ export default function PracticeBankPage() {
               )}
               <div className="text-xs text-gray-400 border-t pt-2">
                 ID：{preview.id} · 创建于 {new Date(preview.created_at).toLocaleString('zh-CN')}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!shareTarget} onOpenChange={(o) => { if (!o) setShareTarget(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>开放管理</DialogTitle>
+            <DialogDescription>{shareTarget ? shareTarget.stem.slice(0, 60) + (shareTarget.stem.length > 60 ? '…' : '') : ''}</DialogDescription>
+          </DialogHeader>
+          {!shareInfo ? <div className="py-6 text-center text-gray-500">加载中...</div> : (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div className="text-sm">
+                  当前可见性：
+                  <span className={shareInfo.visibility === 'global' ? 'text-green-600 font-medium' : 'text-gray-600 font-medium'}>
+                    {shareInfo.visibility === 'global' ? '全局开放（所有机构可见）' : '机构私有'}
+                  </span>
+                </div>
+                <Btn size="sm" variant="outline" disabled={shareBusy} onClick={() =>
+                  shareAction({ action: 'set_visibility', visibility: shareInfo.visibility === 'global' ? 'private' : 'global' }, () => {})
+                }>
+                  {shareInfo.visibility === 'global' ? '设为私有' : '设为全局开放'}
+                </Btn>
+              </div>
+              <div>
+                <h3 className="text-sm font-medium mb-2 text-gray-500">已开放给指定机构（{shareInfo.sharedOrganizations.length}）</h3>
+                {shareInfo.sharedOrganizations.length === 0
+                  ? <p className="text-sm text-gray-400">暂无——私有题可通过下方添加机构开放</p>
+                  : <div className="flex flex-wrap gap-2">
+                    {shareInfo.sharedOrganizations.map(o => (
+                      <span key={o.organization_id} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm">
+                        <Building2 className="w-3 h-3" />{o.name}
+                        <button type="button" className="text-gray-400 hover:text-destructive" disabled={shareBusy}
+                          onClick={() => shareAction({ action: 'unshare', organizationId: o.organization_id }, () => {})}>
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>}
+              </div>
+              <div className="flex items-center gap-2 border-t pt-3">
+                <select value={shareOrgPick} onChange={e => setShareOrgPick(e.target.value)} className="h-9 flex-1 rounded border bg-background px-3 text-sm">
+                  <option value="">选择要开放给的机构…</option>
+                  {orgs.filter(o => !shareInfo.sharedOrganizations.some(s => s.organization_id === o.id)).map(o => (
+                    <option key={o.id} value={o.id}>{o.name}</option>
+                  ))}
+                </select>
+                <Btn size="sm" disabled={!shareOrgPick || shareBusy} onClick={() =>
+                  shareAction({ action: 'share', organizationId: shareOrgPick }, () => setShareOrgPick(''))
+                }>添加开放</Btn>
               </div>
             </div>
           )}

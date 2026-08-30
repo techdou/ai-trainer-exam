@@ -542,7 +542,9 @@ export async function listPracticeQuestionsForStudent(opts: { limit?: number; of
     `SELECT id, question_type, stem, options, difficulty, knowledge_point
      FROM practice_question_items
      WHERE review_status = 'published'
-       AND (organization_id = $3 OR organization_id IS NULL)
+       AND (organization_id = $3 OR organization_id IS NULL
+            OR id IN (SELECT resource_id FROM question_bank_shares
+                      WHERE resource_type = 'practice_question' AND organization_id = $3))
      ORDER BY created_at DESC
      LIMIT $1 OFFSET $2`,
     limit,
