@@ -61,6 +61,7 @@ export function AnnotationCanvas({
   const [dragStart, setDragStart] = useState<NormalizedPoint | null>(null);
   const [dragCur, setDragCur] = useState<NormalizedPoint | null>(null); // bbox 拖拽实时预览点
   const [draftPoints, setDraftPoints] = useState<NormalizedPoint[]>([]);
+  const [history, setHistory] = useState<AnnotationData[]>([]); // 撤销栈(已提交标注快照)
   const [imgError, setImgError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -75,6 +76,35 @@ export function AnnotationCanvas({
   const attrOptions = attributesConfig?.[activeLabel] ?? [];
   const attrs = activeAttribute ? { state: activeAttribute } : undefined;
 
+  const pushHistory = () => setHistory((h) => [...h, {
+    boxes: boxes.map((b) => ({ ...b })),
+    points: points.map((p) => ({ ...p })),
+    lines: lines.map((l) => ({ ...l })),
+    polygons: polygons.map((l) => ({ ...l })),
+  }]);
+
+  const undo = useCallback(() => {
+    if (readOnly) return;
+    if (draftPoints.length > 0) { setDraftPoints((d) => d.slice(0, -1)); return } // 线/轮廓: 先撤上一个草稿点
+    if (dragStart) { setDragStart(null); setDragCur(null); return }              // 撤进行中的框
+    if (history.length === 0) return;
+    const prev = history[history.length - 1];
+    setHistory((h) => h.slice(0, -1));
+    onChange(prev);
+  }, [readOnly, draftPoints.length, dragStart, history, onChange]);
+
+  // Ctrl+Z / Cmd+Z 撤销(组件存活期间监听)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        undo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo]);
+
   const getRelative = useCallback((e: React.MouseEvent): NormalizedPoint => {
     if (!containerRef.current) return { x: 0, y: 0 };
     const rect = containerRef.current.getBoundingClientRect();
@@ -88,6 +118,7 @@ export function AnnotationCanvas({
     if (readOnly) return;
     const p = getRelative(e);
     if (tool === 'point') {
+      pushHistory();
       onChange({ ...value, points: [...points, { ...p, label: activeLabel, attributes: attrs }] });
       return;
     }
@@ -118,6 +149,7 @@ export function AnnotationCanvas({
     setDragStart(null);
     setDragCur(null);
     if (box.width > 0.005 && box.height > 0.005) {
+      pushHistory();
       onChange({ ...value, boxes: [...boxes, box] });
     }
   };
@@ -126,6 +158,7 @@ export function AnnotationCanvas({
     const minPoints = tool === 'polygon' ? 3 : 2;
     if (draftPoints.length < minPoints) return;
     const item: LineAnnotation = { points: draftPoints, label: activeLabel, attributes: attrs };
+    pushHistory();
     if (tool === 'polygon') {
       onChange({ ...value, polygons: [...polygons, item] });
     } else {
@@ -137,16 +170,17 @@ export function AnnotationCanvas({
   const cancelDraft = () => setDraftPoints([]);
 
   const clearAll = () => {
+    pushHistory();
     if (tool === 'bbox') onChange({ ...value, boxes: [] });
     else if (tool === 'point') onChange({ ...value, points: [] });
     else if (tool === 'polygon') onChange({ ...value, polygons: [] });
     else onChange({ ...value, lines: [] });
   };
 
-  const deleteBox = (index: number) => onChange({ ...value, boxes: boxes.filter((_, i) => i !== index) });
-  const deletePoint = (index: number) => onChange({ ...value, points: points.filter((_, i) => i !== index) });
-  const deleteLine = (index: number) => onChange({ ...value, lines: lines.filter((_, i) => i !== index) });
-  const deletePolygon = (index: number) => onChange({ ...value, polygons: polygons.filter((_, i) => i !== index) });
+  const deleteBox = (index: number) => { pushHistory(); onChange({ ...value, boxes: boxes.filter((_, i) => i !== index) }); };
+  const deletePoint = (index: number) => { pushHistory(); onChange({ ...value, points: points.filter((_, i) => i !== index) }); };
+  const deleteLine = (index: number) => { pushHistory(); onChange({ ...value, lines: lines.filter((_, i) => i !== index) }); };
+  const deletePolygon = (index: number) => { pushHistory(); onChange({ ...value, polygons: polygons.filter((_, i) => i !== index) }); };
 
   const toSvgPoints = (pts: NormalizedPoint[]) => pts.map((p) => `${p.x},${p.y}`).join(' ');
 
@@ -157,7 +191,7 @@ export function AnnotationCanvas({
     <div className="space-y-3">
       {/* Label & attribute selector */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="self-center text-sm font-medium">label:</span>
+        <span className="self-center text-sm font-medium">标签：</span>
         {labels.map((x) => (
           <Button
             type="button"
@@ -175,7 +209,7 @@ export function AnnotationCanvas({
             onChange={(e) => setActiveAttribute(e.target.value)}
             className="h-9 rounded-md border bg-background px-3 text-sm"
           >
-            <option value="">attribute</option>
+            <option value="">选择属性</option>
             {attrOptions.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
         )}
@@ -193,7 +227,7 @@ export function AnnotationCanvas({
         {imageUrl && !imgError ? (
           <img
             src={imageUrl}
-            alt="annotation target"
+            alt="标注目标图"
             className="block w-full select-none"
             draggable={false}
             onError={() => setImgError(true)}
@@ -205,7 +239,7 @@ export function AnnotationCanvas({
           </div>
         ) : (
           <div className="flex items-center justify-center text-muted-foreground" style={{ minHeight: `${minHeight}px` }}>
-            image not configured
+            图片未配置
           </div>
         )}
 
@@ -270,9 +304,10 @@ export function AnnotationCanvas({
             {!readOnly && (
               <button
                 type="button"
-                onClick={() => deleteBox(i)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); deleteBox(i); }}
                 className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-white opacity-0 transition-opacity group-hover:opacity-100"
-                aria-label="delete box"
+                aria-label="删除选框"
               >
                 x
               </button>
@@ -294,9 +329,10 @@ export function AnnotationCanvas({
             {!readOnly && (
               <button
                 type="button"
-                onClick={() => deletePoint(i)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); deletePoint(i); }}
                 className="absolute -right-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-xs text-white opacity-0 transition-opacity group-hover:opacity-100"
-                aria-label="delete point"
+                aria-label="删除标注点"
               >
                 x
               </button>
@@ -309,22 +345,24 @@ export function AnnotationCanvas({
           <button
             key={`del-line-${i}`}
             type="button"
-            onClick={() => deleteLine(i)}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); deleteLine(i); }}
             className="absolute right-2 rounded bg-destructive/90 px-2 py-0.5 text-xs text-white"
             style={{ top: `${8 + i * 28}px` }}
           >
-            delete line {i + 1}
+            删除折线 {i + 1}
           </button>
         ))}
         {!readOnly && shapes.polygons.map((_, i) => (
           <button
             key={`del-pg-${i}`}
             type="button"
-            onClick={() => deletePolygon(i)}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); deletePolygon(i); }}
             className="absolute right-2 rounded bg-destructive/90 px-2 py-0.5 text-xs text-white"
             style={{ top: `${8 + (shapes.lines.length + i) * 28}px` }}
           >
-            delete contour {i + 1}
+            删除轮廓 {i + 1}
           </button>
         ))}
 
@@ -354,19 +392,30 @@ export function AnnotationCanvas({
         {(tool === 'polyline' || tool === 'polygon') && (
           <>
             <Button type="button" size="sm" onClick={finishLine} disabled={draftPoints.length < (tool === 'polygon' ? 3 : 2)}>
-              finish {tool === 'polygon' ? 'contour' : 'line'} ({draftPoints.length} pts)
+              完成{tool === 'polygon' ? '轮廓' : '线'}（{draftPoints.length} 点）
             </Button>
             <Button type="button" size="sm" variant="outline" onClick={cancelDraft} disabled={draftPoints.length === 0}>
-              cancel draft
+              取消草稿
             </Button>
           </>
         )}
+        {!readOnly && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={undo}
+            disabled={history.length === 0 && draftPoints.length === 0 && !dragStart}
+          >
+            撤销 Ctrl+Z
+          </Button>
+        )}
         <span className="ml-auto text-sm text-muted-foreground">
-          {totalCount} annotation{totalCount !== 1 ? 's' : ''}
+          共 {totalCount} 个标注
         </span>
         {!readOnly && totalCount > 0 && (
           <Button type="button" size="sm" variant="ghost" onClick={clearAll}>
-            clear all
+            清空全部
           </Button>
         )}
       </div>
