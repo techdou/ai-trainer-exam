@@ -74,7 +74,7 @@ export async function loadSourceItem(item: PaperItemRequest, organizationId: str
     const row = await dbOne<{ id: string; question_type: string; stem: string; options: Record<string, string>; answer_key: unknown; explanation: string | null; knowledge_point: string | null; difficulty: number; published_version: number | null }>(
       `SELECT id, question_type, stem, options, answer_key, explanation, knowledge_point, difficulty, published_version
          FROM exam_question_items
-        WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL
+        WHERE id = $1 AND (organization_id = $2 OR organization_id IS NULL) AND deleted_at IS NULL
           AND review_status = 'published' AND eligible_for_formal_exam = true AND practice_only = false`,
       item.itemId, organizationId,
     );
@@ -103,7 +103,7 @@ export async function loadSourceItem(item: PaperItemRequest, organizationId: str
   const row = await dbOne<{ id: string; task_type: string; title: string; instructions: string | null; difficulty: number; config: Record<string, unknown>; answer_key: unknown; grading_config: unknown; published_version: number | null }>(
     `SELECT id, task_type, title, instructions, difficulty, config, answer_key, grading_config, published_version
        FROM exam_task_templates
-      WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL
+      WHERE id = $1 AND (organization_id = $2 OR organization_id IS NULL) AND deleted_at IS NULL
         AND review_status = 'published' AND eligible_for_formal_exam = true AND practice_only = false`,
     item.itemId, organizationId,
   );
@@ -120,13 +120,13 @@ export async function loadSourceItem(item: PaperItemRequest, organizationId: str
 export async function describeSourceItem(item: { itemType: string; itemId: string }, organizationId: string): Promise<string | null> {
   if (item.itemType === 'question') {
     const row = await dbOne<{ stem: string }>(
-      'SELECT stem FROM exam_question_items WHERE id=$1 AND organization_id=$2',
+      'SELECT stem FROM exam_question_items WHERE id=$1 AND (organization_id=$2 OR organization_id IS NULL)',
       item.itemId, organizationId,
     );
     return row?.stem ? row.stem.replace(/\s+/g, ' ').slice(0, 30) : null;
   }
   const row = await dbOne<{ title: string }>(
-    'SELECT title FROM exam_task_templates WHERE id=$1 AND organization_id=$2',
+    'SELECT title FROM exam_task_templates WHERE id=$1 AND (organization_id=$2 OR organization_id IS NULL)',
     item.itemId, organizationId,
   );
   return row?.title ?? null;
@@ -189,7 +189,7 @@ export async function createPaper(params: CreatePaperParams): Promise<{ id: stri
 export async function autoSelectQuestionIds(organizationId: string, questionType: string, count: number): Promise<string[]> {
   const rows = await dbQuery<{ id: string }>(
     `SELECT id FROM exam_question_items
-      WHERE organization_id = $1 AND deleted_at IS NULL
+      WHERE (organization_id = $1 OR organization_id IS NULL) AND deleted_at IS NULL
         AND review_status = 'published' AND eligible_for_formal_exam = true AND practice_only = false
         AND question_type = $2
       ORDER BY RANDOM()
@@ -205,7 +205,7 @@ export async function autoSelectQuestionIds(organizationId: string, questionType
 export async function countAvailableQuestions(organizationId: string, questionType: string): Promise<number> {
   const row = await dbOne<{ count: string }>(
     `SELECT COUNT(*)::text AS count FROM exam_question_items
-      WHERE organization_id = $1 AND deleted_at IS NULL
+      WHERE (organization_id = $1 OR organization_id IS NULL) AND deleted_at IS NULL
         AND review_status = 'published' AND eligible_for_formal_exam = true AND practice_only = false
         AND question_type = $2`,
     organizationId, questionType,
@@ -219,7 +219,7 @@ export async function countAvailableQuestions(organizationId: string, questionTy
 export async function autoSelectTaskIds(organizationId: string, taskType: string, count: number): Promise<string[]> {
   const rows = await dbQuery<{ id: string }>(
     `SELECT id FROM exam_task_templates
-      WHERE organization_id = $1 AND deleted_at IS NULL
+      WHERE (organization_id = $1 OR organization_id IS NULL) AND deleted_at IS NULL
         AND review_status = 'published' AND eligible_for_formal_exam = true AND practice_only = false
         AND task_type = $2
       ORDER BY RANDOM()
@@ -235,7 +235,7 @@ export async function autoSelectTaskIds(organizationId: string, taskType: string
 export async function countAvailableTasks(organizationId: string, taskType: string): Promise<number> {
   const row = await dbOne<{ count: string }>(
     `SELECT COUNT(*)::text AS count FROM exam_task_templates
-      WHERE organization_id = $1 AND deleted_at IS NULL
+      WHERE (organization_id = $1 OR organization_id IS NULL) AND deleted_at IS NULL
         AND review_status = 'published' AND eligible_for_formal_exam = true AND practice_only = false
         AND task_type = $2`,
     organizationId, taskType,
@@ -273,7 +273,7 @@ export async function loadAutoComposeSources(
       const rows = await dbQuery<{ id: string; question_type: string; stem: string; options: Record<string, string>; answer_key: unknown; explanation: string | null; knowledge_point: string | null; difficulty: number; published_version: number | null }>(
         `SELECT id, question_type, stem, options, answer_key, explanation, knowledge_point, difficulty, published_version
            FROM exam_question_items
-          WHERE organization_id = $1 AND deleted_at IS NULL
+          WHERE (organization_id = $1 OR organization_id IS NULL) AND deleted_at IS NULL
             AND review_status = 'published' AND eligible_for_formal_exam = true AND practice_only = false
             AND question_type = $2
           ORDER BY RANDOM()
@@ -292,7 +292,7 @@ export async function loadAutoComposeSources(
       const rows = await dbQuery<{ id: string; task_type: string; title: string; instructions: string | null; difficulty: number; config: Record<string, unknown>; answer_key: unknown; grading_config: unknown; published_version: number | null }>(
         `SELECT id, task_type, title, instructions, difficulty, config, answer_key, grading_config, published_version
            FROM exam_task_templates
-          WHERE organization_id = $1 AND deleted_at IS NULL
+          WHERE (organization_id = $1 OR organization_id IS NULL) AND deleted_at IS NULL
             AND review_status = 'published' AND eligible_for_formal_exam = true AND practice_only = false
             AND task_type = $2
           ORDER BY RANDOM()
