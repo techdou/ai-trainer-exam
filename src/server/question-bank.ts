@@ -569,6 +569,7 @@ export async function listPracticeQuestionsForStudent(opts: { limit?: number; of
     `SELECT id, question_type, stem, options, difficulty, knowledge_point
      FROM practice_question_items
      WHERE review_status = 'published'
+       AND (question_type = 'true_false' OR options::text NOT IN ('{}', '[]', 'null'))
        AND (organization_id = $3 OR organization_id IS NULL
             OR id IN (SELECT resource_id FROM question_bank_shares
                       WHERE resource_type = 'practice_question' AND organization_id = $3))
