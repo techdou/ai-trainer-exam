@@ -72,6 +72,8 @@ export const POST = handler(async (request: Request) => {
     totalParsed: result.questions.length,
     parserIssues: result.issues,
     errors: result.skipped.map(s => s.reason).slice(0, 100),
+    // 逐题告警(近似重复/选项不足/答案异常等)——历史上在此被丢弃,导入人看不到质检提示
+    warnings: result.questions.flatMap(q => q.warnings.map(w => `「${q.stem.slice(0, 20)}…」${w}`)).slice(0, 100),
     stats: result.stats,
     reviewStatus: 'imported_unreviewed',
   });

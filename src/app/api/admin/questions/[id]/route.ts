@@ -55,6 +55,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
     // 编辑题面: 只有编辑员/管理员可执行。
     if (!user.roles.some(r => EDIT_ROLES.includes(r))) return fail(403, '只有编辑员或管理员可以编辑题目');
+    // 脏数据防线:编辑后(或沿用旧值)的组合必须是"单选有>=2个有效选项且答案在选项键内",
+    // 防止人工修题时引入新的 0 选项/答案越界题。
+    if (current.question_type === 'single_choice') {
+      const nextOptions = body.options ?? (current.options && typeof current.options === 'object' && !Array.isArray(current.options)
+        ? current.options as Record<string, string> : null);
+      const nextAnswer = body.answerKey !== undefined ? body.answerKey : current.answer_key;
+      const keys = nextOptions ? Object.keys(nextOptions).filter(k => /^[A-F]$/.test(k)) : [];
+      const valid = keys.filter(k => String(nextOptions?.[k] ?? '').trim().length > 0);
+      const a = typeof nextAnswer === 'string' ? nextAnswer.trim().toUpperCase() : '';
+      if (valid.length < 2 || a.length !== 1 || !valid.includes(a)) {
+        return fail(400, `单选题数据校验未通过：有效选项 ${valid.length} 个，答案 ${JSON.stringify(nextAnswer)}。请保证至少两个非空选项且答案为其中一个选项字母。`);
+      }
+    }
     const updated = await updateQuestion(id, {
       stem: body.stem, options: body.options, answer_key: body.answerKey === undefined ? undefined : JSON.stringify(body.answerKey),
       explanation: body.explanation, knowledge_point: body.knowledgePoint, difficulty: body.difficulty,

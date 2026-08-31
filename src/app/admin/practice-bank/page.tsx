@@ -135,6 +135,18 @@ export default function PracticeBankPage() {
     return a == null ? '-' : String(a);
   };
 
+  /** 脏题判定:单选题选项 <2 或答案不在选项键内。历史 seed 导入过这类题,
+      审核界面此前无任何标记(选项区渲染成一片空白),全靠肉眼。 */
+  const isDirty = (d: QuestionDetail | null): boolean => {
+    if (!d || d.question_type !== 'single_choice') return false;
+    const keys = d.options && typeof d.options === 'object' && !Array.isArray(d.options)
+      ? Object.keys(d.options).filter(k => /^[A-F]$/.test(k))
+      : Array.isArray(d.options) ? d.options.map((_, i) => String.fromCharCode(65 + i)) : [];
+    const texts = keys.map(k => String((d.options as Record<string, unknown>)?.[k] ?? '').trim());
+    const valid = texts.filter(t => t.length > 0).length;
+    return valid < 2 || !keys.includes(renderAnswer(d));
+  };
+
   const renderOptions = (d: QuestionDetail | null) => {
     if (!d) return null;
     const ans = renderAnswer(d);
@@ -251,6 +263,11 @@ export default function PracticeBankPage() {
               <div className="rounded-lg bg-muted/50 p-3 text-base whitespace-pre-wrap">{preview.stem}</div>
               <div>
                 <h3 className="text-sm font-medium mb-2 text-gray-500">选项（正确答案已高亮）</h3>
+                {isDirty(preview) && (
+                  <div className="mb-3 rounded-md border-2 border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    ⚠ 数据异常：单选题无有效选项或答案不在选项范围内——请勿发布，建议下架或修正。
+                  </div>
+                )}
                 <div className="space-y-1.5">{renderOptions(preview)}</div>
               </div>
               <div className="grid grid-cols-2 gap-3 text-sm">

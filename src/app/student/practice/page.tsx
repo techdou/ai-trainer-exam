@@ -134,6 +134,9 @@ export default function TheoryPracticePage() {
   const isDialogue = q.question_type === 'dialogue_sentiment';
   // 选项键按题目实际 options 渲染(题库支持 A-F),与考试页动态过滤同构;dialogue/target 等素材键被正则排除。
   const optionKeys = isTrueFalse ? ['A', 'B'] : Object.keys(q.options ?? {}).filter(k => /^[A-F]$/.test(k)).sort();
+  // 脏题防御:客观选项题缺选项(<2)时无法作答——历史上 seed 导入过 0 选项题,
+  // 提交按钮会因选不了答案永久禁用造成界面死锁。这里降级为可跳过的警示占位。
+  const isDirtyOptionQuestion = !isTrueFalse && !isFillInBlank && !isPromptDescription && !isDialogue && optionKeys.length < 2;
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
@@ -219,6 +222,11 @@ export default function TheoryPracticePage() {
         ) : (
         <div className="space-y-3">
           {isDialogue && <DialogueView dialogue={q.options?.dialogue} target={q.options?.target} />}
+          {isDirtyOptionQuestion && (
+            <div className="rounded-lg border-2 border-dashed border-destructive/40 bg-destructive/5 p-4 text-sm text-muted-foreground">
+              该题数据异常（选项缺失），不影响其他题目——请跳过继续刷题，已反馈给老师修复。
+            </div>
+          )}
           {optionKeys.map(key => {
             const optionText = isTrueFalse
               ? (key === 'A' ? '正确' : '错误')
@@ -290,7 +298,12 @@ export default function TheoryPracticePage() {
 
       {/* Actions */}
       <div className="flex gap-3">
-        {!result ? (
+        {isDirtyOptionQuestion && !result ? (
+          /* 脏题占位:唯一出口是跳过,绝不让学生锁死在本题 */
+          <Button size="lg" className="flex-1 text-lg" variant="outline" onClick={handleNext}>
+            跳过此题 →
+          </Button>
+        ) : !result ? (
           <Button
             size="lg"
             className="flex-1 text-lg"

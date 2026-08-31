@@ -239,3 +239,51 @@ describe('parsePlainText', () => {
     });
   });
 });
+
+// ---- 脏题拦截回归测试(2026-08-31 题库事故):0 选项/答案越界的题必须进 skipped ----
+describe('dirty question rejection', () => {
+  it('rejects single choice with zero options (answer present)', () => {
+    const text = [
+      '1. Agent 与大模型最本质的区别是？',
+      '答案：B',
+    ].join('\n');
+    const result = parsePlainText(text);
+    expect(result.questions).toHaveLength(0);
+    expect(result.skipped.length).toBeGreaterThanOrEqual(1);
+    expect(result.skipped[0].reason).toContain('选项不足');
+  });
+
+  it('rejects answer beyond option range (answerKey D with only 3 options)', () => {
+    const text = [
+      '1. 同事发来一个 Python 脚本，运行报错，最可能的原因是？',
+      '（A）文件名太长',
+      '（B）内存不足',
+      '（C）需要重装系统"D',
+    ].join('\n');
+    const result = parsePlainText(text);
+    expect(result.questions).toHaveLength(0);
+    expect(result.skipped.some(s => s.reason.includes('超出选项范围'))).toBe(true);
+  });
+
+  it('keeps option slots uncompressed when one option text is empty (no letter misalignment)', () => {
+    // B 选项文本为空:旧实现 filter 压缩后 C 的文本占到 B、答案错位;新实现保留占位,
+    // 汇聚层(bulkInsert 硬校验)会以"有效选项不足"整题拦截——解析层职责是不制造错位。
+    const text = [
+      '1. 题干？',
+      '（A）选项一',
+      '（B）',
+      '（C）选项三',
+      '（D）选项四"C',
+    ].join('\n');
+    const result = parsePlainText(text);
+    if (result.questions.length === 1) {
+      const q = result.questions[0];
+      expect(q.options.length).toBe(4);          // 位置不被压缩
+      expect(q.options[0]).toContain('选项一');   // A 仍是选项一
+      expect(q.options[2]).toContain('选项三');   // C 仍是选项三,不错位
+    } else {
+      // 被整题拦截也合规(空选项=有效选项不足)
+      expect(result.skipped.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+});

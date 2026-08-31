@@ -107,14 +107,25 @@ export function parsePlainText(text: string): ParseResult {
   }
 
   // 无有效答案的题不允许进入题库——学生端会拿到判不出分的题。移入 skipped 并说明原因。
+  // 单选题同时校验"答案在选项范围内"与"选项>=2"(GUIDE 规定均为 error 级,
+  // 历史上只查"是单字母",0 选项题/answerKey='D' 配 3 选项的题照样入库)。
   for (let i = questions.length - 1; i >= 0; i--) {
     const q = questions[i];
     const a = (q.answerKey || '').toString().trim().toLowerCase();
-    const bad = q.questionType === 'true_false'
-      ? !TF_VALID_ANSWERS.has(a)
-      : !(/^[a-z]$/.test(a) && OPTION_LETTERS.includes(a.toUpperCase()));
+    let bad: boolean; let reason: string;
+    if (q.questionType === 'true_false') {
+      bad = !TF_VALID_ANSWERS.has(a);
+      reason = `答案缺失或非法（"${q.answerKey || '空'}"），已拦截未入库`;
+    } else {
+      const validOpts = (q.options ?? []).filter((t) => (t ?? '').trim().length > 0);
+      const inRange = /^[a-d]$/.test(a) && a.charCodeAt(0) - 97 < validOpts.length;
+      bad = !inRange || validOpts.length < 2;
+      reason = validOpts.length < 2
+        ? `选项不足（有效选项 ${validOpts.length} 个），已拦截未入库`
+        : `答案"${q.answerKey}"超出选项范围（共 ${validOpts.length} 个选项），已拦截未入库`;
+    }
     if (bad) {
-      skipped.push({ rawText: q.rawText.slice(0, 200), reason: `答案缺失或非法（"${q.answerKey || '空'}"），已拦截未入库` });
+      skipped.push({ rawText: q.rawText.slice(0, 200), reason });
       questions.splice(i, 1);
     }
   }
@@ -332,7 +343,10 @@ function parseSingleChoice(
     warnings.push(`答案异常: ${answerKey}`);
   }
 
-  const options = [...optionMap.keys()].sort().map((k) => optionMap.get(k) ?? '').filter((s) => s.length > 0);
+  // 选项保持原始字母键映射(不因某项文本为空而压缩数组)——压缩会让后续按位置
+  // 重排的字母与 answerKey 错位,制造"看选项该选 B、系统判错"的题。空文本项在
+  // 汇聚层(bulkInsert/parse 拦截)会被判为数据异常而整题拦截,这里必须保留证据。
+  const options = [...optionMap.keys()].sort().map((k) => optionMap.get(k) ?? '');
 
   return {
     sourceIndex: 0,

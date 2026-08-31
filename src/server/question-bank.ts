@@ -214,6 +214,33 @@ export async function bulkInsertQuestions(
   bankType: string = 'practice',
 ): Promise<{ inserted: number }> {
   const table = tableNameFor(bankType);
+  // 汇聚点硬校验:DOCX / JSON seed / 未来任何导入路径的最后一道闸门。
+  // 单选题必须有 >=2 个非空选项且 answer_key 是对应字母;判断题 answer_key 必须可归一为布尔。
+  // 不合格直接 400 整体拒绝(与下方事务回滚语义一致),杜绝 0 选项/答案越界题入库。
+  const invalid: string[] = [];
+  rows.forEach((row, idx) => {
+    const where = `第 ${idx + 1} 题「${(row.stem || '').slice(0, 24)}…」`;
+    if (row.question_type === 'single_choice') {
+      const optTexts = (Array.isArray(row.options) ? row.options : Object.values(row.options ?? {}))
+        .map((t: string | undefined) => (t ?? '').trim());
+      const nValid = optTexts.filter((t) => t.length > 0).length;
+      const a = typeof row.answer_key === 'string' ? row.answer_key.trim().toUpperCase() : '';
+      const code = a.charCodeAt(0);
+      if (nValid < 2 || a.length !== 1 || code < 65 || code - 65 >= nValid) {
+        invalid.push(`${where}单选题数据异常(有效选项 ${nValid} 个/答案 ${JSON.stringify(row.answer_key)})`);
+      }
+    } else if (row.question_type === 'true_false') {
+      // 现有归一逻辑:非 true 集合的值一律归为 false,故只需要求答案非空
+      if (!row.answer_key?.toString().trim()) {
+        invalid.push(`${where}判断题答案为空`);
+      }
+    } else {
+      invalid.push(`${where}未知题型 ${row.question_type}`);
+    }
+  });
+  if (invalid.length > 0) {
+    throw new ApiError(400, `题目校验未通过(共 ${invalid.length} 条,已整体拒绝):\n${invalid.join('\n')}`);
+  }
   const pool = await getPool();
   const client = await pool.connect();
   try {
@@ -548,6 +575,17 @@ export async function listPracticeQuestionsForStudent(opts: { limit?: number; of
        AND ($4::text IS NULL OR id NOT IN (
             SELECT item_id FROM practice_attempts
              WHERE user_id = $4 AND item_type = 'theory_question' AND passed))
+       /* 脏题防御:单选题必须有 >=2 个 A-F 选项且 answer_key 是选项键之一。
+          历史上 seed 导入过 0 选项/答案越界的脏题,学生端遇 0 选项题会界面死锁,
+          这里在源头把脏题挡在学生可见范围之外(配合 bulkInsert 硬校验双保险)。 */
+       AND (
+         question_type <> 'single_choice'
+         OR (
+           jsonb_typeof(options) = 'object'
+           AND (SELECT count(*) FROM jsonb_object_keys(options)) >= 2
+           AND options ? (answer_key #>> '{}')
+         )
+       )
      ORDER BY created_at DESC
      LIMIT $1 OFFSET $2`,
     limit,
