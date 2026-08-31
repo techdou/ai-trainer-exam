@@ -610,45 +610,6 @@
   },
   {
     "question_type": "single_choice",
-    "stem": "口播稿一句话尽量不超过",
-    "options": [
-      "30 字",
-      "25 字",
-      "15 字",
-      "50 字"
-    ],
-    "answerKey": "C",
-    "explanation": null,
-    "knowledge_point": "AIGC 作品创作实战"
-  },
-  {
-    "question_type": "single_choice",
-    "stem": "关于\"AI 生成图片里的文字\",正确认知是",
-    "options": [
-      "AI 写字很准",
-      "常有错别字,台词靠后期加字幕",
-      "不能生成带字图片",
-      "重生几次就一定对"
-    ],
-    "answerKey": "B",
-    "explanation": null,
-    "knowledge_point": "AIGC 作品创作实战"
-  },
-  {
-    "question_type": "single_choice",
-    "stem": "AI 生成的短视频发布到平台,正确做法",
-    "options": [
-      "不用管",
-      "添加\"AI 生成\"标识",
-      "只在标题说明",
-      "看平台心情"
-    ],
-    "answerKey": "B",
-    "explanation": null,
-    "knowledge_point": "AIGC 作品创作实战"
-  },
-  {
-    "question_type": "single_choice",
     "stem": "数字人生成排队很慢,最聪明的做法",
     "options": [
       "干等到好",
@@ -2404,5 +2365,44 @@
     "answerKey": "B",
     "explanation": "项目收尾的数据处置也要合规。",
     "knowledge_point": "法规伦理"
+  },
+  {
+    "question_type": "single_choice",
+    "stem": "数字人口播的语音生成依靠下列哪个模型",
+    "options": [
+      "TTS——文字转语音",
+      "ASR——语音转文字",
+      "LLM——大语言模型",
+      "VLM——视觉语言模型"
+    ],
+    "answerKey": "A",
+    "explanation": "TTS=文字转语音,数字人链路第二环(口播稿→TTS→形象合成);ASR 是它的反方向。",
+    "knowledge_point": "AIGC作品创作实战"
+  },
+  {
+    "question_type": "single_choice",
+    "stem": "生图时想让画面出现指定的文字(如招牌上的店名),正确做法是",
+    "options": [
+      "在提示词中用引号把要渲染的文字明确括起来",
+      "把文字混在场景描述里让 AI 自己体会",
+      "只能生成后用修图软件手工加",
+      "没有办法,AI 画不准文字"
+    ],
+    "answerKey": "A",
+    "explanation": "现代模型已支持文字渲染,关键:把要出现的文字用引号显式括起来,和场景描述区分开。",
+    "knowledge_point": "AIGC作品创作实战"
+  },
+  {
+    "question_type": "single_choice",
+    "stem": "AI 生成的短视频发布到平台,正确的做法是",
+    "options": [
+      "直接发布,不需要任何说明",
+      "按规定添加显式\"AI 生成\"标识,或在内容中显著说明由 AI 生成",
+      "把标识放在视频最后一帧闪现一下",
+      "平台不检查就不用标注"
+    ],
+    "answerKey": "B",
+    "explanation": "标识办法(2025.9.1 施行):加显式\"AI 生成\"标识或在内容中显著说明;藏在角落/一闪而过不合规。",
+    "knowledge_point": "AIGC作品创作实战"
   }
 ]
