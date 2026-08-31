@@ -510,7 +510,7 @@ function ImageCleaningTask({ config, submitting, onSubmit }: TaskProps) {
               }`}
             >
               <div className="mb-3 overflow-hidden rounded-lg border bg-muted">
-                {img.url ? <img src={img.url} alt={img.description} className="h-36 w-full object-cover" /> : <div className="flex h-36 flex-col items-center justify-center gap-1 text-muted-foreground"><ImageIcon className="w-10 h-10" aria-hidden /><span className="text-sm">图片占位</span></div>}
+                {img.url ? <img src={img.url} alt={img.description} className="max-h-96 w-full object-contain" /> : <div className="flex h-36 flex-col items-center justify-center gap-1 text-muted-foreground"><ImageIcon className="w-10 h-10" aria-hidden /><span className="text-sm">图片占位</span></div>}
               </div>
               <p className="mb-3 text-sm font-medium">{img.description}</p>
               <div className="flex gap-2">

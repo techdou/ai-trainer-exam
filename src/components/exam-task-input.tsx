@@ -188,7 +188,7 @@ export function FileClassify({ config, value, onChange, disabled }: { config:Con
 
 function ImageClean({ config, value, onChange, disabled }: { config:Config;value:unknown;onChange:(v:unknown)=>void;disabled:boolean }) {
   const decisions=record(record(value).decisions); const set=(id:string,d:string)=>onChange({decisions:{...decisions,[id]:d}});
-  return <div className="grid gap-4 sm:grid-cols-2">{(config.images??[]).map(img=><div key={img.id} className="rounded-lg border p-3">{img.url?<img src={img.url} alt={img.description??'待清洗图片'} className="mb-3 h-44 w-full rounded object-cover" />:<div className="mb-3 flex h-44 items-center justify-center rounded bg-muted text-4xl">🖼</div>}<p className="mb-3 text-sm">{img.description}</p><div className="grid grid-cols-2 gap-2"><Button type="button" disabled={disabled} variant={decisions[img.id]==='keep'?'default':'outline'} onClick={()=>set(img.id,'keep')}>保留</Button><Button type="button" disabled={disabled} variant={decisions[img.id]==='discard'?'destructive':'outline'} onClick={()=>set(img.id,'discard')}>删除</Button></div></div>)}</div>;
+  return <div className="grid gap-4 sm:grid-cols-2">{(config.images??[]).map(img=><div key={img.id} className="rounded-lg border p-3">{img.url?<img src={img.url} alt={img.description??'待清洗图片'} className="mb-3 max-h-96 w-full rounded bg-muted object-contain" />:<div className="mb-3 flex h-44 items-center justify-center rounded bg-muted text-4xl">🖼</div>}<p className="mb-3 text-sm">{img.description}</p><div className="grid grid-cols-2 gap-2"><Button type="button" disabled={disabled} variant={decisions[img.id]==='keep'?'default':'outline'} onClick={()=>set(img.id,'keep')}>保留</Button><Button type="button" disabled={disabled} variant={decisions[img.id]==='discard'?'destructive':'outline'} onClick={()=>set(img.id,'discard')}>删除</Button></div></div>)}</div>;
 }
 
 function Sentiment({ config, value, onChange, disabled }: { config:Config;value:unknown;onChange:(v:unknown)=>void;disabled:boolean }) {
@@ -212,7 +212,7 @@ function DataLabeling({ config, value, onChange, disabled }: { config:Config;val
       {items.map(item => (
         <div key={item.id} className="rounded-lg border p-4">
           {item.imageUrl
-            ? <img src={item.imageUrl} alt={item.description ?? '待标注条目'} className="mb-3 h-44 w-full rounded object-cover" />
+            ? <img src={item.imageUrl} alt={item.description ?? '待标注条目'} className="mb-3 max-h-96 w-full rounded bg-muted object-contain" />
             : <p className="mb-3 text-lg">{item.content}</p>}
           {item.description && item.imageUrl && <p className="mb-3 text-sm text-muted-foreground">{item.description}</p>}
           <div className="flex flex-wrap gap-2">
@@ -251,7 +251,7 @@ function DatasetQuality({ config, value, onChange, disabled }: { config:Config;v
             />
             <div className="flex-1">
               {item.imageUrl
-                ? <img src={item.imageUrl} alt={item.description ?? '数据条目'} className="mb-2 h-40 w-full rounded object-cover" />
+                ? <img src={item.imageUrl} alt={item.description ?? '数据条目'} className="mb-2 max-h-96 w-full rounded bg-muted object-contain" />
                 : <p className="text-base">{item.content}</p>}
               {item.description && <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>}
             </div>
