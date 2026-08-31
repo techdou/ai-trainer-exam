@@ -131,19 +131,6 @@
   },
   {
     "question_type": "single_choice",
-    "stem": "人工智能训练师的职业编码是",
-    "options": [
-      "4-04-05-05",
-      "4-05-04-05",
-      "5-04-05-04",
-      "4-04-04-05"
-    ],
-    "answerKey": "A",
-    "explanation": null,
-    "knowledge_point": "结构化数据与大模型使用"
-  },
-  {
-    "question_type": "single_choice",
     "stem": "大模型生成回答的本质是",
     "options": [
       "联网搜索后复制",
@@ -250,12 +237,12 @@
     "question_type": "single_choice",
     "stem": "JSON 中一个对象 { } 代表",
     "options": [
-      "一批记录",
       "一条记录(一个实例)",
+      "一批记录",
       "一个网页",
       "一个文件夹"
     ],
-    "answerKey": "B",
+    "answerKey": "A",
     "explanation": "花括号一条记录=一个实例;方括号数组=一批实例。",
     "knowledge_point": "结构化数据与大模型使用"
   },
@@ -2404,5 +2391,18 @@
     "answerKey": "B",
     "explanation": "标识办法(2025.9.1 施行):加显式\"AI 生成\"标识或在内容中显著说明;藏在角落/一闪而过不合规。",
     "knowledge_point": "AIGC作品创作实战"
+  },
+  {
+    "question_type": "single_choice",
+    "stem": "人工智能训练师(五级/初级工)的三大技能模块是",
+    "options": [
+      "数据采集和处理、数据标注、智能系统运维",
+      "编程开发、产品设计、市场运营",
+      "数据采集、销售转化、客户服务",
+      "算法、算力、数据"
+    ],
+    "answerKey": "A",
+    "explanation": "五级和四级的技能要求覆盖三大模块:数据采集和处理、数据标注、智能系统运维——本课程后六天的骨架。",
+    "knowledge_point": "结构化数据与大模型使用"
   }
 ]
