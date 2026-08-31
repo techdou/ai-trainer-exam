@@ -13,6 +13,7 @@
 - [快速开始](#快速开始)
 - [项目结构](#项目结构)
 - [API 端点](#api-端点)
+- [题库管理与数据质量](#题库管理与数据质量)
 - [考试安全机制](#考试安全机制)
 - [关键安全原则](#关键安全原则)
 - [仓库与密钥安全](#仓库与密钥安全)
@@ -119,6 +120,7 @@ pnpm db:migrate
 # 5. 初始化种子数据
 pnpm db:seed-core            # 组织/班级/用户（生产环境必须先设 SEED_ADMIN_PASSWORD）
 pnpm db:seed-questions       # 可选：从 DOCX 导入理论题
+npx tsx scripts/db/seed-quiz-v2.mts   # 理论题库 v2（200 题：讲义 68 + 新设计 132）
 pnpm db:seed-tasks           # 实操题种子（练习库 + 考试库）
 
 # 6. 启动开发服务器
@@ -249,8 +251,45 @@ pnpm dev                     # → http://localhost:5000
 | POST | `/api/admin/media/generate-image` | AI 图片生成 |
 | POST | `/api/admin/media/generate-audio` | TTS 音频生成 |
 
-## 考试安全机制
+## 题库管理与数据质量
 
+### 数据链路
+
+```
+课程仓库讲义(自测题) ──gen_quiz.py──▶ questions.json(81 题,公开站刷题用)
+                                        │ 按题干匹配覆盖/替换
+                                        ▼
+                              seed-data/quiz-bank-v2.json(200 题 = 讲义 68 + 新设计 132)
+                                        │ seed-quiz-v2.mts(带质检)
+                                        ▼
+                              practice_question_items(练习库)
+```
+
+上游课程仓库：`techdou/ai-trainer-l5-course`（题干/选项/答案以讲义为唯一权威源）。
+
+### 脏题四层防线（2026-08 事故后建立）
+
+历史上 seed 导入过 0 选项/答案越界的单选题，学生端遇 0 选项题界面死锁。现有防线：
+
+1. **学生端查询过滤**——`listPracticeQuestionsForStudent` SQL 排除"单选无有效选项/答案不在选项键内"的脏题；
+2. **页面防呆**——练习页对缺选项题渲染警示占位 + "跳过此题"按钮，绝不锁死；
+3. **导入汇聚点硬校验**——`bulkInsertQuestions` 对所有导入路径（DOCX/JSON/未来）校验"单选 ≥2 有效选项且答案在范围内"，违者整体拒绝并附明细；
+4. **seed 脚本质检**——导入前全量校验 `seed-data/quiz-bank-v2.json`，不合格打印明细并退出。
+
+数据库层兜底：`drizzle/0011_question_bank_dirty_check.sql`（双表 CHECK 约束，**应用前必须先完成干净重导**，否则对存量脏行报错——这是预期的失败方式）。
+
+### 重导题库（修复脏数据的标准操作）
+
+```bash
+# 质检 + 清掉旧 v2 存量 + 重导 200 题;考试要直接可用加 --publish
+npx tsx scripts/db/seed-quiz-v2.mts --force --publish
+# 可选:全部重导确认干净后,给数据库上最后一把锁
+npx tsx scripts/db/apply-sql.mts drizzle/0011_question_bank_dirty_check.sql
+```
+
+默认导入状态为 `imported_unreviewed`（符合题库审核规范：导入 → reviewer 审核 → admin 发布）；`--publish` 跳过审核直接发布，仅供考试临近时应急。
+
+## 考试安全机制
 - **服务端时间权威**：考试计时完全以服务器时间为准（`dbNow()` / 事务内 `SELECT now()`），学员修改电脑时间无法作弊。
 - **断线续考**：每答一题 1.2 秒后自动保存，外加每 15 秒兜底保存；关页前最后一次保存带 `keepalive`；刷新/断网后重新进入考试列表会显示"继续考试"按钮，恢复到之前进度。
 - **幂等交卷**：交卷请求按 `submission_hash` 幂等，重复提交只认第一次成功；超过截止时间（含宽限期）服务端拒绝。
