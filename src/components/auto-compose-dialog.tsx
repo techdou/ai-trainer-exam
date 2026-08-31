@@ -39,9 +39,11 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: () => void;
+  /** 超管代组卷的机构 ID: null=超管尚未选机构(禁用), undefined=非超管(后端用自身机构)。 */
+  organizationId?: string | null;
 }
 
-export function AutoComposeDialog({ open, onOpenChange, onCreated }: Props) {
+export function AutoComposeDialog({ open, onOpenChange, onCreated, organizationId }: Props) {
   const [availability, setAvailability] = useState<AutoComposeData | null>(null);
   const [loadingAvail, setLoadingAvail] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -57,7 +59,8 @@ export function AutoComposeDialog({ open, onOpenChange, onCreated }: Props) {
   // 打开 Dialog 时加载可用数量
   const loadAvailability = useCallback(async () => {
     setLoadingAvail(true);
-    const r = await apiFetch<AutoComposeData>('/api/admin/papers/auto-compose');
+    const qs = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : '';
+    const r = await apiFetch<AutoComposeData>(`/api/admin/papers/auto-compose${qs}`);
     if (r.ok && r.data) {
       setAvailability(r.data);
       // 初始化配置
@@ -76,11 +79,12 @@ export function AutoComposeDialog({ open, onOpenChange, onCreated }: Props) {
       toast.error('获取题库可用数量失败', { description: r.error });
     }
     setLoadingAvail(false);
-  }, []);
+  }, [organizationId]);
 
   useEffect(() => {
-    if (open) void loadAvailability();
-  }, [open, loadAvailability]);
+    // organizationId===null 表示超管还没选机构, 此时不能请求(后端会报"账号未绑定机构")。
+    if (open && organizationId !== null) void loadAvailability();
+  }, [open, organizationId, loadAvailability]);
 
   // 统计选中总数
   const summary = useMemo(() => {
@@ -123,6 +127,7 @@ export function AutoComposeDialog({ open, onOpenChange, onCreated }: Props) {
         passScore: pass,
         theorySelections,
         taskSelections,
+        ...(organizationId ? { organizationId } : {}),
       },
     });
     setSubmitting(false);
@@ -183,7 +188,11 @@ export function AutoComposeDialog({ open, onOpenChange, onCreated }: Props) {
           </div>
         </div>
 
-        {loadingAvail ? (
+        {organizationId === null ? (
+          <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">
+            超级管理员账号不隶属于任何机构，请先在试卷管理页顶部的「组卷机构」中选择要代为组卷的机构。
+          </div>
+        ) : loadingAvail ? (
           <div className="space-y-3">
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
@@ -299,7 +308,7 @@ export function AutoComposeDialog({ open, onOpenChange, onCreated }: Props) {
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
-          <Button onClick={handleCompose} disabled={submitting || loadingAvail || summary.total === 0}>
+          <Button onClick={handleCompose} disabled={organizationId === null || submitting || loadingAvail || summary.total === 0}>
             {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
             {submitting ? '组卷中...' : '一键组卷'}
           </Button>

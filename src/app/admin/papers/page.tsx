@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { apiFetch } from '@/lib/session-client';
+import { apiFetch, getSession } from '@/lib/session-client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { FileText, Plus, Send, Archive, Sparkles } from 'lucide-react';
 import { AutoComposeDialog } from '@/components/auto-compose-dialog';
@@ -29,17 +30,25 @@ export default function PapersPage() {
   const [loading,setLoading]=useState(true); const [showCreate,setShowCreate]=useState(false); const [selected,setSelected]=useState<Set<string>>(new Set());
   const [form,setForm]=useState({title:'',durationMinutes:'90',totalScore:'100',passScore:'60'});
   const [showAutoCompose,setShowAutoCompose]=useState(false);
+  // 超管不属于任何机构, 组卷前必须先选定机构(后端对超管强制要求 organizationId)。
+  const isSuper=useMemo(()=>getSession()?.user.roles?.includes('super_admin')??false,[]);
+  const [orgs,setOrgs]=useState<Array<{id:string;name:string}>>([]);
+  const [selectedOrg,setSelectedOrg]=useState<string|null>(null);
+
+  useEffect(()=>{ if(!isSuper)return; void (async()=>{ const r=await apiFetch<Array<{id:string;name:string}>>('/api/admin/organizations'); if(r.ok&&r.data)setOrgs(r.data); })(); },[isSuper]);
 
   const load=useCallback(async()=>{
     setLoading(true);
+    // 超管选定机构后, 候选题/实操列表按机构过滤, 避免跨机构混选导致组卷被拒。
+    const orgParam=isSuper&&selectedOrg?`&organizationId=${encodeURIComponent(selectedOrg)}`:'';
     const [pr,qr,tr]=await Promise.all([
       apiFetch<Paper[]>('/api/admin/papers'),
-      apiFetch<{items:Question[]}>('/api/admin/questions?bank_type=exam&status=published&page_size=100'),
-      apiFetch<Task[]>('/api/admin/task-templates?bankType=exam&status=published'),
+      apiFetch<{items:Question[]}>(`/api/admin/questions?bank_type=exam&status=published&page_size=100${orgParam}`),
+      apiFetch<Task[]>(`/api/admin/task-templates?bankType=exam&status=published${orgParam}`),
     ]);
     if(pr.ok&&pr.data)setPapers(pr.data); if(qr.ok&&qr.data)setQuestions(qr.data.items??[]); if(tr.ok&&tr.data)setTasks(tr.data);
     setLoading(false);
-  },[]);
+  },[isSuper,selectedOrg]);
   useEffect(()=>{void load()},[load]);
 
   const sources=useMemo<SourceItem[]>(()=>[
@@ -54,7 +63,7 @@ export default function PapersPage() {
     if(!form.title.trim()||!selected.size)return toast.error('请填写标题并至少选择一道题目或实操任务');
     if(!Number.isFinite(total)||total<=0||!Number.isFinite(pass)||pass<0||pass>total)return toast.error('总分或及格分不正确');
     const items=sources.filter(s=>selected.has(s.key)).map(s=>({itemType:s.itemType,itemId:s.itemId,section:s.section}));
-    const r=await apiFetch<{id:string}>('/api/admin/papers',{method:'POST',body:{title:form.title.trim(),durationMinutes:duration,totalScore:total,passScore:pass,items}});
+    const r=await apiFetch<{id:string}>('/api/admin/papers',{method:'POST',body:{title:form.title.trim(),durationMinutes:duration,totalScore:total,passScore:pass,items,...(isSuper&&selectedOrg?{organizationId:selectedOrg}:{})}});
     if(!r.ok)return toast.error('创建失败',{description:r.error});
     toast.success('试卷草稿已创建并冻结题目版本'); setShowCreate(false);setSelected(new Set());setForm({title:'',durationMinutes:'90',totalScore:'100',passScore:'60'});void load();
   };
@@ -65,8 +74,8 @@ export default function PapersPage() {
 
   if(loading)return <div className="py-12 text-center text-lg text-muted-foreground">正在加载试卷与题库…</div>;
   return <div className="space-y-6">
-    <div className="flex items-center justify-between"><div><h1 className="text-2xl font-bold">试卷管理</h1><p className="text-muted-foreground mt-1">仅可选用已审核发布的考试库题目；创建后会冻结答案与评分器版本。</p></div><div className="flex gap-2"><Button size="lg" variant="outline" onClick={()=>setShowAutoCompose(true)}><Sparkles className="w-5 h-5 mr-2"/>一键智能组卷</Button><Button size="lg" onClick={()=>setShowCreate(v=>!v)}><Plus className="w-5 h-5 mr-2"/>新建正式试卷</Button></div></div>
-    <AutoComposeDialog open={showAutoCompose} onOpenChange={setShowAutoCompose} onCreated={load} />
+    <div className="flex items-center justify-between"><div><h1 className="text-2xl font-bold">试卷管理</h1><p className="text-muted-foreground mt-1">仅可选用已审核发布的考试库题目；创建后会冻结答案与评分器版本。</p></div><div className="flex gap-2 items-center">{isSuper&&<div className="flex items-center gap-2 mr-2"><span className="text-sm text-muted-foreground whitespace-nowrap">组卷机构</span><Select value={selectedOrg??''} onValueChange={setSelectedOrg}><SelectTrigger className="w-48"><SelectValue placeholder="请选择机构"/></SelectTrigger><SelectContent>{orgs.map(o=><SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}</SelectContent></Select></div>}<Button size="lg" variant="outline" disabled={isSuper&&!selectedOrg} title={isSuper&&!selectedOrg?'请先选择组卷机构':''} onClick={()=>setShowAutoCompose(true)}><Sparkles className="w-5 h-5 mr-2"/>一键智能组卷</Button><Button size="lg" disabled={isSuper&&!selectedOrg} title={isSuper&&!selectedOrg?'请先选择组卷机构':''} onClick={()=>setShowCreate(v=>!v)}><Plus className="w-5 h-5 mr-2"/>新建正式试卷</Button></div></div>
+    <AutoComposeDialog open={showAutoCompose} onOpenChange={setShowAutoCompose} onCreated={load} organizationId={isSuper?selectedOrg:undefined} />
     {showCreate&&<Card><CardHeader><CardTitle>创建试卷</CardTitle></CardHeader><CardContent className="space-y-5">
       <div className="grid md:grid-cols-4 gap-4"><Input className="md:col-span-2" value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="试卷标题"/><Input type="number" value={form.durationMinutes} onChange={e=>setForm({...form,durationMinutes:e.target.value})} placeholder="时长（分钟）"/><Input type="number" value={form.totalScore} onChange={e=>setForm({...form,totalScore:e.target.value})} placeholder="总分"/><Input type="number" value={form.passScore} onChange={e=>setForm({...form,passScore:e.target.value})} placeholder="及格分"/></div>
       <div className="rounded-lg border max-h-[480px] overflow-auto divide-y">

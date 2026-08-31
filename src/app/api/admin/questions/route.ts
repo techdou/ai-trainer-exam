@@ -31,7 +31,8 @@ export async function GET(request: NextRequest) {
       bankType,
       questionType: p.get('question_type'), status, keyword: p.get('keyword') || p.get('search'),
       page: Math.max(1, Number(p.get('page') || 1)), pageSize: Math.min(100, Math.max(1, Number(p.get('limit') || p.get('page_size') || 20))),
-      organizationId: user.roles.includes('super_admin') ? undefined : organizationScope(user),
+      // 超管默认全量; 组卷页超管选定机构后按机构过滤(非超管强制自身机构,query 被忽略)。
+      organizationId: user.roles.includes('super_admin') ? (p.get('organizationId') ?? undefined) : organizationScope(user),
       includeAnswerKey,
     });
     return ok(result);

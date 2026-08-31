@@ -42,7 +42,8 @@ export const GET = handler(async (request: Request) => {
     params.push(...annotationTypes);
     conditions.push(`task_type IN (${placeholders})`);
   }
-  const scopedOrg = organizationScope(user);
+  // 非超管强制自身机构; 超管可用 query 机构过滤(组卷页选定机构后使用)。
+  const scopedOrg = organizationScope(user) ?? (user.roles.includes('super_admin') ? url.searchParams.get('organizationId') : null);
   if (scopedOrg) { params.push(scopedOrg); conditions.push(`organization_id = $${params.length}`); }
   const whereClause = conditions.join(' AND ');
   const answerKeySelect = includeAnswerKey ? ', answer_key AS "answerKey"' : '';
