@@ -8,7 +8,7 @@
  * - 初始化一次（题型不换）；卸载即销毁实例
  */
 import { useEffect, useRef, useState } from 'react';
-import { Univer, LocaleType, merge, BorderType, BorderStyleTypes, type IWorkbookData } from '@univerjs/core';
+import { Univer, LocaleType, merge, BorderType, BorderStyleTypes, type ICellData, type IStyleData, type IWorkbookData } from '@univerjs/core';
 import { FUniver } from '@univerjs/core/facade';
 import type { FRange, FWorksheet } from '@univerjs/sheets/facade';
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
@@ -240,9 +240,15 @@ export function createExcelOps(api: FUniver): ExcelOps {
     decimalSelection(pattern) {
       const r = selRange();
       if (!r) return false;
-      // 读原单元格数据, 仅追加数字格式样式后整块写回(保留已有值/背景)
-      const grid = r.getCellDataGrid();
-      r.setValues(grid.map(row => row.map(cell => ({ ...(cell ?? {}), s: { ...((cell as { s?: object })?.s ?? {}), p: { pattern } } }))));
+      // 读原单元格数据, 仅追加数字格式样式(s.p.pattern)后整块写回(保留已有值/背景)。
+      // 注意 ICellData 顶层 p 是富文本, 数字格式在样式 s.p 里, 故显式按 ICellData 断言避免展开推断歧义。
+      const grid = r.getCellDataGrid() as unknown as (ICellData | null | undefined)[][];
+      const next = grid.map(row => row.map(cell => {
+        const c = (cell ?? {}) as ICellData;
+        const prevStyle = (c.s ?? {}) as IStyleData;
+        return { ...c, s: { ...prevStyle, p: { pattern } } } as ICellData;
+      }));
+      r.setValues(next);
       return true;
     },
   };
