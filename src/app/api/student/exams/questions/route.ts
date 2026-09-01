@@ -15,7 +15,11 @@ export const GET = handler(async (request: Request) => {
   );
   if (!attempt) return fail(409, '请先点击“开始考试”');
   const now = await dbNow();
-  assertAttemptOpen(attempt, schedule, now.getTime());
+  // 已交卷(graded/expired 等)允许只读回看本人作答——数据本就完整保存, 学员翻看自己做过什么属合理诉求;
+  // 响应里解析/知识点已无条件删除, 不泄露答案。未交卷才做开放时间断言。
+  const attemptStatus = attempt.status;
+  const readonlyView = !['not_started', 'in_progress'].includes(attemptStatus);
+  if (!readonlyView) assertAttemptOpen(attempt, schedule, now.getTime());
 
   const items = await dbQuery<{
     id: string; item_type: string; sort_order: number; score: number; section: string;
@@ -30,6 +34,7 @@ export const GET = handler(async (request: Request) => {
   );
   return ok({
     attemptId: attempt.id,
+    attemptStatus,
     scheduleId,
     serverNow: now.toISOString(),
     serverDeadline: attempt.server_deadline,

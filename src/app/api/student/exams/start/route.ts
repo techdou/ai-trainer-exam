@@ -7,7 +7,7 @@ import { assertScheduleCanStart, attemptDeadline, expireOverdueAttempts, getSche
 const schema = z.object({ scheduleId: z.string().min(1).max(100) });
 type StartResult =
   | { kind: 'error'; response: Response }
-  | { kind: 'success'; attemptId: string; resumed: boolean; serverDeadline: Date | string | null };
+  | { kind: 'success'; attemptId: string; resumed: boolean; readonly?: boolean; serverDeadline: Date | string | null };
 
 export const POST = handler(async (request: Request) => {
   const user = await requireRole(request, ['student']);
@@ -53,7 +53,7 @@ export const POST = handler(async (request: Request) => {
           await expireOverdueAttempts(client, scheduleId);
           return { kind: 'error', response: fail(409, '考试已结束：超过交卷宽限时间未交卷，按缺考处理（0 分）') };
         }
-        return { kind: 'success', attemptId: existing.id, resumed: true, serverDeadline: existing.server_deadline };
+        return { kind: 'success', attemptId: existing.id, resumed: true, readonly: false, serverDeadline: existing.server_deadline };
       }
       if (existing.status === 'not_started') {
         assertScheduleCanStart(lockedSchedule, now);
@@ -63,9 +63,11 @@ export const POST = handler(async (request: Request) => {
             WHERE id=$2 AND status='not_started'`,
           [deadline, existing.id],
         );
-        return { kind: 'success', attemptId: existing.id, resumed: false, serverDeadline: deadline.toISOString() };
+        return { kind: 'success', attemptId: existing.id, resumed: false, readonly: false, serverDeadline: deadline.toISOString() };
       }
-      return { kind: 'error', response: fail(409, '该考试已经提交，不能再次开始') };
+      // 已交卷(graded/submitted)或已过期(expired): 不改状态, 返回只读回看标记,
+      // 让前端继续拉 questions 查看本人作答记录(数据完整保存在 exam_responses)。
+      return { kind: 'success', attemptId: existing.id, resumed: true, readonly: true, serverDeadline: existing.server_deadline };
     }
 
     assertScheduleCanStart(lockedSchedule, now);
@@ -77,11 +79,11 @@ export const POST = handler(async (request: Request) => {
        ON CONFLICT (schedule_id,user_id) DO NOTHING RETURNING id`,
       [scheduleId, user.id, deadline, request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null],
     );
-    if (result.rows[0]) return { kind: 'success', attemptId: result.rows[0].id, resumed: false, serverDeadline: deadline.toISOString() };
+    if (result.rows[0]) return { kind: 'success', attemptId: result.rows[0].id, resumed: false, readonly: false, serverDeadline: deadline.toISOString() };
     const row = await client.query<{ id: string; status: string }>('SELECT id,status FROM exam_attempts WHERE schedule_id=$1 AND user_id=$2 FOR UPDATE', [scheduleId,user.id]);
     if (!row.rows[0] || row.rows[0].status !== 'in_progress') throw new Error('考试记录状态异常');
-    return { kind: 'success', attemptId: row.rows[0].id, resumed: true, serverDeadline: deadline.toISOString() };
+    return { kind: 'success', attemptId: row.rows[0].id, resumed: true, readonly: false, serverDeadline: deadline.toISOString() };
   });
   if (result.kind === 'error') return result.response;
-  return ok({ attemptId: result.attemptId, resumed: result.resumed, serverDeadline: result.serverDeadline });
+  return ok({ attemptId: result.attemptId, resumed: result.resumed, readonly: result.readonly ?? false, serverDeadline: result.serverDeadline });
 });

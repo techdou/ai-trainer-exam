@@ -21,6 +21,7 @@ interface ExamItem {
 }
 interface ExamPayload {
   attemptId:string;
+  attemptStatus?:string;
   scheduleId:string;
   serverNow:string;
   serverDeadline:string;
@@ -47,6 +48,8 @@ export default function ExamTakePage() {
   const [receipt,setReceipt]=useState<string|null>(null);
   const [serverOffset,setServerOffset]=useState(0);
   const [loadError,setLoadError]=useState('');
+  // 已交卷/已过期的只读回看模式: 学员可翻看本人作答, 不能再改再交。
+  const [attemptDone,setAttemptDone]=useState(false);
   // 手动交卷确认框: 零基础学员误触即终局, 必须二次确认; 倒计时归零的自动交卷不走此框。
   const [confirmOpen,setConfirmOpen]=useState(false);
   // 自动保存失败需常驻提示(一次性 toast 易被错过), 下次保存成功即清除。
@@ -71,7 +74,7 @@ export default function ExamTakePage() {
 
   const load=useCallback(async()=>{
     setLoading(true);setLoadError('');
-    const start=await apiFetch<{attemptId:string;serverDeadline:string}>('/api/student/exams/start',{method:'POST',body:{scheduleId}});
+    const start=await apiFetch<{attemptId:string;serverDeadline:string;readonly?:boolean}>('/api/student/exams/start',{method:'POST',body:{scheduleId}});
     if(!start.ok||!start.data){setLoadError(start.error??'无法开始考试');setLoading(false);return;}
     const result=await apiFetch<ExamPayload>(`/api/student/exams/questions?scheduleId=${encodeURIComponent(scheduleId)}`);
     // start 幂等(重复进入返回同一 attempt), 试卷加载失败可直接重试, 不会重复开考。
@@ -79,6 +82,7 @@ export default function ExamTakePage() {
     if(result.data.attemptId!==start.data.attemptId){setLoadError('考试状态异常,请返回列表重试');setLoading(false);return;}
     setPayload(result.data);
     setResponses(result.data.savedResponses??{});
+    setAttemptDone(Boolean(start.data.readonly)||!['not_started','in_progress'].includes(result.data.attemptStatus??'in_progress'));
     dirtyRef.current.clear();
     responseVersionRef.current.clear();
     setServerOffset(new Date(result.data.serverNow).getTime()-Date.now());
@@ -117,39 +121,39 @@ export default function ExamTakePage() {
 
   // 答题后 1.2s 防抖保存
   useEffect(()=>{
-    if(!payload||receipt)return;
+    if(!payload||receipt||attemptDone)return;
     if(saveTimer.current)clearTimeout(saveTimer.current);
     saveTimer.current=setTimeout(()=>void flush(),1200);
     return()=>{if(saveTimer.current)clearTimeout(saveTimer.current)};
-  },[responses,payload,receipt,flush]);
+  },[responses,payload,receipt,attemptDone,flush]);
   // 15s 周期兜底保存
   useEffect(()=>{
-    if(!payload||receipt)return;
+    if(!payload||receipt||attemptDone)return;
     const timer=setInterval(()=>void flush(),15_000);
     return()=>clearInterval(timer);
-  },[payload,receipt,flush]);
+  },[payload,receipt,attemptDone,flush]);
   // 离开页面/切后台时尽力保存,避免丢失最近作答(keepalive 允许请求在页面卸载后继续完成)
   useEffect(()=>{
-    if(!payload||receipt)return;
+    if(!payload||receipt||attemptDone)return;
     const onUnload=()=>{void flush(true)};
     const onVisibility=()=>{if(document.visibilityState==='hidden')void flush(true)};
     window.addEventListener('beforeunload',onUnload);
     document.addEventListener('visibilitychange',onVisibility);
     return()=>{window.removeEventListener('beforeunload',onUnload);document.removeEventListener('visibilitychange',onVisibility)};
-  },[payload,receipt,flush]);
+  },[payload,receipt,attemptDone,flush]);
   useEffect(()=>{
-    if(!payload||receipt)return;
+    if(!payload||receipt||attemptDone)return;
     // clientOffsetMs 语义是"客户端时钟相对服务端的偏移"(client-server),与 serverOffset(server-client) 互为相反数。
     const ping=()=>void apiFetch('/api/student/exams/heartbeat',{method:'POST',body:{scheduleId,attemptId:payload.attemptId,clientOffsetMs:-serverOffset}});
     ping();const timer=setInterval(ping,30_000);return()=>clearInterval(timer);
-  },[payload,receipt,scheduleId,serverOffset]);
+  },[payload,receipt,attemptDone,scheduleId,serverOffset]);
   useEffect(()=>{
-    if(!payload||receipt)return;
+    if(!payload||receipt||attemptDone)return;
     const update=()=>{const left=Math.max(0,Math.floor((new Date(payload.serverDeadline).getTime()-(Date.now()+serverOffset))/1000));setTimeLeft(left);
       // 剩 10 分钟温和提醒一次(提前于 5 分钟强警告), 零基础学员答题慢, 5 分钟才警告等于突然死刑。
       if(left>0&&left<=600&&!tenMinHintShownRef.current){tenMinHintShownRef.current=true;toast.info('还有 10 分钟，没答的题先写个大概')}}
     ;update();const timer=setInterval(update,1000);return()=>clearInterval(timer);
-  },[payload,receipt,serverOffset]);
+  },[payload,receipt,attemptDone,serverOffset]);
 
   const submit=useCallback(async()=>{
     const p=payloadRef.current;
@@ -165,9 +169,10 @@ export default function ExamTakePage() {
       submittingRef.current=false;setSubmitting(false);
     }
   },[flush,scheduleId]);
-  useEffect(()=>{if(payload&&timeLeft!==null&&timeLeft<=0&&!receipt)void submit()},[payload,timeLeft,receipt,submit]);
+  useEffect(()=>{if(payload&&timeLeft!==null&&timeLeft<=0&&!receipt)void submit()},[payload,timeLeft,receipt,attemptDone,submit]);
 
   const change=(itemId:string,value:unknown)=>{
+    if(attemptDone)return;
     responseVersionRef.current.set(itemId,(responseVersionRef.current.get(itemId)??0)+1);
     dirtyRef.current.add(itemId);
     setResponses(prev=>({...prev,[itemId]:value}));
@@ -198,19 +203,29 @@ export default function ExamTakePage() {
         saveError={saveError}
         lowTime={lowTime}
         timeLeft={timeLeft}
+        readonly={attemptDone}
       />
       <Card>
         <CardContent className="space-y-6 p-6 sm:p-8">
-          <QuestionCard item={item} current={current} selected={selected} onChange={change} />
+          <QuestionCard item={item} current={current} selected={selected} onChange={change} disabled={attemptDone} />
         </CardContent>
       </Card>
       <QuestionNav items={payload.items} responses={responses} index={index} onJump={setIndex} />
       <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background px-4 py-3">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
-          <span className="text-sm text-muted-foreground">交卷后不能修改，请检查未完成项目。</span>
-          <Button size="lg" disabled={submitting} onClick={()=>setConfirmOpen(true)}>
-            {submitting?'正在交卷…':`确认交卷（${count}/${payload.items.length}）`}
-          </Button>
+          {attemptDone ? (
+            <>
+              <span className="text-sm text-muted-foreground">已交卷，以上为你的作答记录（只读）。成绩将在学校发布后显示。</span>
+              <Button size="lg" variant="outline" onClick={()=>router.replace('/student/exams')}>返回考试列表</Button>
+            </>
+          ) : (
+            <>
+              <span className="text-sm text-muted-foreground">交卷后不能修改，请检查未完成项目。</span>
+              <Button size="lg" disabled={submitting} onClick={()=>setConfirmOpen(true)}>
+                {submitting?'正在交卷…':`确认交卷（${count}/${payload.items.length}）`}
+              </Button>
+            </>
+          )}
         </div>
       </div>
       <SubmitConfirmDialog
@@ -235,6 +250,7 @@ function ExamStickyBar({
   saveError,
   lowTime,
   timeLeft,
+  readonly,
 }: {
   index: number;
   total: number;
@@ -243,13 +259,14 @@ function ExamStickyBar({
   saveError: string;
   lowTime: boolean;
   timeLeft: number | null;
+  readonly?: boolean;
 }) {
   const format=(seconds:number)=>`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
   return (
     <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/95 px-5 py-3 backdrop-blur">
       <strong>第 {index+1}/{total} 项</strong>
       <span>已完成 {count}/{total}</span>
-      <span className="text-sm text-muted-foreground">{saveError?'':saving?'正在保存…':'答案自动保存，放心做题'}</span>
+      <span className="text-sm text-muted-foreground">{readonly?'已交卷 · 只读回看':saveError?'':saving?'正在保存…':'答案自动保存，放心做题'}</span>
       {saveError&&<span className="text-sm font-medium text-destructive" role="alert">⚠ 保存失败：{saveError}。恢复网络后会自动重存，持续失败请举手告诉老师</span>}
       <span className="flex items-center gap-2">
         {lowTime&&<span className="text-sm font-medium text-destructive" role="alert">⚠ 时间不多了，请检查未答项目</span>}
@@ -267,11 +284,13 @@ function QuestionCard({
   current,
   selected,
   onChange,
+  disabled = false,
 }: {
   item: ExamItem;
   current: unknown;
   selected: string;
   onChange: (itemId: string, value: unknown) => void;
+  disabled?: boolean;
 }) {
   const questionType=String(item.content.questionType??'');
   const isFillIn=questionType==='fill_in_blank';
@@ -305,6 +324,7 @@ function QuestionCard({
               </div>
             ):null}
             <textarea
+              disabled={disabled}
               value={typeof current==='string'?current:''}
               onChange={e=>onChange(item.id,e.target.value)}
               placeholder="请仔细观察图片，用自然语言描述图片内容，撰写一段提示词"
@@ -315,6 +335,7 @@ function QuestionCard({
         ):isFillIn?(
           <input
             type="text"
+            disabled={disabled}
             value={typeof current==='string'?current:''}
             onChange={e=>onChange(item.id,e.target.value)}
             placeholder="请输入答案"
@@ -327,6 +348,7 @@ function QuestionCard({
               <button
                 key={key}
                 type="button"
+                disabled={disabled}
                 onClick={()=>onChange(item.id,key)}
                 className={`w-full rounded-lg border-2 p-4 text-left text-lg ${selected===key?'border-primary bg-primary/5':'hover:border-primary/40'}`}
               >
@@ -336,7 +358,7 @@ function QuestionCard({
           </div>
         )
       ):(
-        <ExamTaskInput content={item.content} value={current} onChange={value=>onChange(item.id,value)} />
+        <ExamTaskInput content={item.content} value={current} onChange={value=>onChange(item.id,value)} disabled={disabled} />
       )}
     </div>
   );
