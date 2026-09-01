@@ -54,10 +54,10 @@ export async function GET(req: NextRequest) {
     const now = (await dbNow()).getTime();
     const examsWithStatus = rows.map((s) => {
       const hasAttempt = s.attempt_id !== null;
-      const showScore = hasAttempt
+      // 学员端不下发具体分数, 成绩发布后只亮合格结论(分数仅管理端可见)。
+      const showResult = hasAttempt
         && (s.attempt_status === 'graded' || s.attempt_status === 'submitted' || s.attempt_status === 'expired')
-        && s.results_released
-        && s.total_score !== null;
+        && s.results_released;
 
       const startAt = new Date(s.exam_start_at).getTime();
       const endAt = new Date(s.exam_end_at).getTime() + (s.submit_grace_seconds ?? 60) * 1000;
@@ -89,8 +89,7 @@ export async function GET(req: NextRequest) {
           startedAt: s.attempt_started_at,
           submittedAt: s.attempt_submitted_at,
         } : null,
-        score: showScore ? Number(s.total_score) : null,
-        passed: showScore ? s.passed : null,
+        passed: showResult ? s.passed : null,
       };
     });
 

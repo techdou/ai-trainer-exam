@@ -8,8 +8,6 @@ import { Award, CheckCircle2, XCircle, RotateCcw } from 'lucide-react';
 interface ExamResult {
   id: string;
   scheduleTitle: string;
-  totalScore: number;
-  maxScore: number;
   passed: boolean;
   status: string;
   adjusted: boolean;
@@ -88,15 +86,16 @@ export default function StudentResultsPage() {
                   <div>
                     <div className="text-lg font-medium">{r.scheduleTitle}</div>
                     <div className="text-base text-muted-foreground">
-                      {r.passed ? '及格' : '未及格'} · {r.adjusted ? '已复核' : '自动评分'} · {new Date(r.createdAt).toLocaleDateString('zh-CN')}
+                      {r.adjusted ? '已复核' : '自动评分'} · {new Date(r.createdAt).toLocaleDateString('zh-CN')}
                     </div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-foreground">
-                    {r.totalScore}
-                  </div>
-                  <div className="text-base text-muted-foreground">满分 {r.maxScore}</div>
+                  <span className={`inline-block rounded-lg px-4 py-2 text-xl font-bold ${
+                    r.passed ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'
+                  }`}>
+                    {r.passed ? '合格' : '不合格'}
+                  </span>
                 </div>
               </CardContent>
             </Card>
