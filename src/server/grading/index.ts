@@ -552,6 +552,8 @@ export interface ExcelComprehensiveAnswerKey {
   formulaResults?: Record<string, string>;
   // 排序后期望的行顺序（rowId 数组）
   sortedRowOrder?: string[];
+  // 排序判分模式: 缺省=精确序列匹配; 'class-group'=只要求班级分组按期望顺序(组内行序不限)
+  sortMode?: 'exact' | 'class-group';
   // 标题行期望填充色
   headerColor?: string;
   // 成绩列期望保留的小数位数
@@ -601,8 +603,17 @@ export const excelComprehensiveGrader: Grader<ExcelComprehensiveSubmission, Exce
     if (Array.isArray(answerKey.sortedRowOrder) && answerKey.sortedRowOrder.length > 0) {
       const actualOrder = Array.isArray(submission.rowOrder) ? submission.rowOrder.map(String) : (Array.isArray(submission.rows) ? submission.rows.map(r => String(r.id)) : []);
       const expectedOrder = answerKey.sortedRowOrder.map(String);
-      const orderMatch = actualOrder.length === expectedOrder.length && actualOrder.every((id, i) => id === expectedOrder[i]);
-      results.push({ label: '按班级和成绩排序', passed: orderMatch, detail: orderMatch ? '排序顺序正确' : '排序顺序不正确' });
+      let orderMatch: boolean;
+      let orderLabel = '按班级和成绩排序';
+      if (answerKey.sortMode === 'class-group' && isRecord(answerKey.formulaResults)) {
+        // 弱化排序(题面"按班级降序"): 只要求班级分组按期望顺序排列, 组内行序不限。
+        const clsOf = (id: string) => String((answerKey.formulaResults as Record<string, unknown>)[id] ?? '');
+        orderMatch = actualOrder.length === expectedOrder.length && actualOrder.every((id, i) => clsOf(id) === clsOf(expectedOrder[i]));
+        orderLabel = '按班级排序';
+      } else {
+        orderMatch = actualOrder.length === expectedOrder.length && actualOrder.every((id, i) => id === expectedOrder[i]);
+      }
+      results.push({ label: orderLabel, passed: orderMatch, detail: orderMatch ? '排序顺序正确' : '排序顺序不正确' });
     }
 
     // ── 检查 4: 分类汇总 ──
