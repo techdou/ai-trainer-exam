@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { getStoredUser } from '@/lib/session-client';
 import { AnnotationFeedback, isAnnotationTaskType } from '@/components/annotation-feedback';
+import { AnswerCompare } from '@/components/answer-compare';
 
 interface ExamResult {
   id: string;
@@ -76,6 +77,8 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 export default function ResultsPage() {
   const [results, setResults] = useState<ExamResult[]>([]);
+  // 非标注题作答对比表开关(复核时可选择性呈现, 默认展开)。
+  const [showCompare, setShowCompare] = useState(true);
   // 按考试筛选(''=全部)。复核场景通常按场逐场核对, 而非混排全部成绩。
   const [scheduleFilter, setScheduleFilter] = useState('');
   const scheduleOptions = [...new Set(results.map(r => r.scheduleTitle))];
@@ -387,7 +390,15 @@ export default function ResultsPage() {
         </div>
 
         <Card>
-          <CardHeader><CardTitle className="text-base">答题明细（{selectedScore.responses.length}题）</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center justify-between">
+              <span>答题明细（{selectedScore.responses.length}题）</span>
+              <label className="flex items-center gap-2 text-sm font-normal text-muted-foreground">
+                <input type="checkbox" checked={showCompare} onChange={e => setShowCompare(e.target.checked)} className="h-4 w-4" />
+                作答对比表
+              </label>
+            </CardTitle>
+          </CardHeader>
           <CardContent>
             <div className="space-y-3">
               {selectedScore.responses.map((resp, idx) => {
@@ -425,8 +436,11 @@ export default function ResultsPage() {
                         submission={resp.response}
                         answerKey={resp.answerKey}
                         details={(resp.gradingDetail ?? {}) as never}
+                        mode="review"
                       />
                     </div>
+                  ) : showCompare ? (
+                    <div className="mt-2"><AnswerCompare taskType={String(taskType)} submission={resp.response} answerKey={resp.answerKey} /></div>
                   ) : picked !== null ? (
                     <div className="text-sm space-y-0.5">
                       <div className="text-gray-700">学员作答：<span className="font-medium">{picked}</span></div>

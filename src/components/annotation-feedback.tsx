@@ -49,13 +49,17 @@ export function AnnotationFeedback({
   submission,
   answerKey,
   details,
+  mode = 'student',
 }: {
   taskType: string;
   imageUrl?: string;
   submission: unknown;
   answerKey: unknown;
   details: AnnotationFeedbackDetails;
+  /** student=学员练习反馈(正确/偏了/多标细分教学文案); review=复核页(只对比 学生作答 vs 老师答案参考, 小图)。 */
+  mode?: 'student' | 'review';
 }) {
+  const review = mode === 'review';
   const mine = collectShapes(submission, taskType);
   const expected = collectShapes(answerKey, taskType);
   const pairs = details.pairs ?? [];
@@ -80,10 +84,10 @@ export function AnnotationFeedback({
       );
     }
     if (taskType === 'point_annotation') {
-      return <circle key={`e${i}`} cx={s.x} cy={s.y} r={3} fill="none" style={{ stroke: 'var(--primary)' }} strokeWidth={width} vectorEffect="non-scaling-stroke" />;
+      return <circle key={`e${i}`} cx={s.x} cy={s.y} r={0.016} fill="none" style={{ stroke: 'var(--primary)' }} strokeWidth={width} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />;
     }
     if (taskType === 'polygon_annotation') {
-      return <polygon key={`e${i}`} points={svg(s.points)} style={{ fill: 'var(--primary)', fillOpacity: 0.08 }} stroke="none" strokeWidth={width} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />;
+      return <polygon key={`e${i}`} points={svg(s.points)} style={{ fill: 'var(--primary)', fillOpacity: 0.06, stroke: 'var(--primary)' }} strokeWidth={width} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />;
     }
     return <polyline key={`e${i}`} points={svg(s.points)} fill="none" style={{ stroke: 'var(--primary)' }} strokeWidth={width} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />;
   };
@@ -92,9 +96,9 @@ export function AnnotationFeedback({
     const pair = pairs.find(p => p.submittedIndex === i);
     const matched = Boolean(pair);
     const good = matched && pairPassed(pair!);
-    // 通过=暖橙实线; 偏离=砖红实线+文字; 多标=砖红虚线+文字
-    const stroke = matched && good ? 'var(--accent)' : 'var(--destructive)';
-    const dash = matched ? undefined : '6 4';
+    // 复核模式: 学员作答统一一色实线, 对错由"逐条对比"承担; 学员模式保留三态教学语义。
+    const stroke = review ? 'var(--accent)' : (matched && good ? 'var(--accent)' : 'var(--destructive)');
+    const dash = review ? undefined : (matched ? undefined : '6 4');
     const fillOpacity = 0.10;
     if (taskType === 'image_annotation') {
       return (
@@ -110,17 +114,22 @@ export function AnnotationFeedback({
       );
     }
     if (taskType === 'point_annotation') {
-      return <circle key={`m${i}`} cx={s.x} cy={s.y} r={4} style={{ fill: stroke }} />;
+      return (
+        <g key={`m${i}`}>
+          <circle cx={s.x} cy={s.y} r={0.012} style={{ fill: stroke }} />
+          <circle cx={s.x} cy={s.y} r={0.02} fill="none" style={{ stroke }} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+        </g>
+      );
     }
     if (taskType === 'polygon_annotation') {
-      return <polygon key={`m${i}`} points={svg(s.points)} style={{ fill: stroke, fillOpacity }} stroke="none" strokeWidth={2} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />;
+      return <polygon key={`m${i}`} points={svg(s.points)} style={{ fill: stroke, fillOpacity, stroke }} strokeWidth={2} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />;
     }
     return <polyline key={`m${i}`} points={svg(s.points)} fill="none" style={{ stroke }} strokeWidth={2} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />;
   };
 
   return (
     <div className="space-y-3">
-      <div className="relative overflow-hidden rounded-lg border">
+      <div className={`relative overflow-hidden rounded-lg border ${review ? 'mx-auto max-w-sm' : ''}`}>
         {imageUrl ? <FeedbackImage src={imageUrl} /> : (
           <div className="flex h-64 items-center justify-center text-muted-foreground">图片未配置</div>
         )}
@@ -130,14 +139,21 @@ export function AnnotationFeedback({
         </svg>
       </div>
 
-      {/* 图例：颜色 + 线型 + 文字三通道 */}
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-        <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-2 border-accent" /> 你的标注（正确）</span>
-        <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-2 border-destructive" /> 你的标注（偏了）</span>
-        <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-2 border-dashed border-destructive" /> 多余标注</span>
-        <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-2 border-dashed border-primary" /> 标准答案</span>
-        <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-[3px] border-dashed border-primary" /> 漏标位置</span>
-      </div>
+      {/* 图例: 复核模式只保留 学生作答 vs 老师答案参考 两色对比; 学员模式保留三态教学语义。 */}
+      {review ? (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+          <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-2 border-accent" /> 学生作答</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-2 border-dashed border-primary" /> 老师答案参考</span>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+          <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-2 border-accent" /> 你的标注（正确）</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-2 border-destructive" /> 你的标注（偏了）</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-2 border-dashed border-destructive" /> 多余标注</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-2 border-dashed border-primary" /> 标准答案</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-0 w-5 border-t-[3px] border-dashed border-primary" /> 漏标位置</span>
+        </div>
+      )}
 
       {(pairs.length > 0 || (details.missed ?? 0) > 0 || (details.extra ?? 0) > 0) && (
         <div className="rounded-lg border p-3">
