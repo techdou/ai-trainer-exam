@@ -397,7 +397,10 @@ function ExcelComprehensive({ config, value, onChange, disabled }: { config:Conf
   };
   const applySort = () => {
     const ops = ensureOps(); if (!ops) return;
-    const sorted = [...initialRows].sort((a, b) => {
+    // 读当前表格数据排序写回——保留学员已填的班级列, 而非用初始数据覆盖。
+    const current = ops.getRangeValues(1, 0, initialRows.length, columns.length);
+    const rows = current.length === initialRows.length ? current : initialRows.map(r => r.map(String));
+    const sorted = [...rows].sort((a, b) => {
       const ca = deriveClassOf(String(a[0])), cb = deriveClassOf(String(b[0]));
       if (ca !== cb) return cb.localeCompare(ca, 'zh-CN');
       return totalOf(b) - totalOf(a);

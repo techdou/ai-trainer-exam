@@ -117,7 +117,8 @@ export function buildSheetWorkbook({ columns, rows, highlightCells, extraRows, d
 }): IWorkbookData {
   const cellData: Record<number, Record<number, { v: string | number; s?: string }>> = {};
   const styles: Record<string, Record<string, unknown>> = {};
-  styles.hd = { bg: { rgb: '#F3F4F6' }, bl: { s: 1 }, bt: { s: 1 }, bb: { s: 1 }, br: { s: 1 } };
+  // 表头仅灰底+加粗(bl), 不带边框——否则边框判分步骤白送分。
+  styles.hd = { bg: { rgb: '#F3F4F6' }, bl: 1 };
   if (highlightCells?.size) styles.hl = { bg: { rgb: '#FFF7D6' } };
 
   columns.forEach((c, i) => { (cellData[0] ??= {})[i] = { v: c, s: 'hd' }; });
@@ -172,7 +173,7 @@ export function parseCellKey(key: string): { col: number; row: number } {
   return { col: col - 1, row: Number(m[2]) - 1 };
 }
 
-type CellStyleLike = { bg?: { rgb?: string }; bl?: unknown; br?: unknown; bt?: unknown; bb?: unknown };
+type CellStyleLike = { bg?: { rgb?: string }; bl?: unknown; bd?: { t?: unknown; b?: unknown; l?: unknown; r?: unknown } };
 
 /** 读快照某单元格样式的背景色（rgb，无则 null）。 */
 export function cellBg(snapshot: IWorkbookData | null, row: number, col: number): string | null {
@@ -198,6 +199,8 @@ export interface ExcelOps {
   getSelection(): ExcelSelection | null;
   /** 从 (startRow,startCol) 起写入二维值块。 */
   setRangeValues(startRow: number, startCol: number, values: (string | number)[][]): void;
+  /** 读取 (startRow,startCol) 起 numRows×numCols 区域的当前显示值。 */
+  getRangeValues(startRow: number, startCol: number, numRows: number, numCols: number): string[][];
   /** 给学员当前选中区域加全边框; 无选中返回 false。 */
   borderSelection(): boolean;
   /** 给学员当前选中区域填背景色(hex); 无选中返回 false。 */
@@ -224,6 +227,14 @@ export function createExcelOps(api: FUniver): ExcelOps {
       const ws = getSheet();
       if (!ws || !values.length || !values[0].length) return;
       ws.getRange(startRow, startCol, values.length, values[0].length).setValues(values);
+    },
+    getRangeValues(startRow, startCol, numRows, numCols) {
+      const ws = getSheet();
+      if (!ws || numRows <= 0 || numCols <= 0) return [];
+      try {
+        const grid = ws.getRange(startRow, startCol, numRows, numCols).getDisplayValues() as unknown;
+        return (grid as unknown[][])?.map(row => row.map(c => (c == null ? '' : String(c)))) ?? [];
+      } catch { return []; }
     },
     borderSelection() {
       const r = selRange();
@@ -254,12 +265,13 @@ export function createExcelOps(api: FUniver): ExcelOps {
   };
 }
 
-/** 读快照某单元格边框是否存在（任一边）。 */
+/** 读快照某单元格是否存在边框（IStyleData.bd 的任一边; 注意 bl 是加粗不是边框）。 */
 export function cellHasBorder(snapshot: IWorkbookData | null, row: number, col: number): boolean {
   const cd = extractCellData(snapshot);
   const cell = cd[row]?.[col];
   const styles = (snapshot?.styles ?? {}) as Record<string, CellStyleLike>;
   if (!cell?.s) return false;
   const st = typeof cell.s === 'string' ? styles[cell.s] : (cell.s as CellStyleLike);
-  return Boolean(st?.bl || st?.br || st?.bt || st?.bb);
+  const bd = st?.bd;
+  return Boolean(bd?.t || bd?.b || bd?.l || bd?.r);
 }
