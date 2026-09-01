@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { getStoredUser } from '@/lib/session-client';
+import { AnnotationFeedback, isAnnotationTaskType } from '@/components/annotation-feedback';
 
 interface ExamResult {
   id: string;
@@ -57,9 +58,12 @@ interface ScoreDetail {
     itemType: string;
     response: unknown;
     score: number;
-    // 题干/题型嵌在 itemSnapshot 里(历史上前端读顶层 resp.stem 恒 undefined, 复核员看不到题目)。
-    itemSnapshot: { stem?: string; questionType?: string } | null;
+    maxScore?: number;
+    // 题干/题型嵌在 itemSnapshot 里(完整快照: task 含 taskType/title/config, question 含 questionType/stem/options)。
+    itemSnapshot: { stem?: string; title?: string; questionType?: string; taskType?: string;
+                    config?: { imageUrl?: string }; options?: Record<string, unknown> } | null;
     answerKey: unknown;
+    gradingDetail?: { pairs?: unknown[]; missed?: number; extra?: number; threshold?: number } | null;
   }>;
 }
 
@@ -72,6 +76,10 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 export default function ResultsPage() {
   const [results, setResults] = useState<ExamResult[]>([]);
+  // 按考试筛选(''=全部)。复核场景通常按场逐场核对, 而非混排全部成绩。
+  const [scheduleFilter, setScheduleFilter] = useState('');
+  const scheduleOptions = [...new Set(results.map(r => r.scheduleTitle))];
+  const filteredResults = scheduleFilter ? results.filter(r => r.scheduleTitle === scheduleFilter) : results;
   const [loading, setLoading] = useState(true);
   const [selectedScore, setSelectedScore] = useState<ScoreDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -382,29 +390,61 @@ export default function ResultsPage() {
           <CardHeader><CardTitle className="text-base">答题明细（{selectedScore.responses.length}题）</CardTitle></CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {selectedScore.responses.map((resp, idx) => (
+              {selectedScore.responses.map((resp, idx) => {
+                const snap = resp.itemSnapshot;
+                const taskType = snap?.taskType ?? snap?.questionType ?? resp.itemType;
+                // 真实题名: 实操题用题目 title, 理论题用题干截断, 让复核员知道在核对哪道题。
+                const itemTitle = snap?.title
+                  ?? (snap?.stem ? snap.stem.replace(/\s+/g, ' ').slice(0, 26) + (snap.stem.length > 26 ? '…' : '') : taskType);
+                const isAnnotation = isAnnotationTaskType(String(taskType));
+                // 理论题作答友好化: 单选/判断只展示选项字母, 不甩 JSON。
+                const rec = (resp.response ?? {}) as Record<string, unknown>;
+                const picked = typeof rec.selectedOption === 'string' ? rec.selectedOption
+                  : typeof rec.answer === 'boolean' ? (rec.answer ? '正确' : '错误')
+                  : typeof rec.text === 'string' && rec.text ? rec.text
+                  : typeof rec.transcript === 'string' && rec.transcript ? rec.transcript
+                  : null;
+                const ansKey = (resp.answerKey ?? {}) as Record<string, unknown>;
+                const correct = typeof ansKey.correctOption === 'string' ? ansKey.correctOption
+                  : typeof ansKey.correctAnswer === 'boolean' ? (ansKey.correctAnswer ? '正确' : '错误') : null;
+                return (
                 <div key={resp.id} className="border rounded-lg p-3">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-medium">
-                      第{idx + 1}题 ({resp.itemSnapshot?.questionType ?? resp.itemType})
+                      第{idx + 1}题 · {itemTitle}
                     </span>
                     <span className={`text-sm font-bold ${resp.score > 0 ? 'text-success' : 'text-destructive'}`}>
-                      {resp.score}分
+                      {resp.score}分{resp.maxScore ? ` / ${resp.maxScore}` : ''}
                     </span>
                   </div>
-                  {resp.itemSnapshot?.stem && (
-                    <p className="text-sm text-gray-600 mb-1">{resp.itemSnapshot.stem}</p>
+                  {isAnnotation && snap?.config?.imageUrl ? (
+                    <div className="mt-2">
+                      <AnnotationFeedback
+                        taskType={String(taskType)}
+                        imageUrl={snap.config.imageUrl}
+                        submission={resp.response}
+                        answerKey={resp.answerKey}
+                        details={(resp.gradingDetail ?? {}) as never}
+                      />
+                    </div>
+                  ) : picked !== null ? (
+                    <div className="text-sm space-y-0.5">
+                      <div className="text-gray-700">学员作答：<span className="font-medium">{picked}</span></div>
+                      {correct && <div className="text-success">正确答案：<span className="font-medium">{correct}</span></div>}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-400 break-all">
+                      学员答案: {JSON.stringify(resp.response)}
+                    </div>
                   )}
-                  <div className="text-xs text-gray-400">
-                    学员答案: {JSON.stringify(resp.response)}
-                  </div>
-                  {resp.answerKey ? (
-                    <div className="text-xs text-success mt-1">
+                  {!isAnnotation && resp.answerKey && picked === null ? (
+                    <div className="text-xs text-success mt-1 break-all">
                       正确答案: {JSON.stringify(resp.answerKey)}
                     </div>
                   ) : null}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -416,8 +456,26 @@ export default function ResultsPage() {
     <div>
       <h1 className="text-2xl font-bold mb-6">成绩管理</h1>
 
-      {results.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">暂无成绩数据</div>
+      {results.length > 1 && (
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-500">按考试筛选：</span>
+          <select
+            value={scheduleFilter}
+            onChange={e => setScheduleFilter(e.target.value)}
+            className="h-9 rounded-md border bg-background px-3 text-sm"
+            aria-label="按考试筛选"
+          >
+            <option value="">全部考试（{results.length} 份）</option>
+            {scheduleOptions.map(t => {
+              const n = results.filter(r => r.scheduleTitle === t).length;
+              return <option key={t} value={t}>{t}（{n} 份）</option>;
+            })}
+          </select>
+        </div>
+      )}
+
+      {filteredResults.length === 0 ? (
+        <div className="text-center py-12 text-gray-500">{results.length ? '该考试暂无成绩' : '暂无成绩数据'}</div>
       ) : (
         <div className="rounded-xl border bg-card overflow-hidden">
           <div className="overflow-x-auto">
@@ -434,7 +492,7 @@ export default function ResultsPage() {
                 </tr>
               </thead>
               <tbody>
-                {results.map(r => {
+                {filteredResults.map(r => {
                   const statusInfo = STATUS_LABELS[r.status] ?? { label: r.status, color: 'bg-muted text-muted-foreground' };
                   return (
                     <tr key={r.id} className="border-b last:border-b-0 hover:bg-gray-50">
