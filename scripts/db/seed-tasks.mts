@@ -207,7 +207,7 @@ const templates:Template[]=[
   answer:{
    classColumnIndex:2,
    formulaResults:{'s01':'3班','s02':'2班','s03':'1班','s04':'2班','s05':'3班','s06':'1班','s07':'3班','s08':'2班'},
-   sortedRowOrder:['s05','s07','s01','s04','s08','s02','s03','s06'],
+   sortedRowOrder:['s05','s07','s01','s08','s04','s02','s03','s06'],
    headerColor:'蓝色',
    decimalPlaces:2,
    summaryAverages:[

@@ -251,13 +251,12 @@ export function createExcelOps(api: FUniver): ExcelOps {
     decimalSelection(pattern) {
       const r = selRange();
       if (!r) return false;
-      // 读原单元格数据, 仅追加数字格式样式(s.p.pattern)后整块写回(保留已有值/背景)。
-      // 注意 ICellData 顶层 p 是富文本, 数字格式在样式 s.p 里, 故显式按 ICellData 断言避免展开推断歧义。
+      // 读原单元格数据, 仅追加数字格式样式(s.n.pattern, IStyleData 的 Numfmt 字段)后整块写回(保留已有值/背景)。
       const grid = r.getCellDataGrid() as unknown as (ICellData | null | undefined)[][];
       const next = grid.map(row => row.map(cell => {
-        const c = (cell ?? {}) as ICellData;
+        const c = (cell ?? {}) as ICellData & { s?: IStyleData };
         const prevStyle = (c.s ?? {}) as IStyleData;
-        return { ...c, s: { ...prevStyle, p: { pattern } } } as ICellData;
+        return { ...c, s: { ...prevStyle, n: { pattern } } } as ICellData;
       }));
       r.setValues(next);
       return true;

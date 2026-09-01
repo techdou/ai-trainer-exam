@@ -366,16 +366,16 @@ function ExcelComprehensive({ config, value, onChange, disabled }: { config:Conf
       }
       summaryGroups.push({ key: label, averages });
     }
-    // decimalPlaces: 从成绩列数字格式 pattern("0.00"→2)推断
+    // decimalPlaces: 从成绩列数字格式 pattern(IStyleData.s.n.pattern, "0.00"→2)推断
     let decimalPlaces: number | undefined;
     const scoreCol = scoreColIndices[0];
     if (scoreCol !== undefined) {
-      const stylesMap = (snap?.styles ?? {}) as Record<string, { p?: { pattern?: string } }>;
+      const stylesMap = (snap?.styles ?? {}) as Record<string, { n?: { pattern?: string } }>;
       for (let r = 1; r <= initialRows.length && decimalPlaces === undefined; r++) {
         const cell = cd[r]?.[scoreCol];
         if (!cell?.s) continue;
-        const st = typeof cell.s === 'string' ? stylesMap[cell.s] : (cell.s as { p?: { pattern?: string } });
-        const pat = st?.p?.pattern;
+        const st = typeof cell.s === 'string' ? stylesMap[cell.s] : (cell.s as { n?: { pattern?: string } });
+        const pat = st?.n?.pattern;
         if (pat) { const m = /\.(0+)/.exec(pat); decimalPlaces = m ? m[1].length : 0; }
       }
     }
