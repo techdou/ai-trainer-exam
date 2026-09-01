@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import UniverSheet, { buildSheetWorkbook, extractCellData, parseCellKey, cellBg, cellHasBorder } from './univer-sheet';
+import UniverSheet, { buildSheetWorkbook, extractCellData, parseCellKey, cellBg, cellHasBorder, createExcelOps, type ExcelOps } from './univer-sheet';
 import FileSortBoard from './file-sort-board';
 import { sourceGroupLabel } from './univer-sheet';
 import type { IWorkbookData } from '@univerjs/core';
+import type { FUniver } from '@univerjs/core/facade';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -306,6 +307,9 @@ function formatDecimal(value: string, places: number | null): string {
   if (Number.isNaN(n)) return value;
   return n.toFixed(places);
 }
+/** 学号第 3-4 位 → 班级名(与判分及汇总区预置标签逻辑一致)。 */
+const deriveClassOf = (sid: string) => { const m = /^\d{2}(\d{1,2})/.exec(sid); return m ? `${parseInt(m[1], 10)}班` : ''; };
+
 function ExcelComprehensive({ config, value, onChange, disabled }: { config:Config;value:unknown;onChange:(v:unknown)=>void;disabled:boolean }) {
   const columns = config.columns ?? [];
   const initialRows = config.dataRows ?? [];
@@ -315,8 +319,8 @@ function ExcelComprehensive({ config, value, onChange, disabled }: { config:Conf
   const classNames = useMemo(() => {
     const s = new Set<string>();
     for (const row of initialRows) {
-      const m = /^\d{2}(\d{1,2})/.exec(String(row[0] ?? ''));
-      if (m) s.add(`${parseInt(m[1], 10)}班`);
+      const cn = deriveClassOf(String(row[0] ?? ''));
+      if (cn) s.add(cn);
     }
     return [...s].sort();
   }, []);
@@ -378,10 +382,66 @@ function ExcelComprehensive({ config, value, onChange, disabled }: { config:Conf
     onChange({ rows, rowOrder: order, ...(headerColor ? { headerColor } : {}), borderApplied,
       ...(summaryGroups.length ? { summaryGroups } : {}), ...(decimalPlaces !== undefined ? { decimalPlaces } : {}) });
   };
+  // ── 引导工具栏: 流程类一键完成(考察"知道用哪个功能"), 格式类作用于选中区域(考察选区+选色) ──
+  const apiRef = useRef<FUniver | null>(null);
+  const opsRef = useRef<ExcelOps | null>(null);
+  const [fillColor, setFillColor] = useState('蓝色');
+  const ensureOps = (): ExcelOps | null => {
+    if (apiRef.current && !opsRef.current) opsRef.current = createExcelOps(apiRef.current);
+    return opsRef.current;
+  };
+  const totalOf = (row: string[]) => scoreColIndices.reduce((s, ci) => s + (parseFloat(String(row[ci] ?? '')) || 0), 0);
+  const fillClasses = () => {
+    const ops = ensureOps(); if (!ops) return;
+    ops.setRangeValues(1, 2, initialRows.map(r => [deriveClassOf(String(r[0] ?? ''))]));
+  };
+  const applySort = () => {
+    const ops = ensureOps(); if (!ops) return;
+    const sorted = [...initialRows].sort((a, b) => {
+      const ca = deriveClassOf(String(a[0])), cb = deriveClassOf(String(b[0]));
+      if (ca !== cb) return cb.localeCompare(ca, 'zh-CN');
+      return totalOf(b) - totalOf(a);
+    });
+    ops.setRangeValues(1, 0, sorted);
+  };
+  const applySummary = () => {
+    const ops = ensureOps(); if (!ops) return;
+    classNames.forEach((cn, i) => {
+      const group = initialRows.filter(r => deriveClassOf(String(r[0])) === cn);
+      if (!group.length) return;
+      ops.setRangeValues(initialRows.length + 2 + i, 0, [columns.map((_, ci) => {
+        if (ci === 0) return cn;
+        if (scoreColIndices.includes(ci)) return Math.round(group.reduce((s, r) => s + (parseFloat(String(r[ci] ?? '')) || 0), 0) / group.length * 100) / 100;
+        return '';
+      })]);
+    });
+  };
+  const needSelection = (fn: (ops: ExcelOps) => boolean) => () => {
+    const ops = ensureOps();
+    if (!ops || !fn(ops)) setSelHint('请先在表格中拖选要设置的区域，再点击按钮');
+    else setSelHint('');
+  };
+  const [selHint, setSelHint] = useState('');
   return (
     <div className="space-y-2">
-      <p className="text-xs text-muted-foreground">像真实 Excel 一样操作：单击单元格直接编辑；在编辑栏输入公式（班级列、汇总区平均值可用 AVERAGE）；用工具栏完成排序、标题行填充色与边框。表格下方的汇总区已按班级预置标签，请填入各科平均值。</p>
-      <UniverSheet initialWorkbook={wb} feature={{ toolbar: true, formulaBar: true, contextMenu: true }} onChange={handleSnap} disabled={disabled} height={480} />
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 p-2 text-sm">
+        <span className="text-xs text-muted-foreground">流程操作：</span>
+        <Button type="button" size="sm" disabled={disabled} onClick={fillClasses}>① 求班级</Button>
+        <Button type="button" size="sm" disabled={disabled} onClick={applySort}>② 排序</Button>
+        <Button type="button" size="sm" disabled={disabled} onClick={applySummary}>③ 分类汇总</Button>
+        <span className="mx-1 h-5 w-px bg-border" />
+        <span className="text-xs text-muted-foreground">格式设置（先在表格中选中区域）：</span>
+        <select aria-label="填充颜色" value={fillColor} disabled={disabled} onChange={e => setFillColor(e.target.value)}
+          className="h-8 rounded-md border bg-background px-2 text-sm">
+          {Object.keys(COLOR_MAP).filter(k => k !== '无').map(k => <option key={k} value={k}>{k}</option>)}
+        </select>
+        <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={needSelection(ops => ops.bgSelection(COLOR_MAP[fillColor] ?? ''))}>填充颜色</Button>
+        <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={needSelection(ops => ops.borderSelection())}>加边框</Button>
+        <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={needSelection(ops => ops.decimalSelection('0.00'))}>两位小数</Button>
+      </div>
+      {selHint && <p className="text-xs text-warning">{selHint}</p>}
+      <p className="text-xs text-muted-foreground">左侧三个按钮自动完成流程步骤（已替你写好公式与计算）；右侧格式按钮需要先选中单元格区域再点击。汇总区班级标签已预置。</p>
+      <UniverSheet initialWorkbook={wb} feature={{ toolbar: true, formulaBar: true, contextMenu: true }} onChange={handleSnap} onReady={api => { apiRef.current = api; opsRef.current = null; }} disabled={disabled} height={480} />
     </div>
   );
 }

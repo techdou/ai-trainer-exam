@@ -3,12 +3,14 @@
 /**
  * Univer 电子表格内核封装（Excel 类实操题共用）。
  * - Univer 类 API + preset-sheets-core 插件包启动，功能闸门(toolbar/formulaBar/contextMenu/header)按题型裁剪
+ *   注意: 开源 preset-sheets-core 不含样式工具栏按钮(填充色/边框等在 Pro 包), 需要工具交互的题型用 onReady + createExcelOps 自建引导工具栏
  * - 命令执行防抖 300ms 后把 workbook 快照 getter 交给上层做语义导出
  * - 初始化一次（题型不换）；卸载即销毁实例
  */
 import { useEffect, useRef, useState } from 'react';
-import { Univer, LocaleType, merge, type IWorkbookData } from '@univerjs/core';
+import { Univer, LocaleType, merge, BorderType, BorderStyleTypes, type IWorkbookData } from '@univerjs/core';
 import { FUniver } from '@univerjs/core/facade';
+import type { FRange, FWorksheet } from '@univerjs/sheets/facade';
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
 import UniverSheetsCoreZhCN from '@univerjs/preset-sheets-core/locales/zh-CN';
 import '@univerjs/preset-sheets-core/lib/index.css';
@@ -21,11 +23,13 @@ export interface UniverFeature {
 }
 
 export default function UniverSheet({
-  initialWorkbook, feature, onChange, height = 420, disabled,
+  initialWorkbook, feature, onChange, onReady, height = 420, disabled,
 }: {
   initialWorkbook: IWorkbookData;
   feature?: UniverFeature;
   onChange?: (getSnapshot: () => IWorkbookData | null) => void;
+  /** 实例就绪后回调, 上层可借此拿到 FUniver 构建引导工具栏操作。 */
+  onReady?: (api: FUniver) => void;
   height?: number;
   disabled?: boolean;
 }) {
@@ -50,6 +54,7 @@ export default function UniverSheet({
     univer.registerPlugins(preset.plugins.map((pl) => (Array.isArray(pl) ? pl : [pl])) as Parameters<typeof univer.registerPlugins>[0]);
     const univerAPI = FUniver.newAPI(univer);
     univerAPI.createWorkbook(initialWorkbook);
+    onReady?.(univerAPI);
 
     const readyAt = Date.now();
     const dis = univerAPI.onCommandExecuted?.(() => {
@@ -177,6 +182,70 @@ export function cellBg(snapshot: IWorkbookData | null, row: number, col: number)
   if (!cell?.s) return null;
   const st = typeof cell.s === 'string' ? styles[cell.s] : (cell.s as CellStyleLike);
   return st?.bg?.rgb ?? null;
+}
+
+/* ─────────────── Excel 综合题引导工具栏原子操作 ─────────────── */
+
+/** 当前用户选中区域(0 基行列 + 行列数), 无选中返回 null。 */
+export interface ExcelSelection { row: number; col: number; numRows: number; numCols: number }
+
+/**
+ * 基于 FUniver 的引导工具栏原子操作集。
+ * 语义分层: 值/公式类(流程引导, 自动算好写入)与样式类(作用于学员当前选中区域, 保留选区考察)。
+ */
+export interface ExcelOps {
+  getSheet(): FWorksheet | null;
+  getSelection(): ExcelSelection | null;
+  /** 从 (startRow,startCol) 起写入二维值块。 */
+  setRangeValues(startRow: number, startCol: number, values: (string | number)[][]): void;
+  /** 给学员当前选中区域加全边框; 无选中返回 false。 */
+  borderSelection(): boolean;
+  /** 给学员当前选中区域填背景色(hex); 无选中返回 false。 */
+  bgSelection(hex: string): boolean;
+  /** 给学员当前选中区域设置数字格式(pattern 如 "0.00"); 无选中返回 false。 */
+  decimalSelection(pattern: string): boolean;
+}
+
+export function createExcelOps(api: FUniver): ExcelOps {
+  const getSheet = (): FWorksheet | null => {
+    try { return api.getActiveWorkbook()?.getActiveSheet() ?? null; } catch { return null; }
+  };
+  const selRange = (): FRange | null => {
+    try { return getSheet()?.getActiveRange() ?? null; } catch { return null; }
+  };
+  return {
+    getSheet,
+    getSelection: () => {
+      const r = selRange();
+      if (!r) return null;
+      return { row: r.getRow(), col: r.getColumn(), numRows: r.getHeight(), numCols: r.getWidth() };
+    },
+    setRangeValues(startRow, startCol, values) {
+      const ws = getSheet();
+      if (!ws || !values.length || !values[0].length) return;
+      ws.getRange(startRow, startCol, values.length, values[0].length).setValues(values);
+    },
+    borderSelection() {
+      const r = selRange();
+      if (!r) return false;
+      r.setBorder(BorderType.ALL, BorderStyleTypes.THIN);
+      return true;
+    },
+    bgSelection(hex) {
+      const r = selRange();
+      if (!r) return false;
+      r.setBackgroundColor(hex);
+      return true;
+    },
+    decimalSelection(pattern) {
+      const r = selRange();
+      if (!r) return false;
+      // 读原单元格数据, 仅追加数字格式样式后整块写回(保留已有值/背景)
+      const grid = r.getCellDataGrid();
+      r.setValues(grid.map(row => row.map(cell => ({ ...(cell ?? {}), s: { ...((cell as { s?: object })?.s ?? {}), p: { pattern } } }))));
+      return true;
+    },
+  };
 }
 
 /** 读快照某单元格边框是否存在（任一边）。 */
