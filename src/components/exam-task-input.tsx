@@ -419,6 +419,10 @@ function ExcelComprehensive({ config, value, onChange, disabled }: { config:Conf
       })]);
     });
   };
+  const applyDecimals = () => {
+    const ops = ensureOps(); if (!ops) return;
+    ops.decimalColumns(1, initialRows.length, scoreColIndices, '0.00');
+  };
   const needSelection = (fn: (ops: ExcelOps) => boolean) => () => {
     const ops = ensureOps();
     if (!ops || !fn(ops)) setSelHint('请先在表格中拖选要设置的区域，再点击按钮');
@@ -432,6 +436,7 @@ function ExcelComprehensive({ config, value, onChange, disabled }: { config:Conf
         <Button type="button" size="sm" disabled={disabled} onClick={fillClasses}>① 求班级</Button>
         <Button type="button" size="sm" disabled={disabled} onClick={applySort}>② 排序</Button>
         <Button type="button" size="sm" disabled={disabled} onClick={applySummary}>③ 分类汇总</Button>
+        <Button type="button" size="sm" disabled={disabled} onClick={applyDecimals}>④ 两位小数</Button>
         <span className="mx-1 h-5 w-px bg-border" />
         <span className="text-xs text-muted-foreground">格式设置（先在表格中选中区域）：</span>
         <select aria-label="填充颜色" value={fillColor} disabled={disabled} onChange={e => setFillColor(e.target.value)}
@@ -440,10 +445,9 @@ function ExcelComprehensive({ config, value, onChange, disabled }: { config:Conf
         </select>
         <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={needSelection(ops => ops.bgSelection(COLOR_MAP[fillColor] ?? ''))}>填充颜色</Button>
         <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={needSelection(ops => ops.borderSelection())}>加边框</Button>
-        <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={needSelection(ops => ops.decimalSelection('0.00'))}>两位小数</Button>
       </div>
       {selHint && <p className="text-xs text-warning">{selHint}</p>}
-      <p className="text-xs text-muted-foreground">左侧三个按钮自动完成流程步骤（已替你写好公式与计算）；右侧格式按钮需要先选中单元格区域再点击。汇总区班级标签已预置。</p>
+      <p className="text-xs text-muted-foreground">①—④ 自动完成流程步骤（已替你写好公式与计算）；右侧格式按钮需要先选中单元格区域再点击。汇总区班级标签已预置。</p>
       <UniverSheet initialWorkbook={wb} feature={{ toolbar: true, formulaBar: true, contextMenu: true }} onChange={handleSnap} onReady={api => { apiRef.current = api; opsRef.current = null; }} disabled={disabled} height={480} />
     </div>
   );

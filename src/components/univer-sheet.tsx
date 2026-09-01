@@ -205,8 +205,8 @@ export interface ExcelOps {
   borderSelection(): boolean;
   /** 给学员当前选中区域填背景色(hex); 无选中返回 false。 */
   bgSelection(hex: string): boolean;
-  /** 给学员当前选中区域设置数字格式(pattern 如 "0.00"); 无选中返回 false。 */
-  decimalSelection(pattern: string): boolean;
+  /** 对指定列区域设置数字格式(pattern 如 "0.00")。 */
+  decimalColumns(startRow: number, numRows: number, colIndices: number[], pattern: string): void;
 }
 
 export function createExcelOps(api: FUniver): ExcelOps {
@@ -248,18 +248,22 @@ export function createExcelOps(api: FUniver): ExcelOps {
       r.setBackgroundColor(hex);
       return true;
     },
-    decimalSelection(pattern) {
-      const r = selRange();
-      if (!r) return false;
-      // 读原单元格数据, 仅追加数字格式样式(s.n.pattern, IStyleData 的 Numfmt 字段)后整块写回(保留已有值/背景)。
-      const grid = r.getCellDataGrid() as unknown as (ICellData | null | undefined)[][];
-      const next = grid.map(row => row.map(cell => {
-        const c = (cell ?? {}) as ICellData & { s?: IStyleData };
-        const prevStyle = (c.s ?? {}) as IStyleData;
-        return { ...c, s: { ...prevStyle, n: { pattern } } } as ICellData;
-      }));
-      r.setValues(next);
-      return true;
+    /** 对指定列区域(startRow 起 numRows 行 × colIndices 各列)设置数字格式(pattern 如 "0.00")。 */
+    decimalColumns(startRow: number, numRows: number, colIndices: number[], pattern: string): void {
+      const ws = getSheet();
+      if (!ws || numRows <= 0 || !colIndices.length) return;
+      // 逐格读原值, 仅追加数字格式样式(IStyleData.s.n)后写回, 保留已有背景/边框。
+      for (const ci of colIndices) {
+        try {
+          const r = ws.getRange(startRow, ci, numRows, 1);
+          const grid = r.getCellDataGrid() as unknown as (ICellData | null | undefined)[][];
+          r.setValues(grid.map(row => row.map(cell => {
+            const c = (cell ?? {}) as ICellData & { s?: IStyleData };
+            const prevStyle = (c.s ?? {}) as IStyleData;
+            return { ...c, s: { ...prevStyle, n: { pattern } } } as ICellData;
+          })));
+        } catch { /* 单列失败不影响其余列 */ }
+      }
     },
   };
 }
