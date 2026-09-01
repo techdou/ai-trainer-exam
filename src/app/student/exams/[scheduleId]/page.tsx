@@ -358,7 +358,9 @@ function QuestionCard({
           </div>
         )
       ):(
-        <ExamTaskInput content={item.content} value={current} onChange={value=>onChange(item.id,value)} disabled={disabled} />
+        // key=题目id: 强制每题独立实例。相邻同类型实操题(如两道 Excel 综合挨着)时
+        // React 会复用组件实例——工作簿不重建(表格停在上一题)、作答导出闭包串题、翻回丢现场。
+        <ExamTaskInput key={item.id} content={item.content} value={current} onChange={value=>onChange(item.id,value)} disabled={disabled} />
       )}
     </div>
   );
