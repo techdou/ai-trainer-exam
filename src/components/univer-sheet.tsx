@@ -76,11 +76,25 @@ export default function UniverSheet({
     if (!cancelled) setReady(true);
 
     return () => {
+      // 卸载前冲刷: 防抖中的作答立即同步导出, 防止学员快速翻题时丢失最后一次操作
+      // (300ms 防抖未触发就卸载会把作答连同定时器一起丢掉)。
+      // 初始化窗口(800ms)内的卸载跳过——那时只有命令风暴没有真实作答, 冲刷会把初始态误标为已答。
+      if (timer && Date.now() - readyAt >= 800) {
+        try {
+          onChange?.(() => {
+            try { return univerAPI.getActiveWorkbook()?.getSnapshot() ?? null; } catch { return null; }
+          });
+        } catch { /* noop */ }
+      }
       cancelled = true;
       if (timer) clearTimeout(timer);
       off?.();
-      try { univerAPI.dispose(); } catch { /* noop */ }
-      try { univer.dispose(); } catch { /* noop */ }
+      // dispose 是重操作(数百 ms 级), 同步执行会阻塞翻题后的渲染造成"Excel 卡到下一题"。
+      // 异步化: React 先完成页面切换, 销毁在下一轮事件循环后台执行。
+      setTimeout(() => {
+        try { univerAPI.dispose(); } catch { /* noop */ }
+        try { univer.dispose(); } catch { /* noop */ }
+      }, 0);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -74,7 +74,13 @@ export function ExcelRows({ config, value, onChange, disabled }: { config:Config
     rows.forEach((cells, i) => m.set(cells.map((c) => String(c)).join('\u0001'), ids[i]));
     return m;
   }, []);
-  const wb = useMemo(() => buildSheetWorkbook({ columns, rows }), []);
+  const wb = useMemo(() => {
+    // 恢复学员已删除的行: 只把 retained 行重建进表(翻回本题不回到初始全量行)。
+    const savedRetained = record(value).retainedRowIds;
+    const retainedIds = new Set((Array.isArray(savedRetained) ? savedRetained as unknown[] : []).map(String));
+    const kept = retainedIds.size ? rows.filter((_, i) => retainedIds.has(ids[i])) : rows;
+    return buildSheetWorkbook({ columns, rows: kept });
+  }, []);
   const handleSnap = (getSnap: () => IWorkbookData | null) => {
     const snap = getSnap(); if (!snap) return;
     const cd = extractCellData(snap);
@@ -115,12 +121,26 @@ export function StatsTable({ config, value, onChange, disabled }: { config:Confi
     });
   };
 
-  const wb = useMemo(() => buildSheetWorkbook({
-    columns, rows,
-    highlightCells: new Set(editable as string[]),
-    dataOffset: 1,
-    ...(sheetMode ? { sourceGroups } : {}),
-  }), []);
+  const wb = useMemo(() => {
+    const w = buildSheetWorkbook({
+      columns, rows,
+      highlightCells: new Set(editable as string[]),
+      dataOffset: 1,
+      ...(sheetMode ? { sourceGroups } : {}),
+    });
+    // 恢复学员已填数值(题型坐标 → 表头占位 +1, 与 handleSnap 导出对称)。
+    const savedCells = record(value).cells as unknown as Record<string, string | number> | undefined;
+    if (savedCells && typeof savedCells === 'object' && !Array.isArray(savedCells)) {
+      const cd = (Object.values(w.sheets)[0] as { cellData: Record<number, Record<number, { v?: unknown; s?: string }>> }).cellData;
+      for (const [key, val] of Object.entries(savedCells)) {
+        const { col, row } = parseCellKey(key);
+        if (col < 0 || row < 0 || val === '' || val === null || val === undefined) continue;
+        const prev = cd[row + 1]?.[col];
+        (cd[row + 1] ??= {})[col] = { v: val, ...(prev?.s ? { s: prev.s } : {}) };
+      }
+    }
+    return w;
+  }, []);
 
   const handleSnap = (getSnap: () => IWorkbookData | null) => {
     const snap = getSnap(); if (!snap) return;
@@ -310,6 +330,56 @@ function formatDecimal(value: string, places: number | null): string {
 /** 学号第 3-4 位 → 班级名(与判分及汇总区预置标签逻辑一致)。 */
 const deriveClassOf = (sid: string) => { const m = /^\d{2}(\d{1,2})/.exec(sid); return m ? `${parseInt(m[1], 10)}班` : ''; };
 
+/** 把已保存作答快照(rows/rowOrder/summaryGroups/样式结论)重建进初始工作簿——翻回 Excel 题时恢复操作现场。
+ *  样式为近似还原(填色/全边框/小数格式), 判分读取的快照字段与导出契约同构, 不影响评分。 */
+function applySavedState(
+  wb: IWorkbookData,
+  saved: ReturnType<typeof record>,
+  ctx: { columns: string[]; dataRowCount: number; scoreColIndices: number[] },
+) {
+  const rows = (Array.isArray(saved.rows) ? saved.rows : []) as Array<{ id?: string; cells?: unknown[] }>;
+  const groups = (Array.isArray(saved.summaryGroups) ? saved.summaryGroups : []) as Array<{ key: string; averages: Record<string, number> }>;
+  if (!rows.length && !groups.length && !saved.headerColor && saved.borderApplied !== true && saved.decimalPlaces === undefined) return;
+  const sheet = Object.values(wb.sheets)[0] as { cellData: Record<number, Record<number, { v?: unknown; s?: string }>> };
+  const cd = sheet.cellData;
+  const styles = wb.styles as unknown as Record<string, Record<string, unknown>>;
+  let seq = 0;
+  // 数据区按保存行序重写(含已填的班级列/排序结果), 保留单元格原样式引用
+  rows.forEach((row, i) => {
+    const r = i + 1;
+    if (r > ctx.dataRowCount) return;
+    for (let c = 0; c < ctx.columns.length; c++) {
+      const v = row.cells?.[c];
+      const prev = cd[r]?.[c];
+      (cd[r] ??= {})[c] = { ...(v === undefined || v === null || v === '' ? {} : { v }), ...(prev?.s ? { s: prev.s } : {}) };
+    }
+  });
+  // 汇总区: 各班平均值填回对应标签行
+  for (const g of groups) {
+    for (let r = ctx.dataRowCount + 2; cd[r]; r++) {
+      if (String(cd[r]?.[0]?.v ?? '') !== g.key) continue;
+      for (const [colStr, val] of Object.entries(g.averages ?? {})) (cd[r] ??= {})[Number(colStr)] = { v: val };
+      break;
+    }
+  }
+  // 样式: 表头填色 / 数据区全边框 / 成绩列小数格式
+  const headerHex = saved.headerColor ? (COLOR_MAP[String(saved.headerColor)] ?? '') : '';
+  const dec = Number(saved.decimalPlaces);
+  const pattern = saved.decimalPlaces === undefined ? null : dec <= 0 ? '0' : `0.${'0'.repeat(dec)}`;
+  const borderBd = { t: { s: 1, cl: { rgb: '#000000' } }, b: { s: 1, cl: { rgb: '#000000' } }, l: { s: 1, cl: { rgb: '#000000' } }, r: { s: 1, cl: { rgb: '#000000' } } };
+  for (let r = 0; r <= ctx.dataRowCount; r++) {
+    for (let c = 0; c < ctx.columns.length; c++) {
+      if (!cd[r]?.[c]) continue;
+      const sId = cd[r][c].s;
+      const st: Record<string, unknown> = { ...(sId ? styles[sId] : {}) };
+      if (r === 0 && headerHex) st.bg = { rgb: headerHex };
+      if (saved.borderApplied === true) st.bd = borderBd;
+      if (pattern && r >= 1 && ctx.scoreColIndices.includes(c)) st.n = { pattern };
+      if (Object.keys(st).length) { const key = `rs${seq++}`; styles[key] = st; cd[r][c] = { ...cd[r][c], s: key }; }
+    }
+  }
+}
+
 function ExcelComprehensive({ config, value, onChange, disabled }: { config:Config;value:unknown;onChange:(v:unknown)=>void;disabled:boolean }) {
   const columns = config.columns ?? [];
   const initialRows = config.dataRows ?? [];
@@ -324,10 +394,15 @@ function ExcelComprehensive({ config, value, onChange, disabled }: { config:Conf
     }
     return [...s].sort();
   }, []);
-  const wb = useMemo(() => buildSheetWorkbook({
-    columns, rows: initialRows,
-    extraRows: classNames.map((cn) => [cn, ...columns.slice(1).map(() => '')]),
-  }), []);
+  const wb = useMemo(() => {
+    const w = buildSheetWorkbook({
+      columns, rows: initialRows,
+      extraRows: classNames.map((cn) => [cn, ...columns.slice(1).map(() => '')]),
+    });
+    // 翻回本题时从已保存作答恢复现场(行序/班级列/汇总/样式), 否则学员看到的是初始空白表。
+    applySavedState(w, record(value), { columns, dataRowCount: initialRows.length, scoreColIndices });
+    return w;
+  }, []);
   const idToRowId = useMemo(() => {
     const m = new Map<string, string>();
     initialRows.forEach((cells, i) => m.set(String(cells[0] ?? ''), rowIds[i]));
