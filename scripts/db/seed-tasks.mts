@@ -120,7 +120,7 @@ const templates:Template[]=[
  {key:'stats2',type:'stats_table',title:'图片标注量统计填表',difficulty:2,
   instructions:'根据原始记录，填写各类标注目标的数量和标注总数。',
   config:{columns:['统计项目','数量'],rows:[['人物',''],['车辆',''],['动物',''],['交通标志',''],['标注总数','']],editableCells:['B1','B2','B3','B4','B5'],sourceSummary:{targets:['人物','车辆','人物','动物','车辆','车辆','交通标志','人物','动物','交通标志','交通标志','车辆']}},
-  answer:{correctCells:{B1:3,B2:5,B3:2,B4:3,B5:13},numericTolerance:0,rejectExtraCells:true}},
+  answer:{correctCells:{B1:3,B2:4,B3:2,B4:3,B5:12},numericTolerance:0,rejectExtraCells:true}},
  {key:'labeling2',type:'data_labeling',title:'交通场景目标分类标注',difficulty:1,
   instructions:'请把每个条目正确分类为"行人""车辆"或"交通设施"。',
   config:{labels:['行人','车辆','交通设施'],items:[
