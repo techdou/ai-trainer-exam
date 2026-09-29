@@ -24,7 +24,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!z.string().uuid().safeParse(id).success) return fail(400, '题目 ID 不正确');
     const current = await getQuestionById(id);
     if (!current) return fail(404, '题目不存在');
-    assertOrganizationScope(user, current.organization_id);
+    // 预览是只读: 全局题(organization_id 为 NULL)对任意机构管理角色放行;
+    // 写路径(PATCH)仍走全量校验,机构管理员不能改全局题。
+    if (current.organization_id) assertOrganizationScope(user, current.organization_id);
     return ok(current);
   } catch (e) { return catchError(e); }
 }

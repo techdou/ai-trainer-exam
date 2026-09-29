@@ -111,9 +111,15 @@ export async function searchQuestions(params: QuestionSearchParams): Promise<Que
     conditions.push(`bank_type = $${argIdx++}`);
     args.push(params.bankType);
   }
-  if (params.organizationId !== undefined) {
-    conditions.push(`organization_id = $${argIdx++}`);
+  // 机构范围三态语义(与组卷侧/学生端对齐): 机构私有 + 全局(NULL) + 共享给本机构。
+  // organization_id 为 NULL 的题是全局共享,精确匹配会把全局题全部滤掉(机构管理员看到空题库)。
+  if (params.organizationId) {
+    const shareType = params.bankType === 'exam' ? 'exam_question' : 'practice_question';
+    conditions.push(`(organization_id = $${argIdx} OR organization_id IS NULL
+       OR id IN (SELECT resource_id FROM question_bank_shares
+                 WHERE resource_type = '${shareType}' AND organization_id = $${argIdx}))`);
     args.push(params.organizationId);
+    argIdx++;
   }
   if (params.questionType) {
     conditions.push(`question_type = $${argIdx++}`);

@@ -44,7 +44,14 @@ export const GET = handler(async (request: Request) => {
   }
   // 非超管强制自身机构; 超管可用 query 机构过滤(组卷页选定机构后使用)。
   const scopedOrg = organizationScope(user) ?? (user.roles.includes('super_admin') ? url.searchParams.get('organizationId') : null);
-  if (scopedOrg) { params.push(scopedOrg); conditions.push(`organization_id = $${params.length}`); }
+  // 三态: 机构私有 + 全局(NULL) + 共享给本机构(与题库列表/组卷侧语义对齐,防机构管理员看不到全局题)。
+  if (scopedOrg) {
+    params.push(scopedOrg);
+    const shareType = bankType === 'exam' ? 'exam_task' : 'practice_task';
+    conditions.push(`(organization_id = $${params.length} OR organization_id IS NULL
+       OR id IN (SELECT resource_id FROM question_bank_shares
+                 WHERE resource_type = '${shareType}' AND organization_id = $${params.length}))`);
+  }
   const whereClause = conditions.join(' AND ');
   const answerKeySelect = includeAnswerKey ? ', answer_key AS "answerKey"' : '';
   const rows = await dbQuery(
