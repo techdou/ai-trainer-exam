@@ -25,7 +25,9 @@ export const POST = handler(async (request: Request) => {
     `SELECT t.id,t.task_type,t.answer_key,t.review_status
        FROM practice_task_templates t
       WHERE t.id=$1 AND t.deleted_at IS NULL
-        AND (t.organization_id=$2 OR t.organization_id IS NULL)
+        AND (t.organization_id=$2 OR t.organization_id IS NULL
+             OR t.id IN (SELECT resource_id FROM question_bank_shares
+                         WHERE resource_type='practice_task' AND organization_id=$2))
         AND EXISTS (SELECT 1 FROM practice_assignments a JOIN enrollments e ON e.cohort_id=a.cohort_id
                     WHERE a.item_id=t.id AND a.item_type='task_template' AND e.user_id=$3 AND e.status='active')`,
     body.taskId,user.organizationId,user.id,

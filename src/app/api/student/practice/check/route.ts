@@ -12,7 +12,10 @@ export async function POST(request:Request){
   const user=await requireRole(request,['student']);await assertPracticeUnlocked(user);const body=await parseBody(request,schema);const finalAnswer=body.answer??body.userAnswer;if(finalAnswer===undefined)return fail(400,'请选择答案');
   const q=await dbOne<{answer_key:unknown;explanation:string|null;knowledge_point:string|null;question_type:string}>(
    `SELECT answer_key,explanation,knowledge_point,question_type FROM practice_question_items
-    WHERE id=$1 AND review_status='published' AND deleted_at IS NULL AND (organization_id=$2 OR organization_id IS NULL)`,body.questionId,user.organizationId);
+    WHERE id=$1 AND review_status='published' AND deleted_at IS NULL
+      AND (organization_id=$2 OR organization_id IS NULL
+           OR id IN (SELECT resource_id FROM question_bank_shares
+                     WHERE resource_type='practice_question' AND organization_id=$2))`,body.questionId,user.organizationId);
   if(!q)return fail(404,'题目不存在或未发布');
   let answerKey:unknown,submission:unknown;
   if(q.question_type==='true_false'){

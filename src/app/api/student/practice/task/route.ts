@@ -25,7 +25,10 @@ export async function GET(req: NextRequest) {
       FROM practice_task_templates t
       INNER JOIN practice_assignments a ON a.item_id = t.id AND a.item_type = 'task_template'
       INNER JOIN enrollments e ON e.cohort_id = a.cohort_id AND e.user_id = $1
-      WHERE t.deleted_at IS NULL AND t.review_status = 'published' AND (t.organization_id = $2 OR t.organization_id IS NULL)
+      WHERE t.deleted_at IS NULL AND t.review_status = 'published'
+        AND (t.organization_id = $2 OR t.organization_id IS NULL
+             OR t.id IN (SELECT resource_id FROM question_bank_shares
+                         WHERE resource_type = 'practice_task' AND organization_id = $2))
       ORDER BY t.difficulty ASC, t.title ASC
     `, user.id, user.organizationId);
 
