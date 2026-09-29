@@ -4,6 +4,9 @@ packages:
 # pnpm v11（gpu-box 部署）：构建脚本白名单，缺失时 install/build 全挂。
 # pnpm 9（广州服务器）对此键仅警告忽略，两侧兼容。
 allowBuilds:
+  esbuild: true
+  sharp: true
+  unrs-resolver: true
   protobufjs: true
 
 patchedDependencies:
