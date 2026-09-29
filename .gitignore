@@ -94,8 +94,12 @@ yarn-debug.log*
 yarn-error.log*
 *.pid
 *.pid.lock
+.logs/
 tmp/
 temp/
+
+# 本地部署覆盖(talents 栈扩展等;按 Docker 惯例 override 不入库)
+docker-compose.override.yml
 
 # UI 评审截图(本地临时产物)
 .ui-review/
